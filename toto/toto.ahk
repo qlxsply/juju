@@ -75,10 +75,12 @@ global gEditorItemId := ""
 
 global gSettingsGui := 0
 global gSettingsHotkey := 0
+global gSettingsHotkeyValue := ""
 global gSettingsWinModifier := 0
 global gSettingsDefaultMinutes := 0
 global gSettingsAutoStart := 0
 global gSettingsAppHotkeys := Map()
+global gSettingsGlobalHotkeySuspended := false
 
 global gReminderGui := 0
 global gReminderLV := 0
@@ -139,6 +141,8 @@ InitializeToto() {
     OnMessage(WM_POWERBROADCAST, HandlePowerBroadcast)
     OnMessage(WM_TIMECHANGE, HandleTimeChange)
     OnMessage(WM_WTSSESSION_CHANGE, HandleSessionChange)
+    OnMessage(0x0100, HandleSettingsHotkeyInput) ; WM_KEYDOWN
+    OnMessage(0x0104, HandleSettingsHotkeyInput) ; WM_SYSKEYDOWN
 
     ; 接收锁屏/解锁消息。失败不影响基础功能。
     try DllCall(
@@ -1023,12 +1027,20 @@ CloseHistory(*) {
 
 ShowSettings(*) {
     global gSettingsGui, gSettingsHotkey, gSettingsWinModifier
-    global gSettingsDefaultMinutes, gSettingsAutoStart
-    global gSettingsAppHotkeys
-    global gMainGui, gConfig
+    global gSettingsHotkeyValue, gSettingsDefaultMinutes, gSettingsAutoStart
+    global gSettingsAppHotkeys, gSettingsGlobalHotkeySuspended
+    global gMainGui, gConfig, gRegisteredHotkey
 
     if IsObject(gSettingsGui) {
         try gSettingsGui.Destroy()
+    }
+
+    if (!gSettingsGlobalHotkeySuspended && gRegisteredHotkey != "") {
+        HotIf()
+        try {
+            Hotkey(gRegisteredHotkey, "Off")
+            gSettingsGlobalHotkeySuspended := true
+        }
     }
 
     gSettingsGui := Gui(
@@ -1045,12 +1057,14 @@ ShowSettings(*) {
     hotkeyValue := gConfig["hotkey"]
     hasWin := InStr(hotkeyValue, "#") ? 1 : 0
     hotkeyValue := StrReplace(hotkeyValue, "#", "")
+    gSettingsHotkeyValue := hotkeyValue
 
     gSettingsHotkey := gSettingsGui.Add(
-        "Hotkey",
-        "x170 y12 w210 h28 Limit1"
+        "Edit",
+        "x170 y12 w210 h28 ReadOnly",
+        FormatHotkeyForDisplay(hotkeyValue)
     )
-    SetHotkeyControlValue(gSettingsHotkey, hotkeyValue)
+    DisableImeForControl(gSettingsHotkey)
     gSettingsWinModifier := gSettingsGui.Add(
         "CheckBox",
         "x392 y16 w100 h24",
@@ -1128,11 +1142,11 @@ ShowSettings(*) {
 
 SaveSettings(*) {
     global gSettingsHotkey, gSettingsWinModifier
-    global gSettingsDefaultMinutes, gSettingsAutoStart
+    global gSettingsHotkeyValue, gSettingsDefaultMinutes, gSettingsAutoStart
     global gSettingsAppHotkeys
     global gConfig
 
-    baseHotkey := gSettingsHotkey.Value
+    baseHotkey := NormalizeHotkey(gSettingsHotkeyValue)
     if (baseHotkey = "") {
         MsgBox("请选择一个全局唤醒快捷键。", "toto - 设置", "Icon!")
         return
@@ -1197,12 +1211,21 @@ SaveSettings(*) {
 }
 
 CloseSettings(*) {
-    global gSettingsGui, gSettingsAppHotkeys
+    global gSettingsGui, gSettingsHotkeyValue, gSettingsAppHotkeys
+    global gSettingsGlobalHotkeySuspended, gRegisteredHotkey
 
     if IsObject(gSettingsGui) {
         try gSettingsGui.Destroy()
     }
+
+    if (gSettingsGlobalHotkeySuspended && gRegisteredHotkey != "") {
+        HotIf()
+        try Hotkey(gRegisteredHotkey, "On")
+    }
+
+    gSettingsGlobalHotkeySuspended := false
     gSettingsGui := 0
+    gSettingsHotkeyValue := ""
     gSettingsAppHotkeys := Map()
 }
 
@@ -2429,7 +2452,7 @@ NormalizeHotkey(value) {
         pos += 1
     }
 
-    keyName := Trim(SubStr(value, pos))
+    keyName := CanonicalizeHotkeyKeyName(Trim(SubStr(value, pos)))
     if (keyName = "")
         return ""
 
@@ -2439,6 +2462,91 @@ NormalizeHotkey(value) {
         . (hasShift ? "+" : "")
 
     return prefix keyName
+}
+
+CanonicalizeHotkeyKeyName(keyName) {
+    lowerKey := StrLower(Trim(keyName))
+
+    switch lowerKey {
+        case "space", "vk20", "sc039", "vke5":
+            return "Space"
+    }
+
+    return Trim(keyName)
+}
+
+FormatHotkeyForDisplay(hotkeyValue) {
+    hotkeyValue := NormalizeHotkey(hotkeyValue)
+    if (hotkeyValue = "")
+        return ""
+
+    parts := []
+    if InStr(hotkeyValue, "#")
+        parts.Push("Win")
+    if InStr(hotkeyValue, "^")
+        parts.Push("Ctrl")
+    if InStr(hotkeyValue, "!")
+        parts.Push("Alt")
+    if InStr(hotkeyValue, "+")
+        parts.Push("Shift")
+
+    keyName := CanonicalizeHotkeyKeyName(
+        RegExReplace(hotkeyValue, "^[#\^\!\+]+")
+    )
+    if (keyName != "")
+        parts.Push(keyName)
+
+    text := ""
+    for index, part in parts {
+        if (index > 1)
+            text .= " + "
+        text .= part
+    }
+    return text
+}
+
+HandleSettingsHotkeyInput(wParam, lParam, msg, hwnd) {
+    global gSettingsGui, gSettingsHotkey, gSettingsHotkeyValue
+
+    if !IsObject(gSettingsGui) || !IsObject(gSettingsHotkey)
+        return
+
+    focusedHwnd := DllCall("User32\GetFocus", "Ptr")
+    if (focusedHwnd != gSettingsHotkey.Hwnd)
+        return
+
+    ; 允许常规对话框导航键继续工作。
+    if (wParam = 0x09 || wParam = 0x0D || wParam = 0x1B)
+        return
+
+    if (wParam = 0x08 || wParam = 0x2E) {
+        gSettingsHotkeyValue := ""
+        gSettingsHotkey.Value := ""
+        return 0
+    }
+
+    ; 仅按下修饰键时不提交，避免把半成品写进设置。
+    if (wParam = 0x10 || wParam = 0x11 || wParam = 0x12
+        || wParam = 0x5B || wParam = 0x5C)
+        return 0
+
+    scanCode := (lParam >> 16) & 0xFF
+    keyName := GetKeyName(Format("vk{:02X}sc{:03X}", wParam, scanCode))
+    if (keyName = "")
+        keyName := GetKeyName(Format("vk{:02X}", wParam))
+
+    keyName := CanonicalizeHotkeyKeyName(keyName)
+    if (keyName = "")
+        return 0
+
+    hotkeyValue := (GetKeyState("Ctrl", "P") ? "^" : "")
+        . (GetKeyState("Alt", "P") ? "!" : "")
+        . (GetKeyState("Shift", "P") ? "+" : "")
+        . keyName
+
+    gSettingsHotkeyValue := NormalizeHotkey(hotkeyValue)
+    gSettingsHotkey.Value := FormatHotkeyForDisplay(gSettingsHotkeyValue)
+    return 0
 }
 
 FocusEditorField(fieldName) {
@@ -2459,6 +2567,18 @@ SetEditorError(message := "") {
 
     if IsObject(gEditorErrorText)
         gEditorErrorText.Text := message
+}
+
+DisableImeForControl(ctrl) {
+    if !IsObject(ctrl)
+        return false
+
+    try {
+        DllCall("Imm32\ImmAssociateContext", "Ptr", ctrl.Hwnd, "Ptr", 0, "Ptr")
+        return true
+    } catch {
+        return false
+    }
 }
 
 FocusControlIfAlive(ctrl) {
@@ -2499,46 +2619,6 @@ ResolveReminderDisplay(plannedAt, remindAtRaw, legacyRemindMinutes := "") {
     }
 
     return Map("ok", true, "value", StampToDisplay(remindStamp))
-}
-
-SetHotkeyControlValue(ctrl, hotkeyValue) {
-    hotkeyValue := NormalizeHotkey(hotkeyValue)
-
-    if (hotkeyValue = "") {
-        ctrl.Value := ""
-        return
-    }
-
-    ; 普通按键使用 AHK 自带赋值。
-    ctrl.Value := hotkeyValue
-
-    keyName := RegExReplace(hotkeyValue, "^[\^\!\+]+")
-    if (StrLower(keyName) != "space")
-        return
-
-    ; Windows 原生 Hotkey 控件不会正常处理 Space，
-    ; 通过 HKM_SETHOTKEY 直接写入 Ctrl、Alt、Shift 和 VK_SPACE。
-    modifiers := 0
-
-    if InStr(hotkeyValue, "^")
-        modifiers |= 0x02  ; HOTKEYF_CONTROL
-
-    if InStr(hotkeyValue, "!")
-        modifiers |= 0x04  ; HOTKEYF_ALT
-
-    if InStr(hotkeyValue, "+")
-        modifiers |= 0x01  ; HOTKEYF_SHIFT
-
-    hotkeyWord := (modifiers << 8) | 0x20  ; VK_SPACE
-
-    DllCall(
-        "User32\SendMessageW",
-        "Ptr", ctrl.Hwnd,
-        "UInt", 0x0401,  ; HKM_SETHOTKEY
-        "Ptr", hotkeyWord,
-        "Ptr", 0,
-        "Ptr"
-    )
 }
 
 NowDisplay() {
