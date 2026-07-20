@@ -31,7 +31,6 @@ global ING_HEADER := [
     "事项ID",
     "事项内容",
     "计划时间",
-    "提前提醒分钟数",
     "提醒时间",
     "创建时间",
     "创建序号",
@@ -43,7 +42,6 @@ global END_HEADER := [
     "事项ID",
     "事项内容",
     "计划时间",
-    "提前提醒分钟数",
     "提醒时间",
     "创建时间",
     "创建序号",
@@ -69,6 +67,10 @@ global gHistoryRowIds := []
 
 global gEditorGui := 0
 global gEditorEdit := 0
+global gEditorContentEdit := 0
+global gEditorPlannedEdit := 0
+global gEditorReminderEdit := 0
+global gEditorErrorText := 0
 global gEditorItemId := ""
 
 global gSettingsGui := 0
@@ -331,24 +333,25 @@ CreateMainGui() {
     global gMainGui, gMainLV, gMainStatus
 
     gMainGui := Gui("-MaximizeBox", "toto - 进行中事项")
+    gMainGui.Opt("+OwnDialogs")
     gMainGui.SetFont("s10", "Microsoft YaHei UI")
     gMainGui.MarginX := 12
     gMainGui.MarginY := 12
 
     gMainLV := gMainGui.Add(
         "ListView",
-        "x12 y12 w896 h442 Grid -Multi NoSortHdr",
-        ["事项内容", "计划时间", "提前提醒(分)", "提醒状态", "创建时间"]
+        "x12 y12 w920 h442 Grid -Multi NoSortHdr",
+        ["事项内容", "计划时间", "提醒时间", "提醒状态", "创建时间"]
     )
     gMainLV.ModifyCol(1, 345)
     gMainLV.ModifyCol(2, 155)
-    gMainLV.ModifyCol(3, 105)
+    gMainLV.ModifyCol(3, 155)
     gMainLV.ModifyCol(4, 100)
-    gMainLV.ModifyCol(5, 165)
+    gMainLV.ModifyCol(5, 150)
 
     gMainStatus := gMainGui.Add(
         "Text",
-        "x12 y466 w896 h24",
+        "x12 y466 w920 h24",
         "应用内快捷键可在设置中调整；双击事项编辑；关闭窗口后 toto 继续在托盘运行。"
     )
 
@@ -365,7 +368,7 @@ ShowMain(*) {
     RefreshMainList()
     ScheduleNextReminder()
 
-    gMainGui.Show("w920 h502 Center")
+    gMainGui.Show("w944 h502 Center")
     try WinActivate("ahk_id " gMainGui.Hwnd)
 }
 
@@ -398,7 +401,7 @@ RefreshMainList() {
             "",
             item["content"],
             item["plannedAt"],
-            item["remindMinutes"],
+            item["remindAt"],
             item["remindStatus"],
             item["createdAt"]
         )
@@ -470,29 +473,68 @@ CancelSelectedItem(*) {
 ; ------------------------------------------------------------
 
 ShowItemEditor(itemId := "") {
-    global gEditorGui, gEditorEdit, gEditorItemId, gMainGui, gConfig
+    global gEditorGui, gEditorEdit, gEditorContentEdit, gEditorPlannedEdit
+    global gEditorReminderEdit, gEditorErrorText, gEditorItemId
+    global gMainGui, gConfig
 
     if IsObject(gEditorGui) {
         try gEditorGui.Destroy()
     }
+
+    gEditorEdit := 0
+    gEditorContentEdit := 0
+    gEditorPlannedEdit := 0
+    gEditorReminderEdit := 0
+    gEditorErrorText := 0
 
     gEditorItemId := itemId
     title := (itemId = "") ? "toto - 新增事项" : "toto - 编辑事项"
     ownerOption := IsObject(gMainGui) ? "+Owner" gMainGui.Hwnd : ""
 
     gEditorGui := Gui(ownerOption " +AlwaysOnTop -MaximizeBox", title)
+    gEditorGui.Opt("+OwnDialogs")
     gEditorGui.SetFont("s10", "Microsoft YaHei UI")
     gEditorGui.MarginX := 14
     gEditorGui.MarginY := 12
 
-    helpText := "输入格式：事项内容[@计划时间[@提前提醒分钟数]]`n"
-        . "时间支持：HHmm、ddHHmm、MMddHHmm、yyyyMMddHHmm`n"
-        . "未填写提前分钟数时，使用默认值 "
-        . gConfig["default_remind_minutes"] " 分钟。"
+    if (itemId = "") {
+        helpText := "输入格式：事项内容[@计划时间[@提前提醒分钟数]]`n"
+            . "时间支持：HHmm、ddHHmm、MMddHHmm、yyyyMMddHHmm`n"
+            . "未填写提前分钟数时，使用默认值 "
+            . gConfig["default_remind_minutes"] " 分钟。"
 
-    gEditorGui.Add("Text", "x14 y12 w570 h62", helpText)
+        gEditorGui.Add("Text", "x14 y12 w570 h62", helpText)
+        gEditorEdit := gEditorGui.Add(
+            "Edit",
+            "x14 y82 w570 h28"
+        )
+        gEditorErrorText := gEditorGui.Add(
+            "Text",
+            "x14 y116 w370 h36 cRed",
+            ""
+        )
 
-    initialText := ""
+        btnSave := gEditorGui.Add("Button", "x398 y156 w88 h30 Default", "保存")
+        btnCancel := gEditorGui.Add("Button", "x496 y156 w88 h30", "取消")
+
+        btnSave.OnEvent("Click", SaveEditorItem)
+        btnCancel.OnEvent("Click", CloseEditor)
+        gEditorGui.OnEvent("Close", CloseEditor)
+        gEditorGui.OnEvent("Escape", CloseEditor)
+
+        gEditorGui.Show("w600 h202 Center")
+        FocusControlIfAlive(gEditorEdit)
+        return
+    }
+
+    helpText := "事项内容可直接包含 @。时间格式：yyyy-MM-dd HH:mm:ss；"
+        . "计划时间和提醒时间均可留空，提醒时间不会随计划时间自动联动。"
+
+    gEditorGui.Add("Text", "x14 y12 w610 h22", helpText)
+
+    initialContent := ""
+    initialPlannedAt := ""
+    initialReminderAt := ""
     if (itemId != "") {
         item := FindIngItemById(itemId)
         if !IsObject(item) {
@@ -501,48 +543,73 @@ ShowItemEditor(itemId := "") {
             gEditorGui := 0
             return
         }
-        initialText := BuildEditableInput(item)
+        initialContent := item["content"]
+        initialPlannedAt := item["plannedAt"]
+        initialReminderAt := item["remindAt"]
     }
 
-    gEditorEdit := gEditorGui.Add(
+    gEditorGui.Add("Text", "x14 y48 w72 h24", "事项内容：")
+    gEditorContentEdit := gEditorGui.Add(
         "Edit",
-        "x14 y82 w570 h28",
-        initialText
+        "x92 y44 w532 h28",
+        initialContent
     )
 
-    btnSave := gEditorGui.Add("Button", "x398 y124 w88 h30 Default", "保存")
-    btnCancel := gEditorGui.Add("Button", "x496 y124 w88 h30", "取消")
+    gEditorGui.Add("Text", "x14 y88 w72 h24", "计划时间：")
+    gEditorPlannedEdit := gEditorGui.Add(
+        "Edit",
+        "x92 y84 w240 h28",
+        initialPlannedAt
+    )
+
+    gEditorGui.Add("Text", "x14 y128 w72 h24", "提醒时间：")
+    gEditorReminderEdit := gEditorGui.Add(
+        "Edit",
+        "x92 y124 w240 h28",
+        initialReminderAt
+    )
+    gEditorErrorText := gEditorGui.Add(
+        "Text",
+        "x14 y158 w410 h36 cRed",
+        ""
+    )
+
+    btnSave := gEditorGui.Add("Button", "x438 y194 w88 h30 Default", "保存")
+    btnCancel := gEditorGui.Add("Button", "x536 y194 w88 h30", "取消")
 
     btnSave.OnEvent("Click", SaveEditorItem)
     btnCancel.OnEvent("Click", CloseEditor)
     gEditorGui.OnEvent("Close", CloseEditor)
     gEditorGui.OnEvent("Escape", CloseEditor)
 
-    gEditorGui.Show("w600 h168 Center")
-    gEditorEdit.Focus()
-}
-
-BuildEditableInput(item) {
-    if (item["plannedAt"] = "")
-        return item["content"]
-
-    stamp := DisplayToStamp(item["plannedAt"])
-    return item["content"] "@"
-    . FormatTime(stamp, "yyyyMMddHHmm")
-        . "@" item["remindMinutes"]
+    gEditorGui.Show("w640 h238 Center")
+    FocusControlIfAlive(gEditorContentEdit)
 }
 
 SaveEditorItem(*) {
-    global gEditorEdit, gEditorItemId, gIngItems, gNextCreatedSeq
+    global gEditorEdit, gEditorContentEdit, gEditorPlannedEdit
+    global gEditorReminderEdit, gEditorItemId, gIngItems, gNextCreatedSeq
 
-    rawInput := Trim(gEditorEdit.Value)
-    parsed := ParseItemInput(rawInput)
+    if (gEditorItemId = "") {
+        rawInput := Trim(gEditorEdit.Value)
+        parsed := ParseItemInput(rawInput)
+    } else {
+        contentRaw := Trim(gEditorContentEdit.Value)
+        plannedRaw := Trim(gEditorPlannedEdit.Value)
+        remindRaw := Trim(gEditorReminderEdit.Value)
+        parsed := ParseEditorInput(contentRaw, plannedRaw, remindRaw)
+    }
 
     if !parsed["ok"] {
-        MsgBox(parsed["error"], "toto - 输入错误", "Icon!")
-        gEditorEdit.Focus()
+        SetEditorError(parsed["error"])
+        if (gEditorItemId = "")
+            FocusControlIfAlive(gEditorEdit)
+        else
+            FocusEditorField(parsed["focusTarget"])
         return
     }
+
+    SetEditorError()
 
     currentDisplay := NowDisplay()
 
@@ -551,11 +618,10 @@ SaveEditorItem(*) {
             "id", NewGuid(),
             "content", parsed["content"],
             "plannedAt", parsed["plannedAt"],
-            "remindMinutes", parsed["remindMinutes"],
             "remindAt", parsed["remindAt"],
             "createdAt", currentDisplay,
             "createdSeq", gNextCreatedSeq,
-            "remindStatus", parsed["plannedAt"] = "" ? "无提醒" : "未提醒",
+            "remindStatus", parsed["remindAt"] = "" ? "无提醒" : "未提醒",
             "remindedAt", ""
         )
         gNextCreatedSeq += 1
@@ -569,20 +635,16 @@ SaveEditorItem(*) {
         }
 
         item := gIngItems[index]
-        scheduleChanged := (
-            item["plannedAt"] != parsed["plannedAt"]
-            || item["remindMinutes"] != parsed["remindMinutes"]
-        )
+        reminderChanged := (item["remindAt"] != parsed["remindAt"])
 
         item["content"] := parsed["content"]
         item["plannedAt"] := parsed["plannedAt"]
-        item["remindMinutes"] := parsed["remindMinutes"]
         item["remindAt"] := parsed["remindAt"]
 
-        if (parsed["plannedAt"] = "") {
+        if (parsed["remindAt"] = "") {
             item["remindStatus"] := "无提醒"
             item["remindedAt"] := ""
-        } else if scheduleChanged {
+        } else if reminderChanged {
             item["remindStatus"] := "未提醒"
             item["remindedAt"] := ""
         }
@@ -602,12 +664,18 @@ SaveEditorItem(*) {
 }
 
 CloseEditor(*) {
-    global gEditorGui, gEditorItemId
+    global gEditorGui, gEditorEdit, gEditorContentEdit, gEditorPlannedEdit
+    global gEditorReminderEdit, gEditorErrorText, gEditorItemId
 
     if IsObject(gEditorGui) {
         try gEditorGui.Destroy()
     }
     gEditorGui := 0
+    gEditorEdit := 0
+    gEditorContentEdit := 0
+    gEditorPlannedEdit := 0
+    gEditorReminderEdit := 0
+    gEditorErrorText := 0
     gEditorItemId := ""
 }
 
@@ -633,7 +701,6 @@ ParseItemInput(rawInput) {
             "ok", true,
             "content", content,
             "plannedAt", "",
-            "remindMinutes", "",
             "remindAt", ""
         )
     }
@@ -670,9 +737,54 @@ ParseItemInput(rawInput) {
         "ok", true,
         "content", content,
         "plannedAt", StampToDisplay(planStamp),
-        "remindMinutes", remindMinutes,
         "remindAt", StampToDisplay(remindStamp)
     )
+}
+
+ParseEditorInput(contentRaw, plannedRaw, remindRaw) {
+    if (contentRaw = "")
+        return ParseError("事项内容不能为空。", "content")
+
+    if InStr(contentRaw, "`n") || InStr(contentRaw, "`r")
+        return ParseError("事项内容不能包含换行。", "content")
+
+    plannedAt := ""
+    if (plannedRaw != "") {
+        planResult := ParseEditorDateTime(plannedRaw, "计划时间", "plannedAt")
+        if !planResult["ok"]
+            return planResult
+        plannedAt := planResult["display"]
+    }
+
+    remindAt := ""
+    if (remindRaw != "") {
+        remindResult := ParseEditorDateTime(remindRaw, "提醒时间", "remindAt")
+        if !remindResult["ok"]
+            return remindResult
+        remindAt := remindResult["display"]
+    }
+
+    return Map(
+        "ok", true,
+        "content", contentRaw,
+        "plannedAt", plannedAt,
+        "remindAt", remindAt
+    )
+}
+
+ParseEditorDateTime(raw, fieldLabel, focusTarget) {
+    if !RegExMatch(raw, "^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$") {
+        return ParseError(
+            fieldLabel . "格式必须是 yyyy-MM-dd HH:mm:ss。",
+            focusTarget
+        )
+    }
+
+    stamp := DisplayToStamp(raw)
+    if (stamp = "")
+        return ParseError(fieldLabel . "不是有效的日期或时间。", focusTarget)
+
+    return Map("ok", true, "stamp", stamp, "display", StampToDisplay(stamp))
 }
 
 ParsePlanTime(raw) {
@@ -737,8 +849,8 @@ ParsePlanTime(raw) {
     return Map("ok", true, "stamp", stamp)
 }
 
-ParseError(message) {
-    return Map("ok", false, "error", message)
+ParseError(message, focusTarget := "") {
+    return Map("ok", false, "error", message, "focusTarget", focusTarget)
 }
 
 IsValidDateTime(year, month, day, hour, minute) {
@@ -787,7 +899,6 @@ EndItemById(id, endStatus) {
         "id", item["id"],
         "content", item["content"],
         "plannedAt", item["plannedAt"],
-        "remindMinutes", item["remindMinutes"],
         "remindAt", item["remindAt"],
         "createdAt", item["createdAt"],
         "createdSeq", item["createdSeq"],
@@ -835,23 +946,25 @@ ShowHistory(*) {
         "+Owner" gMainGui.Hwnd " -MaximizeBox",
         "toto - 历史事项"
     )
+    gHistoryGui.Opt("+OwnDialogs")
     gHistoryGui.SetFont("s10", "Microsoft YaHei UI")
     gHistoryGui.MarginX := 12
     gHistoryGui.MarginY := 12
 
     gHistoryLV := gHistoryGui.Add(
         "ListView",
-        "x12 y12 w896 h410 Grid -Multi NoSortHdr",
-        ["事项内容", "计划时间", "结束状态", "结束时间", "创建时间"]
+        "x12 y12 w996 h410 Grid -Multi NoSortHdr",
+        ["事项内容", "计划时间", "提醒时间", "结束状态", "结束时间", "创建时间"]
     )
-    gHistoryLV.ModifyCol(1, 350)
-    gHistoryLV.ModifyCol(2, 155)
-    gHistoryLV.ModifyCol(3, 100)
-    gHistoryLV.ModifyCol(4, 155)
-    gHistoryLV.ModifyCol(5, 155)
+    gHistoryLV.ModifyCol(1, 290)
+    gHistoryLV.ModifyCol(2, 150)
+    gHistoryLV.ModifyCol(3, 150)
+    gHistoryLV.ModifyCol(4, 90)
+    gHistoryLV.ModifyCol(5, 150)
+    gHistoryLV.ModifyCol(6, 150)
 
-    btnRefresh := gHistoryGui.Add("Button", "x724 y436 w86 h30", "刷新")
-    btnClose := gHistoryGui.Add("Button", "x822 y436 w86 h30", "关闭")
+    btnRefresh := gHistoryGui.Add("Button", "x812 y436 w86 h30", "刷新")
+    btnClose := gHistoryGui.Add("Button", "x910 y436 w86 h30", "关闭")
 
     btnRefresh.OnEvent("Click", RefreshHistoryFromDisk)
     btnClose.OnEvent("Click", CloseHistory)
@@ -859,7 +972,7 @@ ShowHistory(*) {
     gHistoryGui.OnEvent("Escape", CloseHistory)
 
     RefreshHistoryList()
-    gHistoryGui.Show("w920 h480 Center")
+    gHistoryGui.Show("w1020 h480 Center")
 }
 
 RefreshHistoryFromDisk(*) {
@@ -884,6 +997,7 @@ RefreshHistoryList() {
             "",
             item["content"],
             item["plannedAt"],
+            item["remindAt"],
             item["endStatus"],
             item["endedAt"],
             item["createdAt"]
@@ -921,6 +1035,7 @@ ShowSettings(*) {
         "+Owner" gMainGui.Hwnd " +AlwaysOnTop -MaximizeBox",
         "toto - 设置"
     )
+    gSettingsGui.Opt("+OwnDialogs")
     gSettingsGui.SetFont("s10", "Microsoft YaHei UI")
     gSettingsGui.MarginX := 14
     gSettingsGui.MarginY := 12
@@ -1620,6 +1735,7 @@ ShowReminderWindow() {
         "+AlwaysOnTop -MaximizeBox",
         "toto 提醒"
     )
+    gReminderGui.Opt("+OwnDialogs")
     gReminderGui.SetFont("s10", "Microsoft YaHei UI")
     gReminderGui.MarginX := 14
     gReminderGui.MarginY := 12
@@ -1857,16 +1973,37 @@ LoadIngCsv() {
         }
 
         fields := ParseCsvLine(line)
-        if (fields.Length < 9) {
+        if (fields.Length != 8 && fields.Length != 9) {
             malformed += 1
             continue
         }
 
         id := Trim(fields[1])
         content := fields[2]
-        createdSeqRaw := Trim(fields[7])
+        plannedAt := Trim(fields[3])
+        legacyRemindMinutes := (fields.Length = 9) ? Trim(fields[4]) : ""
+        remindAtRaw := (fields.Length = 9) ? fields[5] : fields[4]
+        createdAt := (fields.Length = 9) ? fields[6] : fields[5]
+        createdSeqRaw := Trim((fields.Length = 9) ? fields[7] : fields[6])
+        remindStatus := (fields.Length = 9) ? fields[8] : fields[7]
+        remindedAt := (fields.Length = 9) ? fields[9] : fields[8]
 
         if (id = "" || content = "" || !RegExMatch(createdSeqRaw, "^\d+$")) {
+            malformed += 1
+            continue
+        }
+
+        if (plannedAt != "") {
+            planStamp := DisplayToStamp(plannedAt)
+            if (planStamp = "") {
+                malformed += 1
+                continue
+            }
+            plannedAt := StampToDisplay(planStamp)
+        }
+
+        remindAtResult := ResolveReminderDisplay(plannedAt, remindAtRaw, legacyRemindMinutes)
+        if !remindAtResult["ok"] {
             malformed += 1
             continue
         }
@@ -1874,27 +2011,18 @@ LoadIngCsv() {
         item := Map(
             "id", id,
             "content", content,
-            "plannedAt", fields[3],
-            "remindMinutes", fields[4],
-            "remindAt", fields[5],
-            "createdAt", fields[6],
+            "plannedAt", plannedAt,
+            "remindAt", remindAtResult["value"],
+            "createdAt", createdAt,
             "createdSeq", createdSeqRaw + 0,
-            "remindStatus", fields[8],
-            "remindedAt", fields[9]
+            "remindStatus", remindStatus,
+            "remindedAt", remindedAt
         )
 
-        if (item["plannedAt"] = "") {
-            item["remindMinutes"] := ""
-            item["remindAt"] := ""
+        if (item["remindAt"] = "") {
             item["remindStatus"] := "无提醒"
             item["remindedAt"] := ""
         } else {
-            if !RegExMatch(item["remindMinutes"], "^\d+$") {
-                malformed += 1
-                continue
-            }
-            item["remindMinutes"] := item["remindMinutes"] + 0
-
             if (item["remindStatus"] != "未提醒"
                 && item["remindStatus"] != "已提醒") {
                 item["remindStatus"] := "未提醒"
@@ -1932,34 +2060,50 @@ LoadEndCsv() {
         }
 
         fields := ParseCsvLine(line)
-        if (fields.Length < 9) {
+        if (fields.Length != 8 && fields.Length != 9) {
             malformed += 1
             continue
         }
 
         id := Trim(fields[1])
         content := fields[2]
-        createdSeqRaw := Trim(fields[7])
+        plannedAt := Trim(fields[3])
+        legacyRemindMinutes := (fields.Length = 9) ? Trim(fields[4]) : ""
+        remindAtRaw := (fields.Length = 9) ? fields[5] : fields[4]
+        createdAt := (fields.Length = 9) ? fields[6] : fields[5]
+        createdSeqRaw := Trim((fields.Length = 9) ? fields[7] : fields[6])
+        endStatus := (fields.Length = 9) ? fields[8] : fields[7]
+        endedAt := (fields.Length = 9) ? fields[9] : fields[8]
 
         if (id = "" || content = "" || !RegExMatch(createdSeqRaw, "^\d+$")) {
             malformed += 1
             continue
         }
 
-        remindMinutes := fields[4]
-        if (remindMinutes != "" && RegExMatch(remindMinutes, "^\d+$"))
-            remindMinutes := remindMinutes + 0
+        if (plannedAt != "") {
+            planStamp := DisplayToStamp(plannedAt)
+            if (planStamp = "") {
+                malformed += 1
+                continue
+            }
+            plannedAt := StampToDisplay(planStamp)
+        }
+
+        remindAtResult := ResolveReminderDisplay(plannedAt, remindAtRaw, legacyRemindMinutes)
+        if !remindAtResult["ok"] {
+            malformed += 1
+            continue
+        }
 
         item := Map(
             "id", id,
             "content", content,
-            "plannedAt", fields[3],
-            "remindMinutes", remindMinutes,
-            "remindAt", fields[5],
-            "createdAt", fields[6],
+            "plannedAt", plannedAt,
+            "remindAt", remindAtResult["value"],
+            "createdAt", createdAt,
             "createdSeq", createdSeqRaw + 0,
-            "endStatus", fields[8],
-            "endedAt", fields[9]
+            "endStatus", endStatus,
+            "endedAt", endedAt
         )
 
         if (item["endStatus"] != "已完成"
@@ -1985,7 +2129,6 @@ SaveIngItems(showError := true) {
             item["id"],
             item["content"],
             item["plannedAt"],
-            item["remindMinutes"],
             item["remindAt"],
             item["createdAt"],
             item["createdSeq"],
@@ -2017,7 +2160,6 @@ SaveEndItems(showError := true) {
             item["id"],
             item["content"],
             item["plannedAt"],
-            item["remindMinutes"],
             item["remindAt"],
             item["createdAt"],
             item["createdSeq"],
@@ -2297,6 +2439,66 @@ NormalizeHotkey(value) {
         . (hasShift ? "+" : "")
 
     return prefix keyName
+}
+
+FocusEditorField(fieldName) {
+    global gEditorContentEdit, gEditorPlannedEdit, gEditorReminderEdit
+
+    switch fieldName {
+        case "plannedAt":
+            FocusControlIfAlive(gEditorPlannedEdit)
+        case "remindAt":
+            FocusControlIfAlive(gEditorReminderEdit)
+        default:
+            FocusControlIfAlive(gEditorContentEdit)
+    }
+}
+
+SetEditorError(message := "") {
+    global gEditorErrorText
+
+    if IsObject(gEditorErrorText)
+        gEditorErrorText.Text := message
+}
+
+FocusControlIfAlive(ctrl) {
+    if !IsObject(ctrl)
+        return false
+
+    try {
+        ctrl.Focus()
+        return true
+    } catch {
+        return false
+    }
+}
+
+ResolveReminderDisplay(plannedAt, remindAtRaw, legacyRemindMinutes := "") {
+    remindAtRaw := Trim(remindAtRaw)
+    if (remindAtRaw != "") {
+        remindStamp := DisplayToStamp(remindAtRaw)
+        if (remindStamp = "")
+            return Map("ok", false)
+        return Map("ok", true, "value", StampToDisplay(remindStamp))
+    }
+
+    legacyRemindMinutes := Trim(legacyRemindMinutes)
+    if (legacyRemindMinutes = "")
+        return Map("ok", true, "value", "")
+
+    if (plannedAt = "" || !RegExMatch(legacyRemindMinutes, "^\d+$"))
+        return Map("ok", false)
+
+    planStamp := DisplayToStamp(plannedAt)
+    if (planStamp = "")
+        return Map("ok", false)
+
+    try remindStamp := DateAdd(planStamp, -(legacyRemindMinutes + 0), "Minutes")
+    catch {
+        return Map("ok", false)
+    }
+
+    return Map("ok", true, "value", StampToDisplay(remindStamp))
 }
 
 SetHotkeyControlValue(ctrl, hotkeyValue) {
