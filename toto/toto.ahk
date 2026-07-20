@@ -29,26 +29,26 @@ global STARTUP_LINK := A_Startup "\toto.lnk"
 
 global ING_HEADER := [
     "事项ID",
-"事项内容",
-"计划时间",
-"提前提醒分钟数",
-"提醒时间",
-"创建时间",
-"创建序号",
-"提醒状态",
-"已提醒时间"
+    "事项内容",
+    "计划时间",
+    "提前提醒分钟数",
+    "提醒时间",
+    "创建时间",
+    "创建序号",
+    "提醒状态",
+    "已提醒时间"
 ]
 
 global END_HEADER := [
     "事项ID",
-"事项内容",
-"计划时间",
-"提前提醒分钟数",
-"提醒时间",
-"创建时间",
-"创建序号",
-"结束状态",
-"结束时间"
+    "事项内容",
+    "计划时间",
+    "提前提醒分钟数",
+    "提醒时间",
+    "创建时间",
+    "创建序号",
+    "结束状态",
+    "结束时间"
 ]
 
 global gConfig := Map()
@@ -151,21 +151,21 @@ InitializeToto() {
     if !RegisterConfiguredAppHotkeys()
         hotkeysReady := false
 
-        if !hotkeysReady {
-            MsgBox(
-                "一个或多个配置快捷键以及对应默认值均无法注册。"
-                . "toto 仍会在托盘运行，请修改快捷键。",
-                "toto",
-                "Icon!"
-            )
-            ShowMain()
-            ShowSettings()
-        }
+    if !hotkeysReady {
+        MsgBox(
+            "一个或多个配置快捷键以及对应默认值均无法注册。"
+            . "toto 仍会在托盘运行，请修改快捷键。",
+            "toto",
+            "Icon!"
+        )
+        ShowMain()
+        ShowSettings()
+    }
 
-        ApplyAutoStart(gConfig["auto_start"], false)
+    ApplyAutoStart(gConfig["auto_start"], false)
 
-        ProcessDueReminders()
-        ScheduleNextReminder()
+    ProcessDueReminders()
+    ScheduleNextReminder()
 }
 
 EnsureDataFiles() {
@@ -175,28 +175,28 @@ EnsureDataFiles() {
     if !DirExist(DATA_DIR)
         DirCreate(DATA_DIR)
 
-        if !FileExist(CONFIG_PATH) {
-            ; IniRead/IniWrite 对 Unicode INI 的可靠支持要求 UTF-16。
-            file := FileOpen(CONFIG_PATH, "w", "UTF-16")
-            file.Write("[General]`r`n")
-            file.Write("hotkey=^!Space`r`n")
-            file.Write("shortcut_add=!a`r`n")
-            file.Write("shortcut_history=!q`r`n")
-            file.Write("shortcut_settings=!s`r`n")
-            file.Write("shortcut_refresh=!r`r`n")
-            file.Write("shortcut_edit=!e`r`n")
-            file.Write("shortcut_complete=!f`r`n")
-            file.Write("shortcut_cancel=!c`r`n")
-            file.Write("default_remind_minutes=5`r`n")
-            file.Write("auto_start=0`r`n")
-            file.Close()
-        }
+    if !FileExist(CONFIG_PATH) {
+        ; IniRead/IniWrite 对 Unicode INI 的可靠支持要求 UTF-16。
+        file := FileOpen(CONFIG_PATH, "w", "UTF-16")
+        file.Write("[General]`r`n")
+        file.Write("hotkey=^!Space`r`n")
+        file.Write("shortcut_add=!a`r`n")
+        file.Write("shortcut_history=!q`r`n")
+        file.Write("shortcut_settings=!s`r`n")
+        file.Write("shortcut_refresh=!r`r`n")
+        file.Write("shortcut_edit=!e`r`n")
+        file.Write("shortcut_complete=!f`r`n")
+        file.Write("shortcut_cancel=!c`r`n")
+        file.Write("default_remind_minutes=5`r`n")
+        file.Write("auto_start=0`r`n")
+        file.Close()
+    }
 
-        if !FileExist(ING_PATH)
-            WriteCsvAtomic(ING_PATH, ING_HEADER, [])
+    if !FileExist(ING_PATH)
+        WriteCsvAtomic(ING_PATH, ING_HEADER, [])
 
-            if !FileExist(END_PATH)
-                WriteCsvAtomic(END_PATH, END_HEADER, [])
+    if !FileExist(END_PATH)
+        WriteCsvAtomic(END_PATH, END_HEADER, [])
 }
 
 LoadConfig() {
@@ -208,41 +208,41 @@ LoadConfig() {
     if (hotkey = "")
         hotkey := "^!Space"
 
-        appHotkeys := Map()
-        for definition in GetAppShortcutDefinitions() {
-            configKey := definition["key"]
-            shortcut := NormalizeHotkey(
-                IniRead(
-                    CONFIG_PATH,
-                    "General",
-                    configKey,
-                    definition["default"]
-                )
+    appHotkeys := Map()
+    for definition in GetAppShortcutDefinitions() {
+        configKey := definition["key"]
+        shortcut := NormalizeHotkey(
+            IniRead(
+                CONFIG_PATH,
+                "General",
+                configKey,
+                definition["default"]
             )
-            if (shortcut = "" || InStr(shortcut, "#"))
-                shortcut := definition["default"]
-                appHotkeys[configKey] := shortcut
-        }
-
-        minutesRaw := Trim(
-            IniRead(CONFIG_PATH, "General", "default_remind_minutes", "5")
         )
-        if !RegExMatch(minutesRaw, "^\d+$")
-            minutesRaw := "5"
+        if (shortcut = "" || InStr(shortcut, "#"))
+            shortcut := definition["default"]
+        appHotkeys[configKey] := shortcut
+    }
 
-            autoStartRaw := Trim(IniRead(CONFIG_PATH, "General", "auto_start", "0"))
-            autoStart := (autoStartRaw = "1") ? 1 : 0
+    minutesRaw := Trim(
+        IniRead(CONFIG_PATH, "General", "default_remind_minutes", "5")
+    )
+    if !RegExMatch(minutesRaw, "^\d+$")
+        minutesRaw := "5"
 
-            gConfig := Map(
-                "hotkey", hotkey,
-                "default_remind_minutes", minutesRaw + 0,
-                "auto_start", autoStart
-            )
+    autoStartRaw := Trim(IniRead(CONFIG_PATH, "General", "auto_start", "0"))
+    autoStart := (autoStartRaw = "1") ? 1 : 0
 
-            for configKey, shortcut in appHotkeys
-                gConfig[configKey] := shortcut
+    gConfig := Map(
+        "hotkey", hotkey,
+        "default_remind_minutes", minutesRaw + 0,
+        "auto_start", autoStart
+    )
 
-                SaveConfig()
+    for configKey, shortcut in appHotkeys
+        gConfig[configKey] := shortcut
+
+    SaveConfig()
 }
 
 SaveConfig() {
@@ -306,21 +306,21 @@ ReconcileDuplicateItems() {
     for item in gEndItems
         endIds[item["id"]] := true
 
-        filtered := []
-        changed := false
+    filtered := []
+    changed := false
 
-        for item in gIngItems {
-            if endIds.Has(item["id"]) {
-                changed := true
-                continue
-            }
-            filtered.Push(item)
+    for item in gIngItems {
+        if endIds.Has(item["id"]) {
+            changed := true
+            continue
         }
+        filtered.Push(item)
+    }
 
-        if changed {
-            gIngItems := filtered
-            SaveIngItems(false)
-        }
+    if changed {
+        gIngItems := filtered
+        SaveIngItems(false)
+    }
 }
 
 ; ------------------------------------------------------------
@@ -387,26 +387,26 @@ RefreshMainList() {
     if !IsObject(gMainLV)
         return
 
-        SortIngItems()
-        gMainRowIds := []
+    SortIngItems()
+    gMainRowIds := []
 
-        gMainLV.Opt("-Redraw")
-        gMainLV.Delete()
+    gMainLV.Opt("-Redraw")
+    gMainLV.Delete()
 
-        for item in gIngItems {
-            gMainLV.Add(
-                "",
-                item["content"],
-                item["plannedAt"],
-                item["remindMinutes"],
-                item["remindStatus"],
-                item["createdAt"]
-            )
-            gMainRowIds.Push(item["id"])
-        }
+    for item in gIngItems {
+        gMainLV.Add(
+            "",
+            item["content"],
+            item["plannedAt"],
+            item["remindMinutes"],
+            item["remindStatus"],
+            item["createdAt"]
+        )
+        gMainRowIds.Push(item["id"])
+    }
 
-        gMainLV.Opt("+Redraw")
-        gMainStatus.Text := "进行中：" . gIngItems.Length
+    gMainLV.Opt("+Redraw")
+    gMainStatus.Text := "进行中：" . gIngItems.Length
         . " 项；数据目录：" . DATA_DIR
 }
 
@@ -416,7 +416,7 @@ MainListDoubleClick(ctrl, rowNumber) {
     if (rowNumber < 1 || rowNumber > gMainRowIds.Length)
         return
 
-        ShowItemEditor(gMainRowIds[rowNumber])
+    ShowItemEditor(gMainRowIds[rowNumber])
 }
 
 GetSelectedIngId(showMessage := true) {
@@ -426,13 +426,13 @@ GetSelectedIngId(showMessage := true) {
     if !row {
         if showMessage
             MsgBox("请先选择一条进行中事项。", "toto", "Iconi")
-            return ""
+        return ""
     }
 
     if (row > gMainRowIds.Length)
         return ""
 
-        return gMainRowIds[row]
+    return gMainRowIds[row]
 }
 
 EditSelectedItem(*) {
@@ -452,17 +452,17 @@ CancelSelectedItem(*) {
     if (id = "")
         return
 
-        item := FindIngItemById(id)
-        if !IsObject(item)
-            return
+    item := FindIngItemById(id)
+    if !IsObject(item)
+        return
 
-            result := MsgBox(
-                "确定取消以下事项吗？`n`n" item["content"],
-                "toto",
-                "YesNo Icon?"
-            )
-            if (result = "Yes")
-                EndItemById(id, "已取消")
+    result := MsgBox(
+        "确定取消以下事项吗？`n`n" item["content"],
+        "toto",
+        "YesNo Icon?"
+    )
+    if (result = "Yes")
+        EndItemById(id, "已取消")
 }
 
 ; ------------------------------------------------------------
@@ -486,9 +486,9 @@ ShowItemEditor(itemId := "") {
     gEditorGui.MarginY := 12
 
     helpText := "输入格式：事项内容[@计划时间[@提前提醒分钟数]]`n"
-    . "时间支持：HHmm、ddHHmm、MMddHHmm、yyyyMMddHHmm`n"
-    . "未填写提前分钟数时，使用默认值 "
-    . gConfig["default_remind_minutes"] " 分钟。"
+        . "时间支持：HHmm、ddHHmm、MMddHHmm、yyyyMMddHHmm`n"
+        . "未填写提前分钟数时，使用默认值 "
+        . gConfig["default_remind_minutes"] " 分钟。"
 
     gEditorGui.Add("Text", "x14 y12 w570 h62", helpText)
 
@@ -526,9 +526,9 @@ BuildEditableInput(item) {
     if (item["plannedAt"] = "")
         return item["content"]
 
-        stamp := DisplayToStamp(item["plannedAt"])
-        return item["content"] "@"
-        . FormatTime(stamp, "yyyyMMddHHmm")
+    stamp := DisplayToStamp(item["plannedAt"])
+    return item["content"] "@"
+    . FormatTime(stamp, "yyyyMMddHHmm")
         . "@" item["remindMinutes"]
 }
 
@@ -549,14 +549,14 @@ SaveEditorItem(*) {
     if (gEditorItemId = "") {
         item := Map(
             "id", NewGuid(),
-                    "content", parsed["content"],
-                    "plannedAt", parsed["plannedAt"],
-                    "remindMinutes", parsed["remindMinutes"],
-                    "remindAt", parsed["remindAt"],
-                    "createdAt", currentDisplay,
-                    "createdSeq", gNextCreatedSeq,
-                    "remindStatus", parsed["plannedAt"] = "" ? "无提醒" : "未提醒",
-                    "remindedAt", ""
+            "content", parsed["content"],
+            "plannedAt", parsed["plannedAt"],
+            "remindMinutes", parsed["remindMinutes"],
+            "remindAt", parsed["remindAt"],
+            "createdAt", currentDisplay,
+            "createdSeq", gNextCreatedSeq,
+            "remindStatus", parsed["plannedAt"] = "" ? "无提醒" : "未提醒",
+            "remindedAt", ""
         )
         gNextCreatedSeq += 1
         gIngItems.Push(item)
@@ -617,124 +617,124 @@ ParseItemInput(rawInput) {
     if (rawInput = "")
         return ParseError("事项内容不能为空。")
 
-        if InStr(rawInput, "`n") || InStr(rawInput, "`r")
-            return ParseError("事项内容不能包含换行。")
+    if InStr(rawInput, "`n") || InStr(rawInput, "`r")
+        return ParseError("事项内容不能包含换行。")
 
-            parts := StrSplit(rawInput, "@")
-            if (parts.Length > 3)
-                return ParseError("事项内容不能包含 @，且输入最多包含两个 @ 分隔符。")
+    parts := StrSplit(rawInput, "@")
+    if (parts.Length > 3)
+        return ParseError("事项内容不能包含 @，且输入最多包含两个 @ 分隔符。")
 
-                content := Trim(parts[1])
-                if (content = "")
-                    return ParseError("事项内容不能为空。")
+    content := Trim(parts[1])
+    if (content = "")
+        return ParseError("事项内容不能为空。")
 
-                    if (parts.Length = 1) {
-                        return Map(
-                            "ok", true,
-                            "content", content,
-                            "plannedAt", "",
-                            "remindMinutes", "",
-                            "remindAt", ""
-                        )
-                    }
+    if (parts.Length = 1) {
+        return Map(
+            "ok", true,
+            "content", content,
+            "plannedAt", "",
+            "remindMinutes", "",
+            "remindAt", ""
+        )
+    }
 
-                    planRaw := Trim(parts[2])
-                    if (planRaw = "")
-                        return ParseError("设置提前提醒前必须先设置计划时间。")
+    planRaw := Trim(parts[2])
+    if (planRaw = "")
+        return ParseError("设置提前提醒前必须先设置计划时间。")
 
-                        planResult := ParsePlanTime(planRaw)
-                        if !planResult["ok"]
-                            return planResult
+    planResult := ParsePlanTime(planRaw)
+    if !planResult["ok"]
+        return planResult
 
-                            if (parts.Length = 2) {
-                                remindMinutes := gConfig["default_remind_minutes"]
-                            } else {
-                                minutesRaw := Trim(parts[3])
-                                if (minutesRaw = "")
-                                    return ParseError("提前提醒分钟数不能为空。")
+    if (parts.Length = 2) {
+        remindMinutes := gConfig["default_remind_minutes"]
+    } else {
+        minutesRaw := Trim(parts[3])
+        if (minutesRaw = "")
+            return ParseError("提前提醒分钟数不能为空。")
 
-                                    if !RegExMatch(minutesRaw, "^\d+$")
-                                        return ParseError("提前提醒分钟数必须是非负整数。")
+        if !RegExMatch(minutesRaw, "^\d+$")
+            return ParseError("提前提醒分钟数必须是非负整数。")
 
-                                        remindMinutes := minutesRaw + 0
-                            }
+        remindMinutes := minutesRaw + 0
+    }
 
-                            planStamp := planResult["stamp"]
+    planStamp := planResult["stamp"]
 
-                            try remindStamp := DateAdd(planStamp, -remindMinutes, "Minutes")
-                            catch {
-                                return ParseError("提前提醒分钟数过大，无法计算有效的提醒时间。")
-                            }
+    try remindStamp := DateAdd(planStamp, -remindMinutes, "Minutes")
+    catch {
+        return ParseError("提前提醒分钟数过大，无法计算有效的提醒时间。")
+    }
 
-                            return Map(
-                                "ok", true,
-                                "content", content,
-                                "plannedAt", StampToDisplay(planStamp),
-                                       "remindMinutes", remindMinutes,
-                                       "remindAt", StampToDisplay(remindStamp)
-                            )
+    return Map(
+        "ok", true,
+        "content", content,
+        "plannedAt", StampToDisplay(planStamp),
+        "remindMinutes", remindMinutes,
+        "remindAt", StampToDisplay(remindStamp)
+    )
 }
 
 ParsePlanTime(raw) {
     if !RegExMatch(raw, "^\d+$")
         return ParseError("计划时间只能包含数字。")
 
-        length := StrLen(raw)
-        now := A_Now
-        year := SubStr(now, 1, 4) + 0
-        month := SubStr(now, 5, 2) + 0
-        day := SubStr(now, 7, 2) + 0
-        hour := 0
-        minute := 0
+    length := StrLen(raw)
+    now := A_Now
+    year := SubStr(now, 1, 4) + 0
+    month := SubStr(now, 5, 2) + 0
+    day := SubStr(now, 7, 2) + 0
+    hour := 0
+    minute := 0
 
-        switch length {
-            case 4:
-                hour := SubStr(raw, 1, 2) + 0
-                minute := SubStr(raw, 3, 2) + 0
+    switch length {
+        case 4:
+            hour := SubStr(raw, 1, 2) + 0
+            minute := SubStr(raw, 3, 2) + 0
 
-            case 6:
-                day := SubStr(raw, 1, 2) + 0
-                hour := SubStr(raw, 3, 2) + 0
-                minute := SubStr(raw, 5, 2) + 0
+        case 6:
+            day := SubStr(raw, 1, 2) + 0
+            hour := SubStr(raw, 3, 2) + 0
+            minute := SubStr(raw, 5, 2) + 0
 
-            case 8:
-                month := SubStr(raw, 1, 2) + 0
-                day := SubStr(raw, 3, 2) + 0
-                hour := SubStr(raw, 5, 2) + 0
-                minute := SubStr(raw, 7, 2) + 0
+        case 8:
+            month := SubStr(raw, 1, 2) + 0
+            day := SubStr(raw, 3, 2) + 0
+            hour := SubStr(raw, 5, 2) + 0
+            minute := SubStr(raw, 7, 2) + 0
 
-            case 12:
-                year := SubStr(raw, 1, 4) + 0
-                month := SubStr(raw, 5, 2) + 0
-                day := SubStr(raw, 7, 2) + 0
-                hour := SubStr(raw, 9, 2) + 0
-                minute := SubStr(raw, 11, 2) + 0
+        case 12:
+            year := SubStr(raw, 1, 4) + 0
+            month := SubStr(raw, 5, 2) + 0
+            day := SubStr(raw, 7, 2) + 0
+            hour := SubStr(raw, 9, 2) + 0
+            minute := SubStr(raw, 11, 2) + 0
 
-            default:
-                return ParseError(
-                    "计划时间长度必须是 4、6、8 或 12 位："
-                    . "HHmm、ddHHmm、MMddHHmm、yyyyMMddHHmm。"
-                )
-        }
-
-        if !IsValidDateTime(year, month, day, hour, minute)
-            return ParseError("计划时间不是有效的日期或时间。")
-
-            stamp := Format(
-                "{:04}{:02}{:02}{:02}{:02}00",
-                year,
-                month,
-                day,
-                hour,
-                minute
+        default:
+            return ParseError(
+                "计划时间长度必须是 4、6、8 或 12 位："
+                . "HHmm、ddHHmm、MMddHHmm、yyyyMMddHHmm。"
             )
+    }
 
-            if (stamp <= A_Now)
-                return ParseError(
-                    "计划时间已经过去。相对格式不会自动滚动到明天、下月或下一年。"
-                )
+    if !IsValidDateTime(year, month, day, hour, minute)
+        return ParseError("计划时间不是有效的日期或时间。")
 
-                return Map("ok", true, "stamp", stamp)
+    stamp := Format(
+        "{:04}{:02}{:02}{:02}{:02}00",
+        year,
+        month,
+        day,
+        hour,
+        minute
+    )
+
+    if (stamp <= A_Now)
+        return ParseError(
+            "计划时间已经过去。相对格式不会自动滚动到明天、下月或下一年。"
+        )
+
+    return Map("ok", true, "stamp", stamp)
 }
 
 ParseError(message) {
@@ -744,15 +744,15 @@ ParseError(message) {
 IsValidDateTime(year, month, day, hour, minute) {
     if (year < 1601 || year > 9999)
         return false
-        if (month < 1 || month > 12)
-            return false
-            if (hour < 0 || hour > 23)
-                return false
-                if (minute < 0 || minute > 59)
-                    return false
+    if (month < 1 || month > 12)
+        return false
+    if (hour < 0 || hour > 23)
+        return false
+    if (minute < 0 || minute > 59)
+        return false
 
-                    maxDay := DaysInMonth(year, month)
-                    return day >= 1 && day <= maxDay
+    maxDay := DaysInMonth(year, month)
+    return day >= 1 && day <= maxDay
 }
 
 DaysInMonth(year, month) {
@@ -761,12 +761,12 @@ DaysInMonth(year, month) {
     if (month = 2 && IsLeapYear(year))
         return 29
 
-        return days[month]
+    return days[month]
 }
 
 IsLeapYear(year) {
     return Mod(year, 400) = 0
-    || (Mod(year, 4) = 0 && Mod(year, 100) != 0)
+        || (Mod(year, 4) = 0 && Mod(year, 100) != 0)
 }
 
 ; ------------------------------------------------------------
@@ -873,25 +873,25 @@ RefreshHistoryList() {
     if !IsObject(gHistoryGui) || !IsObject(gHistoryLV)
         return
 
-        SortEndItems()
-        gHistoryRowIds := []
+    SortEndItems()
+    gHistoryRowIds := []
 
-        gHistoryLV.Opt("-Redraw")
-        gHistoryLV.Delete()
+    gHistoryLV.Opt("-Redraw")
+    gHistoryLV.Delete()
 
-        for item in gEndItems {
-            gHistoryLV.Add(
-                "",
-                item["content"],
-                item["plannedAt"],
-                item["endStatus"],
-                item["endedAt"],
-                item["createdAt"]
-            )
-            gHistoryRowIds.Push(item["id"])
-        }
+    for item in gEndItems {
+        gHistoryLV.Add(
+            "",
+            item["content"],
+            item["plannedAt"],
+            item["endStatus"],
+            item["endedAt"],
+            item["createdAt"]
+        )
+        gHistoryRowIds.Push(item["id"])
+    }
 
-        gHistoryLV.Opt("+Redraw")
+    gHistoryLV.Opt("+Redraw")
 }
 
 CloseHistory(*) {
@@ -984,7 +984,7 @@ ShowSettings(*) {
         gSettingsGui.Add(
             "Text",
             "x" position[1] " y" (position[2] + 4) " w54 h24",
-                         position[4]
+            position[4]
         )
         gSettingsAppHotkeys[definition["key"]] := gSettingsGui.Add(
             "Hotkey",
@@ -1044,41 +1044,41 @@ SaveSettings(*) {
     if !ValidateAppHotkeys(newAppHotkeys, true)
         return
 
-        minutesRaw := Trim(gSettingsDefaultMinutes.Value)
-        if !RegExMatch(minutesRaw, "^\d+$") {
-            MsgBox("默认提前提醒分钟数必须是非负整数。", "toto - 设置", "Icon!")
-            return
-        }
+    minutesRaw := Trim(gSettingsDefaultMinutes.Value)
+    if !RegExMatch(minutesRaw, "^\d+$") {
+        MsgBox("默认提前提醒分钟数必须是非负整数。", "toto - 设置", "Icon!")
+        return
+    }
 
-        newAutoStart := gSettingsAutoStart.Value ? 1 : 0
+    newAutoStart := gSettingsAutoStart.Value ? 1 : 0
 
-        oldHotkey := gConfig["hotkey"]
-        oldAutoStart := gConfig["auto_start"]
+    oldHotkey := gConfig["hotkey"]
+    oldAutoStart := gConfig["auto_start"]
 
-        ; 先处理开机启动；若快捷键注册失败，恢复原开机启动状态。
-        if !ApplyAutoStart(newAutoStart, true)
-            return
+    ; 先处理开机启动；若快捷键注册失败，恢复原开机启动状态。
+    if !ApplyAutoStart(newAutoStart, true)
+        return
 
-            if !RegisterGlobalHotkey(newHotkey, true) {
-                ApplyAutoStart(oldAutoStart, false)
-                return
-            }
+    if !RegisterGlobalHotkey(newHotkey, true) {
+        ApplyAutoStart(oldAutoStart, false)
+        return
+    }
 
-            if !RegisterAppHotkeys(newAppHotkeys, true) {
-                RegisterGlobalHotkey(oldHotkey, false)
-                ApplyAutoStart(oldAutoStart, false)
-                return
-            }
+    if !RegisterAppHotkeys(newAppHotkeys, true) {
+        RegisterGlobalHotkey(oldHotkey, false)
+        ApplyAutoStart(oldAutoStart, false)
+        return
+    }
 
-            gConfig["hotkey"] := newHotkey
-            for configKey, shortcut in newAppHotkeys
-                gConfig[configKey] := shortcut
-                gConfig["default_remind_minutes"] := minutesRaw + 0
-                gConfig["auto_start"] := newAutoStart
-                SaveConfig()
+    gConfig["hotkey"] := newHotkey
+    for configKey, shortcut in newAppHotkeys
+        gConfig[configKey] := shortcut
+    gConfig["default_remind_minutes"] := minutesRaw + 0
+    gConfig["auto_start"] := newAutoStart
+    SaveConfig()
 
-                CloseSettings()
-                MsgBox("设置已保存并立即生效。", "toto", "Iconi")
+    CloseSettings()
+    MsgBox("设置已保存并立即生效。", "toto", "Iconi")
 }
 
 CloseSettings(*) {
@@ -1144,14 +1144,14 @@ GetConfiguredAppHotkeys() {
     hotkeys := Map()
     for definition in GetAppShortcutDefinitions()
         hotkeys[definition["key"]] := gConfig[definition["key"]]
-        return hotkeys
+    return hotkeys
 }
 
 GetDefaultAppHotkeys() {
     hotkeys := Map()
     for definition in GetAppShortcutDefinitions()
         hotkeys[definition["key"]] := definition["default"]
-        return hotkeys
+    return hotkeys
 }
 
 ValidateAppHotkeys(hotkeys, showError := true) {
@@ -1224,20 +1224,20 @@ RegisterConfiguredAppHotkeys() {
     if RegisterAppHotkeys(configuredHotkeys, false)
         return true
 
-        defaultHotkeys := GetDefaultAppHotkeys()
-            if RegisterAppHotkeys(defaultHotkeys, false) {
-                for configKey, shortcut in defaultHotkeys
-                    gConfig[configKey] := shortcut
-                    SaveConfig()
-                    MsgBox(
-                        "配置的应用内快捷键无效或无法注册，已恢复默认值。",
-                        "toto",
-                        "Icon!"
-                    )
-                    return true
-            }
+    defaultHotkeys := GetDefaultAppHotkeys()
+    if RegisterAppHotkeys(defaultHotkeys, false) {
+        for configKey, shortcut in defaultHotkeys
+            gConfig[configKey] := shortcut
+        SaveConfig()
+        MsgBox(
+            "配置的应用内快捷键无效或无法注册，已恢复默认值。",
+            "toto",
+            "Icon!"
+        )
+        return true
+    }
 
-            return false
+    return false
 }
 
 RegisterAppHotkeys(newHotkeys, showError := true) {
@@ -1246,7 +1246,7 @@ RegisterAppHotkeys(newHotkeys, showError := true) {
     if !IsObject(gMainGui) {
         if showError
             MsgBox("主窗口尚未创建，无法注册应用内快捷键。", "toto", "Icon!")
-            return false
+        return false
     }
 
     normalizedHotkeys := Map()
@@ -1260,69 +1260,69 @@ RegisterAppHotkeys(newHotkeys, showError := true) {
     if !ValidateAppHotkeys(normalizedHotkeys, showError)
         return false
 
-        oldHotkeys := Map()
-        for configKey, shortcut in gRegisteredAppHotkeys
-            oldHotkeys[configKey] := shortcut
+    oldHotkeys := Map()
+    for configKey, shortcut in gRegisteredAppHotkeys
+        oldHotkeys[configKey] := shortcut
 
-            currentLabel := ""
-            currentConfigKey := ""
-            HotIfWinActive("ahk_id " gMainGui.Hwnd)
+    currentLabel := ""
+    currentConfigKey := ""
+    HotIfWinActive("ahk_id " gMainGui.Hwnd)
 
-            try {
-                for definition in GetAppShortcutDefinitions() {
-                    currentLabel := definition["label"]
-                    currentConfigKey := definition["key"]
-                    configKey := currentConfigKey
-                    Hotkey(
-                        normalizedHotkeys[configKey],
-                        definition["callback"],
-                        "On"
-                    )
-                }
+    try {
+        for definition in GetAppShortcutDefinitions() {
+            currentLabel := definition["label"]
+            currentConfigKey := definition["key"]
+            configKey := currentConfigKey
+            Hotkey(
+                normalizedHotkeys[configKey],
+                definition["callback"],
+                "On"
+            )
+        }
 
-                for _, oldShortcut in oldHotkeys {
-                    if !HotkeyMapContainsValue(normalizedHotkeys, oldShortcut)
-                        Hotkey(oldShortcut, "Off")
-                }
-            } catch as err {
-                ; 尽量恢复原来的七个应用内快捷键。
-                for definition in GetAppShortcutDefinitions() {
-                    configKey := definition["key"]
-                    if oldHotkeys.Has(configKey) {
-                        try Hotkey(
-                            oldHotkeys[configKey],
-                            definition["callback"],
-                            "On"
-                        )
-                    }
-                }
-
-                for _, newShortcut in normalizedHotkeys {
-                    if !HotkeyMapContainsValue(oldHotkeys, newShortcut) {
-                        try Hotkey(newShortcut, "Off")
-                    }
-                }
-
-                HotIfWinActive()
-
-                if showError {
-                    MsgBox(
-                        "应用内快捷键注册失败："
-                        . currentLabel " = "
-                        . (currentConfigKey = ""
-                        ? ""
-                        : normalizedHotkeys[currentConfigKey])
-                        . "`n`n" err.Message,
-                        "toto",
-                        "Icon!"
-                    )
-                }
-                return false
+        for _, oldShortcut in oldHotkeys {
+            if !HotkeyMapContainsValue(normalizedHotkeys, oldShortcut)
+                Hotkey(oldShortcut, "Off")
+        }
+    } catch as err {
+        ; 尽量恢复原来的七个应用内快捷键。
+        for definition in GetAppShortcutDefinitions() {
+            configKey := definition["key"]
+            if oldHotkeys.Has(configKey) {
+                try Hotkey(
+                    oldHotkeys[configKey],
+                    definition["callback"],
+                    "On"
+                )
             }
+        }
 
-            HotIfWinActive()
-            gRegisteredAppHotkeys := normalizedHotkeys
-            return true
+        for _, newShortcut in normalizedHotkeys {
+            if !HotkeyMapContainsValue(oldHotkeys, newShortcut) {
+                try Hotkey(newShortcut, "Off")
+            }
+        }
+
+        HotIfWinActive()
+
+        if showError {
+            MsgBox(
+                "应用内快捷键注册失败："
+                . currentLabel " = "
+                . (currentConfigKey = ""
+                    ? ""
+                    : normalizedHotkeys[currentConfigKey])
+                . "`n`n" err.Message,
+                "toto",
+                "Icon!"
+            )
+        }
+        return false
+    }
+
+    HotIfWinActive()
+    gRegisteredAppHotkeys := normalizedHotkeys
+    return true
 }
 
 OnAppShortcutAdd(*) {
@@ -1360,20 +1360,20 @@ RegisterConfiguredHotkey() {
     if RegisterGlobalHotkey(configuredHotkey, false)
         return true
 
-        defaultHotkey := "^!Space"
-            if (configuredHotkey != defaultHotkey
-                && RegisterGlobalHotkey(defaultHotkey, false)) {
-                gConfig["hotkey"] := defaultHotkey
-                SaveConfig()
-                MsgBox(
-                    "配置的全局快捷键无效或无法注册，已回退为 Ctrl+Alt+Space。",
-                    "toto",
-                    "Icon!"
-                )
-                return true
-                }
+    defaultHotkey := "^!Space"
+    if (configuredHotkey != defaultHotkey
+        && RegisterGlobalHotkey(defaultHotkey, false)) {
+        gConfig["hotkey"] := defaultHotkey
+        SaveConfig()
+        MsgBox(
+            "配置的全局快捷键无效或无法注册，已回退为 Ctrl+Alt+Space。",
+            "toto",
+            "Icon!"
+        )
+        return true
+    }
 
-                return false
+    return false
 }
 
 RegisterGlobalHotkey(newHotkey, showError := true) {
@@ -1386,7 +1386,7 @@ RegisterGlobalHotkey(newHotkey, showError := true) {
     if (newHotkey = "") {
         if showError
             MsgBox("快捷键不能为空。", "toto", "Icon!")
-            return false
+        return false
     }
 
     if (newHotkey = gRegisteredHotkey) {
@@ -1396,7 +1396,7 @@ RegisterGlobalHotkey(newHotkey, showError := true) {
         } catch as err {
             if showError
                 MsgBox("快捷键启用失败：`n" err.Message, "toto", "Icon!")
-                return false
+            return false
         }
     }
 
@@ -1488,38 +1488,38 @@ ScheduleNextReminder() {
     if gSessionLocked
         return
 
-        nextStamp := ""
-        for item in gIngItems {
-            if (item["remindStatus"] != "未提醒")
-                continue
-                if (item["remindAt"] = "")
-                    continue
+    nextStamp := ""
+    for item in gIngItems {
+        if (item["remindStatus"] != "未提醒")
+            continue
+        if (item["remindAt"] = "")
+            continue
 
-                    stamp := DisplayToStamp(item["remindAt"])
-                    if (stamp = "")
-                        continue
+        stamp := DisplayToStamp(item["remindAt"])
+        if (stamp = "")
+            continue
 
-                        if (nextStamp = "" || stamp < nextStamp)
-                            nextStamp := stamp
-        }
+        if (nextStamp = "" || stamp < nextStamp)
+            nextStamp := stamp
+    }
 
-        if (nextStamp = "")
-            return
+    if (nextStamp = "")
+        return
 
-            seconds := DateDiff(nextStamp, A_Now, "Seconds")
-            if (seconds <= 0) {
-                ; 成功处理后立即计算下一条；持久化失败时一分钟后重试。
-                if ProcessDueReminders()
-                    ScheduleNextReminder()
-                    else
-                        SetTimer(ReminderTimerTick, -60000)
-                        return
-            }
+    seconds := DateDiff(nextStamp, A_Now, "Seconds")
+    if (seconds <= 0) {
+        ; 成功处理后立即计算下一条；持久化失败时一分钟后重试。
+        if ProcessDueReminders()
+            ScheduleNextReminder()
+        else
+            SetTimer(ReminderTimerTick, -60000)
+        return
+    }
 
-            ; 每次最多等待 6 小时，以便低频校准系统时间变化。
-            delayMs := Min(seconds * 1000, 21600000)
-            delayMs := Max(delayMs, 1000)
-            SetTimer(ReminderTimerTick, -delayMs)
+    ; 每次最多等待 6 小时，以便低频校准系统时间变化。
+    delayMs := Min(seconds * 1000, 21600000)
+    delayMs := Max(delayMs, 1000)
+    SetTimer(ReminderTimerTick, -delayMs)
 }
 
 ReminderTimerTick(*) {
@@ -1535,40 +1535,40 @@ ProcessDueReminders() {
     if gSessionLocked
         return false
 
-        dueItems := []
-        nowStamp := A_Now
-        nowDisplay := StampToDisplay(nowStamp)
+    dueItems := []
+    nowStamp := A_Now
+    nowDisplay := StampToDisplay(nowStamp)
 
-        for item in gIngItems {
-            if (item["remindStatus"] != "未提醒")
-                continue
-                if (item["remindAt"] = "")
-                    continue
+    for item in gIngItems {
+        if (item["remindStatus"] != "未提醒")
+            continue
+        if (item["remindAt"] = "")
+            continue
 
-                    remindStamp := DisplayToStamp(item["remindAt"])
-                    if (remindStamp != "" && remindStamp <= nowStamp) {
-                        item["remindStatus"] := "已提醒"
-                        item["remindedAt"] := nowDisplay
-                        dueItems.Push(item)
-                    }
+        remindStamp := DisplayToStamp(item["remindAt"])
+        if (remindStamp != "" && remindStamp <= nowStamp) {
+            item["remindStatus"] := "已提醒"
+            item["remindedAt"] := nowDisplay
+            dueItems.Push(item)
         }
+    }
 
-        if (dueItems.Length = 0)
-            return true
+    if (dueItems.Length = 0)
+        return true
 
-            ; 先持久化“已提醒”，再显示窗口，避免异常退出后重复提醒。
-            if !SaveIngItems() {
-                for item in dueItems {
-                    item["remindStatus"] := "未提醒"
-                    item["remindedAt"] := ""
-                }
-                return false
-            }
+    ; 先持久化“已提醒”，再显示窗口，避免异常退出后重复提醒。
+    if !SaveIngItems() {
+        for item in dueItems {
+            item["remindStatus"] := "未提醒"
+            item["remindedAt"] := ""
+        }
+        return false
+    }
 
-            RefreshMainList()
-            AddReminderQueue(dueItems)
-            ShowReminderWindow()
-            return true
+    RefreshMainList()
+    AddReminderQueue(dueItems)
+    ShowReminderWindow()
+    return true
 }
 
 AddReminderQueue(items) {
@@ -1578,12 +1578,12 @@ AddReminderQueue(items) {
     for id in gReminderQueueIds
         existing[id] := true
 
-        for item in items {
-            if !existing.Has(item["id"]) {
-                gReminderQueueIds.Push(item["id"])
-                existing[item["id"]] := true
-            }
+    for item in items {
+        if !existing.Has(item["id"]) {
+            gReminderQueueIds.Push(item["id"])
+            existing[item["id"]] := true
         }
+    }
 }
 
 RemoveReminderQueueId(id) {
@@ -1665,25 +1665,25 @@ PopulateReminderList() {
     if !IsObject(gReminderLV)
         return
 
-        gReminderRowIds := []
-        gReminderLV.Delete()
+    gReminderRowIds := []
+    gReminderLV.Delete()
 
-        for id in gReminderQueueIds {
-            item := FindIngItemById(id)
-            if !IsObject(item)
-                continue
+    for id in gReminderQueueIds {
+        item := FindIngItemById(id)
+        if !IsObject(item)
+            continue
 
-                gReminderLV.Add(
-                    "",
-                    item["content"],
-                    item["plannedAt"],
-                    item["remindAt"]
-                )
-                gReminderRowIds.Push(id)
-        }
+        gReminderLV.Add(
+            "",
+            item["content"],
+            item["plannedAt"],
+            item["remindAt"]
+        )
+        gReminderRowIds.Push(id)
+    }
 
-        if (gReminderLV.GetCount() > 0)
-            gReminderLV.Modify(1, "Select Focus")
+    if (gReminderLV.GetCount() > 0)
+        gReminderLV.Modify(1, "Select Focus")
 }
 
 CompleteSelectedReminder(*) {
@@ -1705,19 +1705,19 @@ RefreshReminderWindow() {
     if !IsObject(gReminderGui)
         return
 
-        validIds := []
-        for id in gReminderQueueIds {
-            if IsObject(FindIngItemById(id))
-                validIds.Push(id)
-        }
-        gReminderQueueIds := validIds
+    validIds := []
+    for id in gReminderQueueIds {
+        if IsObject(FindIngItemById(id))
+            validIds.Push(id)
+    }
+    gReminderQueueIds := validIds
 
-        if (gReminderQueueIds.Length = 0) {
-            CloseReminderWindow()
-            return
-        }
+    if (gReminderQueueIds.Length = 0) {
+        CloseReminderWindow()
+        return
+    }
 
-        PopulateReminderList()
+    PopulateReminderList()
 }
 
 CloseReminderWindow(*) {
@@ -1851,58 +1851,58 @@ LoadIngCsv() {
         if (line = "")
             continue
 
-            if firstDataLine {
-                firstDataLine := false
-                continue
-            }
+        if firstDataLine {
+            firstDataLine := false
+            continue
+        }
 
-            fields := ParseCsvLine(line)
-            if (fields.Length < 9) {
+        fields := ParseCsvLine(line)
+        if (fields.Length < 9) {
+            malformed += 1
+            continue
+        }
+
+        id := Trim(fields[1])
+        content := fields[2]
+        createdSeqRaw := Trim(fields[7])
+
+        if (id = "" || content = "" || !RegExMatch(createdSeqRaw, "^\d+$")) {
+            malformed += 1
+            continue
+        }
+
+        item := Map(
+            "id", id,
+            "content", content,
+            "plannedAt", fields[3],
+            "remindMinutes", fields[4],
+            "remindAt", fields[5],
+            "createdAt", fields[6],
+            "createdSeq", createdSeqRaw + 0,
+            "remindStatus", fields[8],
+            "remindedAt", fields[9]
+        )
+
+        if (item["plannedAt"] = "") {
+            item["remindMinutes"] := ""
+            item["remindAt"] := ""
+            item["remindStatus"] := "无提醒"
+            item["remindedAt"] := ""
+        } else {
+            if !RegExMatch(item["remindMinutes"], "^\d+$") {
                 malformed += 1
                 continue
             }
+            item["remindMinutes"] := item["remindMinutes"] + 0
 
-            id := Trim(fields[1])
-            content := fields[2]
-            createdSeqRaw := Trim(fields[7])
-
-            if (id = "" || content = "" || !RegExMatch(createdSeqRaw, "^\d+$")) {
-                malformed += 1
-                continue
-            }
-
-            item := Map(
-                "id", id,
-                "content", content,
-                "plannedAt", fields[3],
-                "remindMinutes", fields[4],
-                "remindAt", fields[5],
-                "createdAt", fields[6],
-                "createdSeq", createdSeqRaw + 0,
-                "remindStatus", fields[8],
-                "remindedAt", fields[9]
-            )
-
-            if (item["plannedAt"] = "") {
-                item["remindMinutes"] := ""
-                item["remindAt"] := ""
-                item["remindStatus"] := "无提醒"
+            if (item["remindStatus"] != "未提醒"
+                && item["remindStatus"] != "已提醒") {
+                item["remindStatus"] := "未提醒"
                 item["remindedAt"] := ""
-            } else {
-                if !RegExMatch(item["remindMinutes"], "^\d+$") {
-                    malformed += 1
-                    continue
-                }
-                item["remindMinutes"] := item["remindMinutes"] + 0
-
-                if (item["remindStatus"] != "未提醒"
-                    && item["remindStatus"] != "已提醒") {
-                    item["remindStatus"] := "未提醒"
-                    item["remindedAt"] := ""
-                    }
             }
+        }
 
-            items.Push(item)
+        items.Push(item)
     }
 
     return Map("items", items, "malformed", malformed)
@@ -1926,49 +1926,49 @@ LoadEndCsv() {
         if (line = "")
             continue
 
-            if firstDataLine {
-                firstDataLine := false
-                continue
-            }
+        if firstDataLine {
+            firstDataLine := false
+            continue
+        }
 
-            fields := ParseCsvLine(line)
-            if (fields.Length < 9) {
-                malformed += 1
-                continue
-            }
+        fields := ParseCsvLine(line)
+        if (fields.Length < 9) {
+            malformed += 1
+            continue
+        }
 
-            id := Trim(fields[1])
-            content := fields[2]
-            createdSeqRaw := Trim(fields[7])
+        id := Trim(fields[1])
+        content := fields[2]
+        createdSeqRaw := Trim(fields[7])
 
-            if (id = "" || content = "" || !RegExMatch(createdSeqRaw, "^\d+$")) {
-                malformed += 1
-                continue
-            }
+        if (id = "" || content = "" || !RegExMatch(createdSeqRaw, "^\d+$")) {
+            malformed += 1
+            continue
+        }
 
-            remindMinutes := fields[4]
-            if (remindMinutes != "" && RegExMatch(remindMinutes, "^\d+$"))
-                remindMinutes := remindMinutes + 0
+        remindMinutes := fields[4]
+        if (remindMinutes != "" && RegExMatch(remindMinutes, "^\d+$"))
+            remindMinutes := remindMinutes + 0
 
-                item := Map(
-                    "id", id,
-                    "content", content,
-                    "plannedAt", fields[3],
-                    "remindMinutes", remindMinutes,
-                    "remindAt", fields[5],
-                    "createdAt", fields[6],
-                    "createdSeq", createdSeqRaw + 0,
-                    "endStatus", fields[8],
-                    "endedAt", fields[9]
-                )
+        item := Map(
+            "id", id,
+            "content", content,
+            "plannedAt", fields[3],
+            "remindMinutes", remindMinutes,
+            "remindAt", fields[5],
+            "createdAt", fields[6],
+            "createdSeq", createdSeqRaw + 0,
+            "endStatus", fields[8],
+            "endedAt", fields[9]
+        )
 
-                if (item["endStatus"] != "已完成"
-                    && item["endStatus"] != "已取消") {
-                    malformed += 1
-                    continue
-                    }
+        if (item["endStatus"] != "已完成"
+            && item["endStatus"] != "已取消") {
+            malformed += 1
+            continue
+        }
 
-                    items.Push(item)
+        items.Push(item)
     }
 
     return Map("items", items, "malformed", malformed)
@@ -2045,15 +2045,15 @@ WriteCsvAtomic(path, header, rows) {
         if FileExist(tempPath)
             FileDelete(tempPath)
 
-            file := FileOpen(tempPath, "w", "UTF-8")
-            file.Write(CsvJoin(header) "`r`n")
+        file := FileOpen(tempPath, "w", "UTF-8")
+        file.Write(CsvJoin(header) "`r`n")
 
-            for row in rows
-                file.Write(CsvJoin(row) "`r`n")
+        for row in rows
+            file.Write(CsvJoin(row) "`r`n")
 
-                file.Close()
-                FileMove(tempPath, path, 1)
-                return true
+        file.Close()
+        FileMove(tempPath, path, 1)
+        return true
     } catch {
         try {
             if IsSet(file)
@@ -2073,7 +2073,7 @@ CsvJoin(fields) {
     for index, field in fields {
         if (index > 1)
             line .= ","
-            line .= CsvEscape(field)
+        line .= CsvEscape(field)
     }
 
     return line
@@ -2084,14 +2084,14 @@ CsvEscape(value) {
     quote := Chr(34)
 
     needsQuote := InStr(value, ",")
-    || InStr(value, quote)
-    || InStr(value, "`r")
-    || InStr(value, "`n")
+        || InStr(value, quote)
+        || InStr(value, "`r")
+        || InStr(value, "`n")
 
     if InStr(value, quote)
         value := StrReplace(value, quote, quote quote)
 
-        return needsQuote ? quote value quote : value
+    return needsQuote ? quote value quote : value
 }
 
 ParseCsvLine(line) {
@@ -2131,8 +2131,8 @@ ParseCsvLine(line) {
     if inQuotes
         return []
 
-        fields.Push(current)
-        return fields
+    fields.Push(current)
+    return fields
 }
 
 ; ------------------------------------------------------------
@@ -2155,21 +2155,21 @@ CompareIngItems(a, b) {
 
     if (aNoPlan && !bNoPlan)
         return 1
-        if (!aNoPlan && bNoPlan)
-            return -1
+    if (!aNoPlan && bNoPlan)
+        return -1
 
-            if (!aNoPlan && !bNoPlan) {
-                result := StrCompare(a["plannedAt"], b["plannedAt"])
-                if (result != 0)
-                    return result
-            }
+    if (!aNoPlan && !bNoPlan) {
+        result := StrCompare(a["plannedAt"], b["plannedAt"])
+        if (result != 0)
+            return result
+    }
 
-            if (a["createdSeq"] < b["createdSeq"])
-                return -1
-                if (a["createdSeq"] > b["createdSeq"])
-                    return 1
+    if (a["createdSeq"] < b["createdSeq"])
+        return -1
+    if (a["createdSeq"] > b["createdSeq"])
+        return 1
 
-                    return 0
+    return 0
 }
 
 CompareEndItems(a, b) {
@@ -2179,12 +2179,12 @@ CompareEndItems(a, b) {
     if (result != 0)
         return -result
 
-        if (a["createdSeq"] > b["createdSeq"])
-            return -1
-            if (a["createdSeq"] < b["createdSeq"])
-                return 1
+    if (a["createdSeq"] > b["createdSeq"])
+        return -1
+    if (a["createdSeq"] < b["createdSeq"])
+        return 1
 
-                return 0
+    return 0
 }
 
 MergeSort(items, compareFn) {
@@ -2192,7 +2192,7 @@ MergeSort(items, compareFn) {
         copy := []
         for item in items
             copy.Push(item)
-            return copy
+        return copy
     }
 
     middle := Floor(items.Length / 2)
@@ -2200,10 +2200,10 @@ MergeSort(items, compareFn) {
     right := []
 
     Loop middle
-    left.Push(items[A_Index])
+        left.Push(items[A_Index])
 
     Loop items.Length - middle
-    right.Push(items[middle + A_Index])
+        right.Push(items[middle + A_Index])
 
     left := MergeSort(left, compareFn)
     right := MergeSort(right, compareFn)
@@ -2265,38 +2265,38 @@ NormalizeHotkey(value) {
     if (value = "")
         return ""
 
-        hasWin := false
-        hasCtrl := false
-        hasAlt := false
-        hasShift := false
-        pos := 1
-        length := StrLen(value)
+    hasWin := false
+    hasCtrl := false
+    hasAlt := false
+    hasShift := false
+    pos := 1
+    length := StrLen(value)
 
-        while (pos <= length) {
-            symbol := SubStr(value, pos, 1)
-            if (symbol = "#")
-                hasWin := true
-                else if (symbol = "^")
-                    hasCtrl := true
-                    else if (symbol = "!")
-                        hasAlt := true
-                        else if (symbol = "+")
-                            hasShift := true
-                            else
-                                break
-                                pos += 1
-        }
+    while (pos <= length) {
+        symbol := SubStr(value, pos, 1)
+        if (symbol = "#")
+            hasWin := true
+        else if (symbol = "^")
+            hasCtrl := true
+        else if (symbol = "!")
+            hasAlt := true
+        else if (symbol = "+")
+            hasShift := true
+        else
+            break
+        pos += 1
+    }
 
-        keyName := Trim(SubStr(value, pos))
-        if (keyName = "")
-            return ""
+    keyName := Trim(SubStr(value, pos))
+    if (keyName = "")
+        return ""
 
-            prefix := (hasWin ? "#" : "")
-            . (hasCtrl ? "^" : "")
-            . (hasAlt ? "!" : "")
-            . (hasShift ? "+" : "")
+    prefix := (hasWin ? "#" : "")
+        . (hasCtrl ? "^" : "")
+        . (hasAlt ? "!" : "")
+        . (hasShift ? "+" : "")
 
-            return prefix keyName
+    return prefix keyName
 }
 
 SetHotkeyControlValue(ctrl, hotkeyValue) {
@@ -2314,29 +2314,29 @@ SetHotkeyControlValue(ctrl, hotkeyValue) {
     if (StrLower(keyName) != "space")
         return
 
-        ; Windows 原生 Hotkey 控件不会正常处理 Space，
-        ; 通过 HKM_SETHOTKEY 直接写入 Ctrl、Alt、Shift 和 VK_SPACE。
-        modifiers := 0
+    ; Windows 原生 Hotkey 控件不会正常处理 Space，
+    ; 通过 HKM_SETHOTKEY 直接写入 Ctrl、Alt、Shift 和 VK_SPACE。
+    modifiers := 0
 
-        if InStr(hotkeyValue, "^")
-            modifiers |= 0x02  ; HOTKEYF_CONTROL
+    if InStr(hotkeyValue, "^")
+        modifiers |= 0x02  ; HOTKEYF_CONTROL
 
-            if InStr(hotkeyValue, "!")
-                modifiers |= 0x04  ; HOTKEYF_ALT
+    if InStr(hotkeyValue, "!")
+        modifiers |= 0x04  ; HOTKEYF_ALT
 
-                if InStr(hotkeyValue, "+")
-                    modifiers |= 0x01  ; HOTKEYF_SHIFT
+    if InStr(hotkeyValue, "+")
+        modifiers |= 0x01  ; HOTKEYF_SHIFT
 
-                    hotkeyWord := (modifiers << 8) | 0x20  ; VK_SPACE
+    hotkeyWord := (modifiers << 8) | 0x20  ; VK_SPACE
 
-                    DllCall(
-                        "User32\SendMessageW",
-                        "Ptr", ctrl.Hwnd,
-                        "UInt", 0x0401,  ; HKM_SETHOTKEY
-                        "Ptr", hotkeyWord,
-                        "Ptr", 0,
-                        "Ptr"
-                    )
+    DllCall(
+        "User32\SendMessageW",
+        "Ptr", ctrl.Hwnd,
+        "UInt", 0x0401,  ; HKM_SETHOTKEY
+        "Ptr", hotkeyWord,
+        "Ptr", 0,
+        "Ptr"
+    )
 }
 
 NowDisplay() {
@@ -2346,30 +2346,30 @@ NowDisplay() {
 StampToDisplay(stamp) {
     if (stamp = "")
         return ""
-        return FormatTime(stamp, "yyyy-MM-dd HH:mm:ss")
+    return FormatTime(stamp, "yyyy-MM-dd HH:mm:ss")
 }
 
 DisplayToStamp(display) {
     if (display = "")
         return ""
 
-        stamp := RegExReplace(display, "\D")
-        if (StrLen(stamp) != 14)
-            return ""
+    stamp := RegExReplace(display, "\D")
+    if (StrLen(stamp) != 14)
+        return ""
 
-            year := SubStr(stamp, 1, 4) + 0
-            month := SubStr(stamp, 5, 2) + 0
-            day := SubStr(stamp, 7, 2) + 0
-            hour := SubStr(stamp, 9, 2) + 0
-            minute := SubStr(stamp, 11, 2) + 0
-            second := SubStr(stamp, 13, 2) + 0
+    year := SubStr(stamp, 1, 4) + 0
+    month := SubStr(stamp, 5, 2) + 0
+    day := SubStr(stamp, 7, 2) + 0
+    hour := SubStr(stamp, 9, 2) + 0
+    minute := SubStr(stamp, 11, 2) + 0
+    second := SubStr(stamp, 13, 2) + 0
 
-            if !IsValidDateTime(year, month, day, hour, minute)
-                return ""
-                if (second < 0 || second > 59)
-                    return ""
+    if !IsValidDateTime(year, month, day, hour, minute)
+        return ""
+    if (second < 0 || second > 59)
+        return ""
 
-                    return stamp
+    return stamp
 }
 
 NewGuid() {
@@ -2379,16 +2379,16 @@ NewGuid() {
     if DllCall("Ole32\CoCreateGuid", "Ptr", guidBuffer.Ptr, "Int") != 0
         return A_Now A_MSec Random(1000, 9999)
 
-        DllCall(
-            "Ole32\StringFromGUID2",
-            "Ptr",
-            guidBuffer.Ptr,
-            "Ptr",
-            stringBuffer.Ptr,
-            "Int",
-            39
-        )
+    DllCall(
+        "Ole32\StringFromGUID2",
+        "Ptr",
+        guidBuffer.Ptr,
+        "Ptr",
+        stringBuffer.Ptr,
+        "Int",
+        39
+    )
 
-        guid := StrGet(stringBuffer.Ptr, "UTF-16")
-        return Trim(guid, "{}")
+    guid := StrGet(stringBuffer.Ptr, "UTF-16")
+    return Trim(guid, "{}")
 }
