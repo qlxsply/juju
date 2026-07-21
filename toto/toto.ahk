@@ -37,7 +37,8 @@ global ING_HEADER := [
     "创建时间",
     "创建序号",
     "提醒状态",
-    "已提醒时间"
+    "响铃时间",
+    "备注"
 ]
 
 global END_HEADER := [
@@ -48,7 +49,8 @@ global END_HEADER := [
     "创建时间",
     "创建序号",
     "结束状态",
-    "结束时间"
+    "结束时间",
+    "备注"
 ]
 
 global gConfig := Map()
@@ -72,8 +74,16 @@ global gEditorEdit := 0
 global gEditorContentEdit := 0
 global gEditorPlannedEdit := 0
 global gEditorReminderEdit := 0
+global gEditorNoteEdit := 0
 global gEditorErrorText := 0
 global gEditorItemId := ""
+
+global gDetailGui := 0
+
+global gEndActionGui := 0
+global gEndActionNoteEdit := 0
+global gEndActionConfirmed := false
+global gEndActionNote := ""
 
 global gSettingsGui := 0
 global gSettingsHotkey := 0
@@ -192,6 +202,7 @@ EnsureDataFiles() {
         file.Write("shortcut_history=!q`r`n")
         file.Write("shortcut_settings=!s`r`n")
         file.Write("shortcut_refresh=!r`r`n")
+        file.Write("shortcut_detail=!d`r`n")
         file.Write("shortcut_edit=!e`r`n")
         file.Write("shortcut_complete=!f`r`n")
         file.Write("shortcut_cancel=!c`r`n")
@@ -346,19 +357,15 @@ CreateMainGui() {
 
     gMainLV := gMainGui.Add(
         "ListView",
-        "x12 y12 w920 h442 Grid -Multi NoSortHdr",
-        ["事项内容", "计划时间", "提醒时间", "提醒状态", "创建时间"]
+        "x12 y12 w1080 h442 Grid -Multi NoSortHdr",
+        ["事项内容", "计划时间", "提醒时间", "提醒状态", "创建时间", "备注"]
     )
-    gMainLV.ModifyCol(1, 345)
-    gMainLV.ModifyCol(2, 155)
-    gMainLV.ModifyCol(3, 155)
-    gMainLV.ModifyCol(4, 100)
-    gMainLV.ModifyCol(5, 150)
+    SetListViewColumnWidths(gMainLV, [320, 145, 145, 90, 145, 180])
 
     gMainStatus := gMainGui.Add(
         "Text",
-        "x12 y466 w920 h24",
-        "应用内快捷键可在设置中调整；双击事项编辑；关闭窗口后 toto 继续在托盘运行。"
+        "x12 y466 w1080 h24",
+        "应用内快捷键可在设置中调整；双击事项查看详情；详情默认 Alt+D；编辑请使用快捷键。"
     )
 
     gMainLV.OnEvent("DoubleClick", MainListDoubleClick)
@@ -374,7 +381,8 @@ ShowMain(*) {
     RefreshMainList()
     ScheduleNextReminder()
 
-    gMainGui.Show("w944 h502 Center")
+    gMainGui.Show("w1104 h502 Center")
+    SetListViewColumnWidths(gMainLV, [320, 145, 145, 90, 145, 180])
     try WinActivate("ahk_id " gMainGui.Hwnd)
 }
 
@@ -409,11 +417,13 @@ RefreshMainList() {
             item["plannedAt"],
             item["remindAt"],
             item["remindStatus"],
-            item["createdAt"]
+            item["createdAt"],
+            NormalizeListPreview(item["note"])
         )
         gMainRowIds.Push(item["id"])
     }
 
+    SetListViewColumnWidths(gMainLV, [320, 145, 145, 90, 145, 180])
     gMainLV.Opt("+Redraw")
     gMainStatus.Text := "进行中：" . gIngItems.Length
         . " 项；数据目录：" . DATA_DIR
@@ -425,7 +435,7 @@ MainListDoubleClick(ctrl, rowNumber) {
     if (rowNumber < 1 || rowNumber > gMainRowIds.Length)
         return
 
-    ShowItemEditor(gMainRowIds[rowNumber])
+    ShowIngItemDetails(gMainRowIds[rowNumber])
 }
 
 GetSelectedIngId(showMessage := true) {
@@ -450,28 +460,48 @@ EditSelectedItem(*) {
         ShowItemEditor(id)
 }
 
+ShowSelectedDetails(*) {
+    if IsHistoryWindowActive() {
+        id := GetSelectedHistoryId()
+        if (id != "")
+            ShowEndItemDetails(id)
+        return
+    }
+
+    id := GetSelectedIngId()
+    if (id != "")
+        ShowIngItemDetails(id)
+}
+
 CompleteSelectedItem(*) {
     id := GetSelectedIngId()
     if (id != "")
-        EndItemById(id, "已完成")
+        CompleteItemWithNote(id)
 }
 
 CancelSelectedItem(*) {
     id := GetSelectedIngId()
-    if (id = "")
-        return
+    if (id != "")
+        CancelItemWithNote(id)
+}
 
-    item := FindIngItemById(id)
-    if !IsObject(item)
-        return
+GetSelectedHistoryId(showMessage := true) {
+    global gHistoryLV, gHistoryRowIds
 
-    result := MsgBox(
-        "确定取消以下事项吗？`n`n" item["content"],
-        "toto",
-        "YesNo Icon?"
-    )
-    if (result = "Yes")
-        EndItemById(id, "已取消")
+    if !IsObject(gHistoryLV)
+        return ""
+
+    row := gHistoryLV.GetNext()
+    if !row {
+        if showMessage
+            MsgBox("请先选择一条历史事项。", "toto", "Iconi")
+        return ""
+    }
+
+    if (row > gHistoryRowIds.Length)
+        return ""
+
+    return gHistoryRowIds[row]
 }
 
 ; ------------------------------------------------------------
@@ -480,7 +510,7 @@ CancelSelectedItem(*) {
 
 ShowItemEditor(itemId := "") {
     global gEditorGui, gEditorEdit, gEditorContentEdit, gEditorPlannedEdit
-    global gEditorReminderEdit, gEditorErrorText, gEditorItemId
+    global gEditorReminderEdit, gEditorNoteEdit, gEditorErrorText, gEditorItemId
     global gMainGui, gConfig
 
     if IsObject(gEditorGui) {
@@ -491,6 +521,7 @@ ShowItemEditor(itemId := "") {
     gEditorContentEdit := 0
     gEditorPlannedEdit := 0
     gEditorReminderEdit := 0
+    gEditorNoteEdit := 0
     gEditorErrorText := 0
 
     gEditorItemId := itemId
@@ -534,13 +565,14 @@ ShowItemEditor(itemId := "") {
     }
 
     helpText := "事项内容可直接包含 @。时间格式：yyyy-MM-dd HH:mm:ss；"
-        . "计划时间和提醒时间均可留空，提醒时间不会随计划时间自动联动。"
+        . "计划时间和提醒时间均可留空，提醒时间不会随计划时间自动联动；备注可为空。"
 
     gEditorGui.Add("Text", "x14 y12 w610 h22", helpText)
 
     initialContent := ""
     initialPlannedAt := ""
     initialReminderAt := ""
+    initialNote := ""
     if (itemId != "") {
         item := FindIngItemById(itemId)
         if !IsObject(item) {
@@ -552,6 +584,7 @@ ShowItemEditor(itemId := "") {
         initialContent := item["content"]
         initialPlannedAt := item["plannedAt"]
         initialReminderAt := item["remindAt"]
+        initialNote := item["note"]
     }
 
     gEditorGui.Add("Text", "x14 y48 w72 h24", "事项内容：")
@@ -574,27 +607,34 @@ ShowItemEditor(itemId := "") {
         "x92 y124 w240 h28",
         initialReminderAt
     )
+    gEditorGui.Add("Text", "x14 y168 w72 h24", "备注：")
+    gEditorNoteEdit := gEditorGui.Add(
+        "Edit",
+        "x92 y164 w532 h92 WantTab",
+        initialNote
+    )
     gEditorErrorText := gEditorGui.Add(
         "Text",
-        "x14 y158 w410 h36 cRed",
+        "x14 y264 w410 h36 cRed",
         ""
     )
 
-    btnSave := gEditorGui.Add("Button", "x438 y194 w88 h30 Default", "保存")
-    btnCancel := gEditorGui.Add("Button", "x536 y194 w88 h30", "取消")
+    btnSave := gEditorGui.Add("Button", "x438 y304 w88 h30 Default", "保存")
+    btnCancel := gEditorGui.Add("Button", "x536 y304 w88 h30", "取消")
 
     btnSave.OnEvent("Click", SaveEditorItem)
     btnCancel.OnEvent("Click", CloseEditor)
     gEditorGui.OnEvent("Close", CloseEditor)
     gEditorGui.OnEvent("Escape", CloseEditor)
 
-    gEditorGui.Show("w640 h238 Center")
+    gEditorGui.Show("w640 h348 Center")
     FocusControlIfAlive(gEditorContentEdit)
 }
 
 SaveEditorItem(*) {
     global gEditorEdit, gEditorContentEdit, gEditorPlannedEdit
-    global gEditorReminderEdit, gEditorItemId, gIngItems, gNextCreatedSeq
+    global gEditorReminderEdit, gEditorNoteEdit, gEditorItemId
+    global gIngItems, gNextCreatedSeq
 
     if (gEditorItemId = "") {
         rawInput := Trim(gEditorEdit.Value)
@@ -603,6 +643,7 @@ SaveEditorItem(*) {
         contentRaw := Trim(gEditorContentEdit.Value)
         plannedRaw := Trim(gEditorPlannedEdit.Value)
         remindRaw := Trim(gEditorReminderEdit.Value)
+        noteRaw := gEditorNoteEdit.Value
         parsed := ParseEditorInput(contentRaw, plannedRaw, remindRaw)
     }
 
@@ -628,7 +669,8 @@ SaveEditorItem(*) {
             "createdAt", currentDisplay,
             "createdSeq", gNextCreatedSeq,
             "remindStatus", parsed["remindAt"] = "" ? "无提醒" : "未提醒",
-            "remindedAt", ""
+            "remindedAt", "",
+            "note", ""
         )
         gNextCreatedSeq += 1
         gIngItems.Push(item)
@@ -646,6 +688,7 @@ SaveEditorItem(*) {
         item["content"] := parsed["content"]
         item["plannedAt"] := parsed["plannedAt"]
         item["remindAt"] := parsed["remindAt"]
+        item["note"] := noteRaw
 
         if (parsed["remindAt"] = "") {
             item["remindStatus"] := "无提醒"
@@ -671,7 +714,7 @@ SaveEditorItem(*) {
 
 CloseEditor(*) {
     global gEditorGui, gEditorEdit, gEditorContentEdit, gEditorPlannedEdit
-    global gEditorReminderEdit, gEditorErrorText, gEditorItemId
+    global gEditorReminderEdit, gEditorNoteEdit, gEditorErrorText, gEditorItemId
 
     if IsObject(gEditorGui) {
         try gEditorGui.Destroy()
@@ -681,6 +724,7 @@ CloseEditor(*) {
     gEditorContentEdit := 0
     gEditorPlannedEdit := 0
     gEditorReminderEdit := 0
+    gEditorNoteEdit := 0
     gEditorErrorText := 0
     gEditorItemId := ""
 }
@@ -888,10 +932,81 @@ IsLeapYear(year) {
 }
 
 ; ------------------------------------------------------------
+; 详情
+; ------------------------------------------------------------
+
+ShowIngItemDetails(id) {
+    item := FindIngItemById(id)
+    if IsObject(item)
+        ShowItemDetailsDialog(item, false)
+}
+
+ShowEndItemDetails(id) {
+    item := FindEndItemById(id)
+    if IsObject(item)
+        ShowItemDetailsDialog(item, true)
+}
+
+ShowItemDetailsDialog(item, isHistory := false) {
+    global gDetailGui, gMainGui, gHistoryGui
+
+    if IsObject(gDetailGui) {
+        try gDetailGui.Destroy()
+    }
+
+    ownerOption := ""
+    if (isHistory && IsObject(gHistoryGui))
+        ownerOption := "+Owner" gHistoryGui.Hwnd
+    else if IsObject(gMainGui)
+        ownerOption := "+Owner" gMainGui.Hwnd
+    title := isHistory ? "toto - 历史事项详情" : "toto - 进行中事项详情"
+    statusLabel := isHistory ? "结束状态：" : "提醒状态："
+    statusValue := isHistory ? item["endStatus"] : item["remindStatus"]
+    timeLabel := isHistory ? "结束时间：" : "响铃时间："
+    timeValue := isHistory ? item["endedAt"] : item["remindedAt"]
+
+    gDetailGui := Gui(ownerOption " -MaximizeBox", title)
+    gDetailGui.Opt("+OwnDialogs")
+    gDetailGui.SetFont("s10", "Microsoft YaHei UI")
+    gDetailGui.MarginX := 14
+    gDetailGui.MarginY := 12
+
+    gDetailGui.Add("Text", "x14 y12 w72 h24", "事项内容：")
+    gDetailGui.Add("Edit", "x92 y8 w532 h76 ReadOnly", item["content"])
+    gDetailGui.Add("Text", "x14 y96 w72 h24", "计划时间：")
+    gDetailGui.Add("Edit", "x92 y92 w240 h28 ReadOnly", item["plannedAt"])
+    gDetailGui.Add("Text", "x344 y96 w72 h24", "提醒时间：")
+    gDetailGui.Add("Edit", "x420 y92 w204 h28 ReadOnly", item["remindAt"])
+    gDetailGui.Add("Text", "x14 y132 w72 h24", statusLabel)
+    gDetailGui.Add("Edit", "x92 y128 w240 h28 ReadOnly", statusValue)
+    gDetailGui.Add("Text", "x344 y132 w72 h24", timeLabel)
+    gDetailGui.Add("Edit", "x420 y128 w204 h28 ReadOnly", timeValue)
+    gDetailGui.Add("Text", "x14 y168 w72 h24", "创建时间：")
+    gDetailGui.Add("Edit", "x92 y164 w240 h28 ReadOnly", item["createdAt"])
+    gDetailGui.Add("Text", "x14 y204 w72 h24", "备注：")
+    gDetailGui.Add("Edit", "x92 y200 w532 h134 ReadOnly WantTab", item["note"])
+
+    btnClose := gDetailGui.Add("Button", "x536 y348 w88 h30 Default", "关闭")
+    btnClose.OnEvent("Click", CloseDetailDialog)
+    gDetailGui.OnEvent("Close", CloseDetailDialog)
+    gDetailGui.OnEvent("Escape", CloseDetailDialog)
+    gDetailGui.Show("w640 h392 Center")
+}
+
+CloseDetailDialog(*) {
+    global gDetailGui
+
+    gui := gDetailGui
+    gDetailGui := 0
+    if IsObject(gui)
+        try gui.Destroy()
+}
+
+; ------------------------------------------------------------
 ; 完成、取消和历史事项
 ; ------------------------------------------------------------
 
-EndItemById(id, endStatus) {
+EndItemById(id, endStatus, note := "") {
     global gIngItems, gEndItems
 
     index := FindIngIndexById(id)
@@ -909,7 +1024,8 @@ EndItemById(id, endStatus) {
         "createdAt", item["createdAt"],
         "createdSeq", item["createdSeq"],
         "endStatus", endStatus,
-        "endedAt", NowDisplay()
+        "endedAt", NowDisplay(),
+        "note", note
     )
 
     ; 先写历史，再删除进行中记录。若中途失败，下一次读取会按 ID 去重，
@@ -939,6 +1055,92 @@ EndItemById(id, endStatus) {
     return true
 }
 
+CompleteItemWithNote(id) {
+    item := FindIngItemById(id)
+    if !IsObject(item)
+        return false
+
+    prompt := PromptEndItemNote(item, "已完成")
+    if !prompt["ok"]
+        return false
+
+    return EndItemById(id, "已完成", prompt["note"])
+}
+
+CancelItemWithNote(id) {
+    item := FindIngItemById(id)
+    if !IsObject(item)
+        return false
+
+    prompt := PromptEndItemNote(item, "已取消")
+    if !prompt["ok"]
+        return false
+
+    return EndItemById(id, "已取消", prompt["note"])
+}
+
+PromptEndItemNote(item, endStatus) {
+    global gEndActionGui, gEndActionNoteEdit, gEndActionConfirmed, gEndActionNote
+    global gMainGui
+
+    if IsObject(gEndActionGui)
+        try gEndActionGui.Destroy()
+
+    gEndActionConfirmed := false
+    gEndActionNote := item["note"]
+
+    ownerOption := IsObject(gMainGui) ? "+Owner" gMainGui.Hwnd : ""
+    title := "toto - " endStatus
+    gEndActionGui := Gui(ownerOption " +AlwaysOnTop -MaximizeBox", title)
+    gEndActionGui.Opt("+OwnDialogs")
+    gEndActionGui.SetFont("s10", "Microsoft YaHei UI")
+    gEndActionGui.MarginX := 14
+    gEndActionGui.MarginY := 12
+
+    gEndActionGui.Add("Text", "x14 y12 w610 h24", "确认“" endStatus "”前，可补充或修改备注；备注可为空。")
+    gEndActionGui.Add("Text", "x14 y48 w72 h24", "事项内容：")
+    gEndActionGui.Add("Edit", "x92 y44 w532 h56 ReadOnly", item["content"])
+    gEndActionGui.Add("Text", "x14 y112 w72 h24", "备注：")
+    gEndActionNoteEdit := gEndActionGui.Add("Edit", "x92 y108 w532 h120 WantTab", item["note"])
+
+    btnConfirm := gEndActionGui.Add("Button", "x438 y242 w88 h30 Default", endStatus)
+    btnCancel := gEndActionGui.Add("Button", "x536 y242 w88 h30", "取消")
+
+    btnConfirm.OnEvent("Click", ConfirmEndAction)
+    btnCancel.OnEvent("Click", CloseEndActionDialog)
+    gEndActionGui.OnEvent("Close", CloseEndActionDialog)
+    gEndActionGui.OnEvent("Escape", CloseEndActionDialog)
+
+    dialogHwnd := gEndActionGui.Hwnd
+    gEndActionGui.Show("w640 h286 Center")
+    FocusControlIfAlive(gEndActionNoteEdit)
+    WinWaitClose("ahk_id " dialogHwnd)
+
+    return Map("ok", gEndActionConfirmed, "note", gEndActionNote)
+}
+
+ConfirmEndAction(*) {
+    global gEndActionGui, gEndActionNoteEdit, gEndActionConfirmed, gEndActionNote
+
+    gEndActionConfirmed := true
+    gEndActionNote := IsObject(gEndActionNoteEdit) ? gEndActionNoteEdit.Value : ""
+    gui := gEndActionGui
+    gEndActionGui := 0
+    gEndActionNoteEdit := 0
+    if IsObject(gui)
+        gui.Destroy()
+}
+
+CloseEndActionDialog(*) {
+    global gEndActionGui, gEndActionNoteEdit
+
+    gui := gEndActionGui
+    gEndActionGui := 0
+    gEndActionNoteEdit := 0
+    if IsObject(gui)
+        try gui.Destroy()
+}
+
 ShowHistory(*) {
     global gHistoryGui, gHistoryLV, gMainGui
 
@@ -959,26 +1161,23 @@ ShowHistory(*) {
 
     gHistoryLV := gHistoryGui.Add(
         "ListView",
-        "x12 y12 w996 h410 Grid -Multi NoSortHdr",
-        ["事项内容", "计划时间", "提醒时间", "结束状态", "结束时间", "创建时间"]
+        "x12 y12 w1160 h410 Grid -Multi NoSortHdr",
+        ["事项内容", "计划时间", "提醒时间", "结束状态", "结束时间", "创建时间", "备注"]
     )
-    gHistoryLV.ModifyCol(1, 290)
-    gHistoryLV.ModifyCol(2, 150)
-    gHistoryLV.ModifyCol(3, 150)
-    gHistoryLV.ModifyCol(4, 90)
-    gHistoryLV.ModifyCol(5, 150)
-    gHistoryLV.ModifyCol(6, 150)
+    SetListViewColumnWidths(gHistoryLV, [250, 135, 135, 80, 145, 145, 230])
 
-    btnRefresh := gHistoryGui.Add("Button", "x812 y436 w86 h30", "刷新")
-    btnClose := gHistoryGui.Add("Button", "x910 y436 w86 h30", "关闭")
+    btnRefresh := gHistoryGui.Add("Button", "x976 y436 w86 h30", "刷新")
+    btnClose := gHistoryGui.Add("Button", "x1074 y436 w86 h30", "关闭")
 
     btnRefresh.OnEvent("Click", RefreshHistoryFromDisk)
     btnClose.OnEvent("Click", CloseHistory)
+    gHistoryLV.OnEvent("DoubleClick", HistoryListDoubleClick)
     gHistoryGui.OnEvent("Close", CloseHistory)
     gHistoryGui.OnEvent("Escape", CloseHistory)
 
     RefreshHistoryList()
-    gHistoryGui.Show("w1020 h480 Center")
+    gHistoryGui.Show("w1184 h480 Center")
+    SetListViewColumnWidths(gHistoryLV, [250, 135, 135, 80, 145, 145, 230])
 }
 
 RefreshHistoryFromDisk(*) {
@@ -1006,21 +1205,34 @@ RefreshHistoryList() {
             item["remindAt"],
             item["endStatus"],
             item["endedAt"],
-            item["createdAt"]
+            item["createdAt"],
+            NormalizeListPreview(item["note"])
         )
         gHistoryRowIds.Push(item["id"])
     }
 
+    SetListViewColumnWidths(gHistoryLV, [250, 135, 135, 80, 145, 145, 230])
     gHistoryLV.Opt("+Redraw")
 }
 
+HistoryListDoubleClick(ctrl, rowNumber) {
+    global gHistoryRowIds
+
+    if (rowNumber < 1 || rowNumber > gHistoryRowIds.Length)
+        return
+
+    ShowEndItemDetails(gHistoryRowIds[rowNumber])
+}
+
 CloseHistory(*) {
-    global gHistoryGui
+    global gHistoryGui, gHistoryLV, gHistoryRowIds
 
     if IsObject(gHistoryGui) {
         try gHistoryGui.Destroy()
     }
     gHistoryGui := 0
+    gHistoryLV := 0
+    gHistoryRowIds := []
 }
 
 ; ------------------------------------------------------------
@@ -1104,9 +1316,10 @@ ShowSettings(*) {
         [274, 170, 332, "历史："],
         [14, 208, 72, "设置："],
         [274, 208, 332, "刷新："],
-        [14, 246, 72, "编辑："],
-        [274, 246, 332, "完成："],
-        [14, 284, 72, "取消："]
+        [14, 246, 72, "详情："],
+        [274, 246, 332, "编辑："],
+        [14, 284, 72, "完成："],
+        [274, 284, 332, "取消："]
     ]
 
     definitions := GetAppShortcutDefinitions()
@@ -1128,7 +1341,7 @@ ShowSettings(*) {
         "Text",
         "x14 y324 w490 h42",
         "说明：全局唤醒快捷键可增加 Win；应用内快捷键支持 Ctrl、Alt、Shift，"
-        . "且七项不能重复。`n新设置保存后立即生效，不需要重启。"
+        . "且八项不能重复。`n新设置保存后立即生效，不需要重启。"
     )
 
     btnSave := gSettingsGui.Add("Button", "x318 y378 w88 h30 Default", "保存")
@@ -1256,6 +1469,12 @@ GetAppShortcutDefinitions() {
             "label", "刷新",
             "default", "!r",
             "callback", OnAppShortcutRefresh
+        ),
+        Map(
+            "key", "shortcut_detail",
+            "label", "详情",
+            "default", "!d",
+            "callback", OnAppShortcutDetail
         ),
         Map(
             "key", "shortcut_edit",
@@ -1420,30 +1639,55 @@ RegisterAppHotkeys(newHotkeys, showError := true) {
             )
         }
 
+        HotIf(IsHistoryWindowActive)
+        Hotkey(
+            normalizedHotkeys["shortcut_detail"],
+            OnAppShortcutDetail,
+            "On"
+        )
+
+        HotIfWinActive("ahk_id " gMainGui.Hwnd)
         for _, oldShortcut in oldHotkeys {
             if !HotkeyMapContainsValue(normalizedHotkeys, oldShortcut)
                 Hotkey(oldShortcut, "Off")
         }
+
+        HotIf(IsHistoryWindowActive)
+        if (oldHotkeys.Has("shortcut_detail")
+            && !HotkeyMapContainsValue(normalizedHotkeys, oldHotkeys["shortcut_detail"]))
+            Hotkey(oldHotkeys["shortcut_detail"], "Off")
     } catch as err {
-        ; 尽量恢复原来的七个应用内快捷键。
+        ; 尽量恢复原来的八个应用内快捷键。
         for definition in GetAppShortcutDefinitions() {
             configKey := definition["key"]
             if oldHotkeys.Has(configKey) {
-                try Hotkey(
-                    oldHotkeys[configKey],
-                    definition["callback"],
-                    "On"
-                )
+                try {
+                    HotIfWinActive("ahk_id " gMainGui.Hwnd)
+                    Hotkey(
+                        oldHotkeys[configKey],
+                        definition["callback"],
+                        "On"
+                    )
+                    if (configKey = "shortcut_detail") {
+                        HotIf(IsHistoryWindowActive)
+                        Hotkey(oldHotkeys[configKey], definition["callback"], "On")
+                    }
+                }
             }
         }
 
         for _, newShortcut in normalizedHotkeys {
             if !HotkeyMapContainsValue(oldHotkeys, newShortcut) {
-                try Hotkey(newShortcut, "Off")
+                try {
+                    HotIfWinActive("ahk_id " gMainGui.Hwnd)
+                    Hotkey(newShortcut, "Off")
+                    HotIf(IsHistoryWindowActive)
+                    Hotkey(newShortcut, "Off")
+                }
             }
         }
 
-        HotIfWinActive()
+        HotIf()
 
         if showError {
             MsgBox(
@@ -1460,7 +1704,7 @@ RegisterAppHotkeys(newHotkeys, showError := true) {
         return false
     }
 
-    HotIfWinActive()
+    HotIf()
     gRegisteredAppHotkeys := normalizedHotkeys
     return true
 }
@@ -1479,6 +1723,10 @@ OnAppShortcutSettings(*) {
 
 OnAppShortcutRefresh(*) {
     RefreshMainFromDisk()
+}
+
+OnAppShortcutDetail(*) {
+    ShowSelectedDetails()
 }
 
 OnAppShortcutEdit(*) {
@@ -1837,7 +2085,7 @@ CompleteSelectedReminder(*) {
     }
 
     if (row <= gReminderRowIds.Length)
-        EndItemById(gReminderRowIds[row], "已完成")
+        CompleteItemWithNote(gReminderRowIds[row])
 }
 
 RefreshReminderWindow() {
@@ -1942,6 +2190,8 @@ CleanupBeforeExit(*) {
     global gMainGui, gMutexHandle
 
     try SetTimer(ReminderTimerTick, 0)
+    CloseDetailDialog()
+    CloseEndActionDialog()
 
     ; 停用全局唤醒快捷键。
     HotIf()
@@ -1949,13 +2199,16 @@ CleanupBeforeExit(*) {
         try Hotkey(gRegisteredHotkey, "Off")
     }
 
-    ; 停用仅在主窗口中生效的七个应用内快捷键。
+    ; 停用应用内快捷键。
     if IsObject(gMainGui) {
         HotIfWinActive("ahk_id " gMainGui.Hwnd)
         for _, shortcut in gRegisteredAppHotkeys {
             try Hotkey(shortcut, "Off")
         }
-        HotIfWinActive()
+        HotIf(IsHistoryWindowActive)
+        if gRegisteredAppHotkeys.Has("shortcut_detail")
+            try Hotkey(gRegisteredAppHotkeys["shortcut_detail"], "Off")
+        HotIf()
     }
 
     try DllCall(
@@ -1985,20 +2238,20 @@ LoadIngCsv() {
         return Map("items", items, "malformed", 1)
     }
 
-    lines := StrSplit(text, "`n", "`r")
-    firstDataLine := true
+    rows := ParseCsvText(text)
+    if (rows.Length = 0)
+        return Map("items", items, "malformed", 1)
 
-    for line in lines {
-        if (line = "")
+    header := rows[1]
+    hasNote := (header.Length > 0 && header[header.Length] = "备注")
+    isLegacy := (header.Length >= 4 && header[4] = "提前提醒分钟数")
+    expectedLength := isLegacy ? (hasNote ? 10 : 9) : (hasNote ? 9 : 8)
+
+    for rowIndex, fields in rows {
+        if (rowIndex = 1 || IsCsvRowEmpty(fields))
             continue
 
-        if firstDataLine {
-            firstDataLine := false
-            continue
-        }
-
-        fields := ParseCsvLine(line)
-        if (fields.Length != 8 && fields.Length != 9) {
+        if (fields.Length != expectedLength) {
             malformed += 1
             continue
         }
@@ -2006,12 +2259,13 @@ LoadIngCsv() {
         id := Trim(fields[1])
         content := fields[2]
         plannedAt := Trim(fields[3])
-        legacyRemindMinutes := (fields.Length = 9) ? Trim(fields[4]) : ""
-        remindAtRaw := (fields.Length = 9) ? fields[5] : fields[4]
-        createdAt := (fields.Length = 9) ? fields[6] : fields[5]
-        createdSeqRaw := Trim((fields.Length = 9) ? fields[7] : fields[6])
-        remindStatus := (fields.Length = 9) ? fields[8] : fields[7]
-        remindedAt := (fields.Length = 9) ? fields[9] : fields[8]
+        legacyRemindMinutes := isLegacy ? Trim(fields[4]) : ""
+        remindAtRaw := isLegacy ? fields[5] : fields[4]
+        createdAt := isLegacy ? fields[6] : fields[5]
+        createdSeqRaw := Trim(isLegacy ? fields[7] : fields[6])
+        remindStatus := isLegacy ? fields[8] : fields[7]
+        remindedAt := isLegacy ? fields[9] : fields[8]
+        note := hasNote ? fields[expectedLength] : ""
 
         if (id = "" || content = "" || !RegExMatch(createdSeqRaw, "^\d+$")) {
             malformed += 1
@@ -2041,7 +2295,8 @@ LoadIngCsv() {
             "createdAt", createdAt,
             "createdSeq", createdSeqRaw + 0,
             "remindStatus", remindStatus,
-            "remindedAt", remindedAt
+            "remindedAt", remindedAt,
+            "note", note
         )
 
         if (item["remindAt"] = "") {
@@ -2072,20 +2327,20 @@ LoadEndCsv() {
         return Map("items", items, "malformed", 1)
     }
 
-    lines := StrSplit(text, "`n", "`r")
-    firstDataLine := true
+    rows := ParseCsvText(text)
+    if (rows.Length = 0)
+        return Map("items", items, "malformed", 1)
 
-    for line in lines {
-        if (line = "")
+    header := rows[1]
+    hasNote := (header.Length > 0 && header[header.Length] = "备注")
+    isLegacy := (header.Length >= 4 && header[4] = "提前提醒分钟数")
+    expectedLength := isLegacy ? (hasNote ? 10 : 9) : (hasNote ? 9 : 8)
+
+    for rowIndex, fields in rows {
+        if (rowIndex = 1 || IsCsvRowEmpty(fields))
             continue
 
-        if firstDataLine {
-            firstDataLine := false
-            continue
-        }
-
-        fields := ParseCsvLine(line)
-        if (fields.Length != 8 && fields.Length != 9) {
+        if (fields.Length != expectedLength) {
             malformed += 1
             continue
         }
@@ -2093,12 +2348,13 @@ LoadEndCsv() {
         id := Trim(fields[1])
         content := fields[2]
         plannedAt := Trim(fields[3])
-        legacyRemindMinutes := (fields.Length = 9) ? Trim(fields[4]) : ""
-        remindAtRaw := (fields.Length = 9) ? fields[5] : fields[4]
-        createdAt := (fields.Length = 9) ? fields[6] : fields[5]
-        createdSeqRaw := Trim((fields.Length = 9) ? fields[7] : fields[6])
-        endStatus := (fields.Length = 9) ? fields[8] : fields[7]
-        endedAt := (fields.Length = 9) ? fields[9] : fields[8]
+        legacyRemindMinutes := isLegacy ? Trim(fields[4]) : ""
+        remindAtRaw := isLegacy ? fields[5] : fields[4]
+        createdAt := isLegacy ? fields[6] : fields[5]
+        createdSeqRaw := Trim(isLegacy ? fields[7] : fields[6])
+        endStatus := isLegacy ? fields[8] : fields[7]
+        endedAt := isLegacy ? fields[9] : fields[8]
+        note := hasNote ? fields[expectedLength] : ""
 
         if (id = "" || content = "" || !RegExMatch(createdSeqRaw, "^\d+$")) {
             malformed += 1
@@ -2128,7 +2384,8 @@ LoadEndCsv() {
             "createdAt", createdAt,
             "createdSeq", createdSeqRaw + 0,
             "endStatus", endStatus,
-            "endedAt", endedAt
+            "endedAt", endedAt,
+            "note", note
         )
 
         if (item["endStatus"] != "已完成"
@@ -2158,7 +2415,8 @@ SaveIngItems(showError := true) {
             item["createdAt"],
             item["createdSeq"],
             item["remindStatus"],
-            item["remindedAt"]
+            item["remindedAt"],
+            item["note"]
         ])
     }
 
@@ -2189,7 +2447,8 @@ SaveEndItems(showError := true) {
             item["createdAt"],
             item["createdSeq"],
             item["endStatus"],
-            item["endedAt"]
+            item["endedAt"],
+            item["note"]
         ])
     }
 
@@ -2300,6 +2559,71 @@ ParseCsvLine(line) {
 
     fields.Push(current)
     return fields
+}
+
+ParseCsvText(text) {
+    rows := []
+    fields := []
+    current := ""
+    inQuotes := false
+    quote := Chr(34)
+    i := 1
+    length := StrLen(text)
+
+    while (i <= length) {
+        char := SubStr(text, i, 1)
+
+        if (char = quote) {
+            if (inQuotes && i < length && SubStr(text, i + 1, 1) = quote) {
+                current .= quote
+                i += 2
+                continue
+            }
+
+            inQuotes := !inQuotes
+            i += 1
+            continue
+        }
+
+        if (!inQuotes && char = ",") {
+            fields.Push(current)
+            current := ""
+            i += 1
+            continue
+        }
+
+        if (!inQuotes && (char = "`r" || char = "`n")) {
+            if (char = "`r" && i < length && SubStr(text, i + 1, 1) = "`n")
+                i += 1
+            fields.Push(current)
+            rows.Push(fields)
+            fields := []
+            current := ""
+            i += 1
+            continue
+        }
+
+        current .= char
+        i += 1
+    }
+
+    if inQuotes
+        return []
+
+    if (current != "" || fields.Length > 0) {
+        fields.Push(current)
+        rows.Push(fields)
+    }
+
+    return rows
+}
+
+IsCsvRowEmpty(fields) {
+    for field in fields {
+        if (field != "")
+            return false
+    }
+    return true
 }
 
 ; ------------------------------------------------------------
@@ -2425,6 +2749,23 @@ FindIngItemById(id) {
 
     index := FindIngIndexById(id)
     return index ? gIngItems[index] : 0
+}
+
+FindEndIndexById(id) {
+    global gEndItems
+
+    for index, item in gEndItems {
+        if (item["id"] = id)
+            return index
+    }
+    return 0
+}
+
+FindEndItemById(id) {
+    global gEndItems
+
+    index := FindEndIndexById(id)
+    return index ? gEndItems[index] : 0
 }
 
 NormalizeHotkey(value) {
@@ -2562,6 +2903,41 @@ FocusEditorField(fieldName) {
         default:
             FocusControlIfAlive(gEditorContentEdit)
     }
+}
+
+NormalizeListPreview(text) {
+    preview := StrReplace(text, "`r", " ")
+    preview := StrReplace(preview, "`n", " ")
+    return preview
+}
+
+SetListViewColumnWidths(lv, preferredWidths) {
+    if !IsObject(lv) || preferredWidths.Length = 0
+        return
+
+    x := 0
+    y := 0
+    width := 0
+    height := 0
+    lv.GetPos(&x, &y, &width, &height)
+    scrollbarWidth := DllCall("User32\GetSystemMetrics", "Int", 2, "Int")
+    available := Max(width - scrollbarWidth - 8, preferredWidths[preferredWidths.Length])
+    fixedWidth := 0
+
+    Loop preferredWidths.Length - 1 {
+        colWidth := preferredWidths[A_Index]
+        lv.ModifyCol(A_Index, colWidth)
+        fixedWidth += colWidth
+    }
+
+    lastWidth := Max(preferredWidths[preferredWidths.Length], available - fixedWidth)
+    lv.ModifyCol(preferredWidths.Length, lastWidth)
+}
+
+IsHistoryWindowActive(*) {
+    global gHistoryGui
+
+    return IsObject(gHistoryGui) && WinActive("ahk_id " gHistoryGui.Hwnd)
 }
 
 SetEditorError(message := "") {
