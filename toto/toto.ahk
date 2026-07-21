@@ -1,6 +1,8 @@
 ﻿#Requires AutoHotkey v2.0
 #SingleInstance Off
 
+TraySetIcon("my_icon.ico")
+
 Persistent()
 DetectHiddenWindows(true)
 SetTitleMatchMode(3)
