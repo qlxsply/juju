@@ -610,7 +610,7 @@ ShowItemEditor(itemId := "") {
     gEditorGui.Add("Text", "x14 y168 w72 h24", "备注：")
     gEditorNoteEdit := gEditorGui.Add(
         "Edit",
-        "x92 y164 w532 h92 WantTab",
+        "x92 y164 w532 h92",
         initialNote
     )
     gEditorErrorText := gEditorGui.Add(
@@ -1101,7 +1101,7 @@ PromptEndItemNote(item, endStatus) {
     gEndActionGui.Add("Text", "x14 y48 w72 h24", "事项内容：")
     gEndActionGui.Add("Edit", "x92 y44 w532 h56 ReadOnly", item["content"])
     gEndActionGui.Add("Text", "x14 y112 w72 h24", "备注：")
-    gEndActionNoteEdit := gEndActionGui.Add("Edit", "x92 y108 w532 h120 WantTab", item["note"])
+    gEndActionNoteEdit := gEndActionGui.Add("Edit", "x92 y108 w532 h120", item["note"])
 
     btnConfirm := gEndActionGui.Add("Button", "x438 y242 w88 h30 Default", endStatus)
     btnCancel := gEndActionGui.Add("Button", "x536 y242 w88 h30", "取消")
@@ -2851,6 +2851,9 @@ FormatHotkeyForDisplay(hotkeyValue) {
 HandleSettingsHotkeyInput(wParam, lParam, msg, hwnd) {
     global gSettingsGui, gSettingsHotkey, gSettingsHotkeyValue
 
+    if HandleDialogConfirmKeys(wParam)
+        return 0
+
     if !IsObject(gSettingsGui) || !IsObject(gSettingsHotkey)
         return
 
@@ -2890,6 +2893,32 @@ HandleSettingsHotkeyInput(wParam, lParam, msg, hwnd) {
     gSettingsHotkeyValue := NormalizeHotkey(hotkeyValue)
     gSettingsHotkey.Value := FormatHotkeyForDisplay(gSettingsHotkeyValue)
     return 0
+}
+
+HandleDialogConfirmKeys(wParam) {
+    global gEditorGui, gEditorNoteEdit, gEndActionGui, gEndActionNoteEdit
+
+    if (wParam != 0x0D)
+        return false
+
+    focusedHwnd := DllCall("User32\GetFocus", "Ptr")
+    shiftPressed := GetKeyState("Shift", "P")
+
+    if IsObject(gEditorGui) && WinActive("ahk_id " gEditorGui.Hwnd) {
+        if IsObject(gEditorNoteEdit) && focusedHwnd = gEditorNoteEdit.Hwnd && shiftPressed
+            return false
+        SaveEditorItem()
+        return true
+    }
+
+    if IsObject(gEndActionGui) && WinActive("ahk_id " gEndActionGui.Hwnd) {
+        if IsObject(gEndActionNoteEdit) && focusedHwnd = gEndActionNoteEdit.Hwnd && shiftPressed
+            return false
+        ConfirmEndAction()
+        return true
+    }
+
+    return false
 }
 
 FocusEditorField(fieldName) {
