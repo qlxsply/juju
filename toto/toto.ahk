@@ -536,7 +536,7 @@ ShowItemEditor(itemId := "") {
 
     if (itemId = "") {
         helpText := "输入格式：事项内容[@计划时间[@提前提醒分钟数]]`n"
-            . "时间支持：HHmm、ddHHmm、MMddHHmm、yyyyMMddHHmm`n"
+            . "时间支持：HHmm、ddHHmm、MMddHHmm、yyyyMMddHHmm、+HHmm`n"
             . "未填写提前分钟数时，使用默认值 "
             . gConfig["default_remind_minutes"] " 分钟。"
 
@@ -838,8 +838,43 @@ ParseEditorDateTime(raw, fieldLabel, focusTarget) {
 }
 
 ParsePlanTime(raw) {
+    if RegExMatch(raw, "^(\++)(\d{4})$", &plusMatch) {
+        plusCount := StrLen(plusMatch[1])
+        timeRaw := plusMatch[2]
+        baseStamp := DateAdd(A_Now, plusCount, "Days")
+        year := SubStr(baseStamp, 1, 4) + 0
+        month := SubStr(baseStamp, 5, 2) + 0
+        day := SubStr(baseStamp, 7, 2) + 0
+        hour := SubStr(timeRaw, 1, 2) + 0
+        minute := SubStr(timeRaw, 3, 2) + 0
+
+        if !IsValidDateTime(year, month, day, hour, minute)
+            return ParseError("计划时间不是有效的日期或时间。")
+
+        stamp := Format(
+            "{:04}{:02}{:02}{:02}{:02}00",
+            year,
+            month,
+            day,
+            hour,
+            minute
+        )
+
+        if (stamp <= A_Now)
+            return ParseError("带 + 的计划时间必须晚于当前时间。")
+
+        return Map("ok", true, "stamp", stamp)
+    }
+
+    if InStr(raw, "+") {
+        return ParseError(
+            "带 + 的计划时间格式必须是 +HHmm、++HHmm 等，"
+            . "即一个或多个 + 后紧跟 4 位时分。"
+        )
+    }
+
     if !RegExMatch(raw, "^\d+$")
-        return ParseError("计划时间只能包含数字。")
+        return ParseError("计划时间只能包含数字，或使用 +HHmm / ++HHmm 形式。")
 
     length := StrLen(raw)
     now := A_Now
