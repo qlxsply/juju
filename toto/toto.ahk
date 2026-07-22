@@ -186,6 +186,7 @@ InitializeToto() {
 
     ProcessDueReminders()
     ScheduleNextReminder()
+    SetTimer(RefreshMainListUrgencyAppearance, 60000)
 }
 
 EnsureDataFiles() {
@@ -2231,6 +2232,7 @@ CleanupBeforeExit(*) {
     global gMainGui, gMainLV, gHistoryGui, gHistoryLV, gMutexHandle
 
     try SetTimer(ReminderTimerTick, 0)
+    try SetTimer(RefreshMainListUrgencyAppearance, 0)
 
     ; 退出阶段可能仍会收到 ListView 的 WM_NOTIFY，自绘所依赖的全局对象
     ; 在脚本收尾时释放顺序不可控，因此先注销消息并停用相关网格。
@@ -3031,7 +3033,7 @@ DisableAlignedListViewGrid(lv) {
 }
 
 HandleAlignedListViewGridNotify(wParam, lParam, msg, hwnd) {
-    global gAlignedGridListViews
+    global gAlignedGridListViews, gMainLV
 
     if !lParam
         return
@@ -3052,7 +3054,37 @@ HandleAlignedListViewGridNotify(wParam, lParam, msg, hwnd) {
     drawStage := NumGet(lParam, 3 * A_PtrSize, "UInt")
 
     if (drawStage = 0x00000001) { ; CDDS_PREPAINT
-        return 0x00000010 ; CDRF_NOTIFYPOSTPAINT
+        return 0x00000030 ; CDRF_NOTIFYITEMDRAW | CDRF_NOTIFYPOSTPAINT
+    }
+
+    if (drawStage = 0x00010001) { ; CDDS_ITEMPREPAINT
+        if (IsObject(gMainLV) && hwndFrom = gMainLV.Hwnd)
+            return 0x00000020 ; CDRF_NOTIFYSUBITEMDRAW
+        return 0
+    }
+
+    if (drawStage = 0x00030001) { ; CDDS_ITEMPREPAINT | CDDS_SUBITEM
+        if !(IsObject(gMainLV) && hwndFrom = gMainLV.Hwnd)
+            return 0
+
+        rowNumber := GetListViewCustomDrawItemIndex(lParam) + 1
+        subItemIndex := GetListViewCustomDrawSubItem(lParam)
+        urgencyStyle := GetMainListUrgencyStyle(rowNumber)
+        if !IsObject(urgencyStyle)
+            return 0
+
+        if IsListViewRowSelected(hwndFrom, rowNumber - 1) {
+            SetListViewCustomDrawTextColor(lParam, urgencyStyle["selectedTextColor"])
+            SetListViewCustomDrawBackColor(lParam, urgencyStyle["selectedBackColor"])
+            return 0x00000002 ; CDRF_NEWFONT
+        }
+
+        if (subItemIndex = 1) {
+            SetListViewCustomDrawTextColor(lParam, urgencyStyle["textColor"])
+            return 0x00000002 ; CDRF_NEWFONT
+        }
+
+        return 0
     }
 
     if (drawStage = 0x00000002) { ; CDDS_POSTPAINT
@@ -3243,6 +3275,98 @@ DrawAlignedListViewGrid(lvHwnd, hdc) {
 DrawGdiLine(hdc, x1, y1, x2, y2) {
     DllCall("Gdi32\MoveToEx", "Ptr", hdc, "Int", x1, "Int", y1, "Ptr", 0, "Int")
     DllCall("Gdi32\LineTo", "Ptr", hdc, "Int", x2, "Int", y2, "Int")
+}
+
+RefreshMainListUrgencyAppearance(*) {
+    global gMainLV
+
+    if !IsObject(gMainLV)
+        return
+
+    try DllCall("User32\InvalidateRect", "Ptr", gMainLV.Hwnd, "Ptr", 0, "Int", false)
+}
+
+GetMainListUrgencyStyle(rowNumber) {
+    global gIngItems
+
+    if (rowNumber < 1 || rowNumber > gIngItems.Length)
+        return 0
+
+    return GetPlannedUrgencyStyle(gIngItems[rowNumber]["plannedAt"])
+}
+
+GetPlannedUrgencyStyle(plannedAt) {
+    if (plannedAt = "")
+        return 0
+
+    plannedStamp := DisplayToStamp(plannedAt)
+    if (plannedStamp = "")
+        return 0
+
+    nowStamp := A_Now
+    if (DateDiff(plannedStamp, nowStamp, "Seconds") <= 3600) {
+        return Map(
+            "textColor", MakeColorRef(185, 45, 45),
+            "selectedTextColor", MakeColorRef(255, 255, 255),
+            "selectedBackColor", MakeColorRef(198, 40, 40)
+        )
+    }
+
+    today := SubStr(nowStamp, 1, 8)
+    if (SubStr(plannedStamp, 1, 8) = today) {
+        return Map(
+            "textColor", MakeColorRef(28, 122, 72),
+            "selectedTextColor", MakeColorRef(255, 255, 255),
+            "selectedBackColor", MakeColorRef(46, 125, 50)
+        )
+    }
+
+    tomorrow := SubStr(DateAdd(nowStamp, 1, "Days"), 1, 8)
+    if (SubStr(plannedStamp, 1, 8) = tomorrow) {
+        return Map(
+            "textColor", MakeColorRef(166, 110, 0),
+            "selectedTextColor", MakeColorRef(255, 255, 255),
+            "selectedBackColor", MakeColorRef(184, 134, 11)
+        )
+    }
+
+    return 0
+}
+
+MakeColorRef(red, green, blue) {
+    return red | (green << 8) | (blue << 16)
+}
+
+GetListViewCustomDrawItemIndex(lParam) {
+    offset := (A_PtrSize = 8) ? 56 : 32
+    return NumGet(lParam, offset, "UPtr") + 0
+}
+
+GetListViewCustomDrawSubItem(lParam) {
+    offset := (A_PtrSize = 8) ? 88 : 56
+    return NumGet(lParam, offset, "Int")
+}
+
+SetListViewCustomDrawTextColor(lParam, colorRef) {
+    offset := (A_PtrSize = 8) ? 80 : 48
+    NumPut("UInt", colorRef, lParam, offset)
+}
+
+SetListViewCustomDrawBackColor(lParam, colorRef) {
+    offset := (A_PtrSize = 8) ? 84 : 52
+    NumPut("UInt", colorRef, lParam, offset)
+}
+
+IsListViewRowSelected(lvHwnd, rowIndex) {
+    state := DllCall(
+        "User32\SendMessageW",
+        "Ptr", lvHwnd,
+        "UInt", 0x102C, ; LVM_GETITEMSTATE
+        "Ptr", rowIndex,
+        "Ptr", 0x0002,
+        "Ptr"
+    )
+    return (state & 0x0002) != 0 ; LVIS_SELECTED
 }
 
 SetListViewColumnWidths(lv, preferredWidths) {
