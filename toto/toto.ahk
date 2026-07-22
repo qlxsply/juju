@@ -100,6 +100,7 @@ global gReminderRowIds := []
 global gReminderQueueIds := []
 global gSessionLocked := false
 global gMutexHandle := 0
+global gAlignedGridListViews := Map()
 
 ; ------------------------------------------------------------
 ; 自动执行入口
@@ -155,6 +156,7 @@ InitializeToto() {
     OnMessage(WM_WTSSESSION_CHANGE, HandleSessionChange)
     OnMessage(0x0100, HandleSettingsHotkeyInput) ; WM_KEYDOWN
     OnMessage(0x0104, HandleSettingsHotkeyInput) ; WM_SYSKEYDOWN
+    OnMessage(0x004E, HandleAlignedListViewGridNotify) ; WM_NOTIFY
 
     ; 接收锁屏/解锁消息。失败不影响基础功能。
     try DllCall(
@@ -357,10 +359,11 @@ CreateMainGui() {
 
     gMainLV := gMainGui.Add(
         "ListView",
-        "x12 y12 w1080 h442 Grid -Multi NoSortHdr",
+        "x12 y12 w1080 h442 -Multi NoSortHdr",
         ["事项内容", "计划时间", "提醒时间", "提醒状态", "创建时间", "备注"]
     )
     SetListViewColumnWidths(gMainLV, [320, 145, 145, 90, 145, 180])
+    EnableAlignedListViewGrid(gMainLV)
 
     gMainStatus := gMainGui.Add(
         "Text",
@@ -1182,6 +1185,7 @@ ShowHistory(*) {
     LoadAllData(false)
 
     if IsObject(gHistoryGui) {
+        DisableAlignedListViewGrid(gHistoryLV)
         try gHistoryGui.Destroy()
     }
 
@@ -1196,10 +1200,11 @@ ShowHistory(*) {
 
     gHistoryLV := gHistoryGui.Add(
         "ListView",
-        "x12 y12 w1160 h410 Grid -Multi NoSortHdr",
+        "x12 y12 w1160 h410 -Multi NoSortHdr",
         ["事项内容", "计划时间", "提醒时间", "结束状态", "结束时间", "创建时间", "备注"]
     )
     SetListViewColumnWidths(gHistoryLV, [250, 135, 135, 80, 145, 145, 230])
+    EnableAlignedListViewGrid(gHistoryLV)
 
     btnRefresh := gHistoryGui.Add("Button", "x976 y436 w86 h30", "刷新")
     btnClose := gHistoryGui.Add("Button", "x1074 y436 w86 h30", "关闭")
@@ -1262,6 +1267,7 @@ HistoryListDoubleClick(ctrl, rowNumber) {
 CloseHistory(*) {
     global gHistoryGui, gHistoryLV, gHistoryRowIds
 
+    DisableAlignedListViewGrid(gHistoryLV)
     if IsObject(gHistoryGui) {
         try gHistoryGui.Destroy()
     }
@@ -2222,9 +2228,16 @@ ExitToto(*) {
 
 CleanupBeforeExit(*) {
     global gRegisteredHotkey, gRegisteredAppHotkeys
-    global gMainGui, gMutexHandle
+    global gMainGui, gMainLV, gHistoryGui, gHistoryLV, gMutexHandle
 
     try SetTimer(ReminderTimerTick, 0)
+
+    ; 退出阶段可能仍会收到 ListView 的 WM_NOTIFY，自绘所依赖的全局对象
+    ; 在脚本收尾时释放顺序不可控，因此先注销消息并停用相关网格。
+    OnMessage(0x004E, HandleAlignedListViewGridNotify, 0)
+    DisableAlignedListViewGrid(gMainLV)
+    DisableAlignedListViewGrid(gHistoryLV)
+
     CloseDetailDialog()
     CloseEndActionDialog()
 
@@ -2973,6 +2986,263 @@ NormalizeListPreview(text) {
     preview := StrReplace(text, "`r", " ")
     preview := StrReplace(preview, "`n", " ")
     return preview
+}
+
+
+; ------------------------------------------------------------
+; ListView 对齐网格
+;
+; Windows 原生 LVS_EX_GRIDLINES 在现代 comctl32.dll 中会让数据区
+; 竖线比 Header 分隔线右移约 1px，并且不绘制 Header 底边。
+; 因此不使用 ListView 的 Grid 选项，而是在控件完成绘制后，依据
+; Header 的实际项目矩形重画数据区网格。
+; ------------------------------------------------------------
+
+EnableAlignedListViewGrid(lv) {
+    global gAlignedGridListViews
+
+    if !IsObject(lv)
+        return
+
+    gAlignedGridListViews[lv.Hwnd] := true
+
+    ; LVS_EX_DOUBLEBUFFER，减少自绘网格时的闪烁。
+    DllCall(
+        "User32\SendMessageW",
+        "Ptr", lv.Hwnd,
+        "UInt", 0x1036, ; LVM_SETEXTENDEDLISTVIEWSTYLE
+        "Ptr", 0x10000,
+        "Ptr", 0x10000,
+        "Ptr"
+    )
+
+    DllCall("User32\InvalidateRect", "Ptr", lv.Hwnd, "Ptr", 0, "Int", false)
+}
+
+DisableAlignedListViewGrid(lv) {
+    global gAlignedGridListViews
+
+    if !IsObject(lv)
+        return
+
+    hwnd := lv.Hwnd
+    if gAlignedGridListViews.Has(hwnd)
+        gAlignedGridListViews.Delete(hwnd)
+}
+
+HandleAlignedListViewGridNotify(wParam, lParam, msg, hwnd) {
+    global gAlignedGridListViews
+
+    if !lParam
+        return
+
+    try views := gAlignedGridListViews
+    catch
+        return
+
+    hwndFrom := NumGet(lParam, 0, "Ptr")
+    if !views.Has(hwndFrom)
+        return
+
+    code := NumGet(lParam, 2 * A_PtrSize, "Int")
+    if (code != -12) ; NM_CUSTOMDRAW
+        return
+
+    ; NMCUSTOMDRAW.dwDrawStage 的偏移：x86 为 12，x64 为 24。
+    drawStage := NumGet(lParam, 3 * A_PtrSize, "UInt")
+
+    if (drawStage = 0x00000001) { ; CDDS_PREPAINT
+        return 0x00000010 ; CDRF_NOTIFYPOSTPAINT
+    }
+
+    if (drawStage = 0x00000002) { ; CDDS_POSTPAINT
+        hdc := NumGet(lParam, 4 * A_PtrSize, "Ptr")
+        DrawAlignedListViewGrid(hwndFrom, hdc)
+        return 0
+    }
+}
+
+DrawAlignedListViewGrid(lvHwnd, hdc) {
+    if !lvHwnd || !hdc
+        return
+
+    headerHwnd := DllCall(
+        "User32\SendMessageW",
+        "Ptr", lvHwnd,
+        "UInt", 0x101F, ; LVM_GETHEADER
+        "Ptr", 0,
+        "Ptr", 0,
+        "Ptr"
+    )
+    if !headerHwnd
+        return
+
+    clientRect := Buffer(16, 0)
+    if !DllCall("User32\GetClientRect", "Ptr", lvHwnd, "Ptr", clientRect, "Int")
+        return
+
+    clientRight := NumGet(clientRect, 8, "Int")
+    clientBottom := NumGet(clientRect, 12, "Int")
+    if (clientRight <= 0 || clientBottom <= 0)
+        return
+
+    headerRect := Buffer(16, 0)
+    if !DllCall("User32\GetWindowRect", "Ptr", headerHwnd, "Ptr", headerRect, "Int")
+        return
+
+    ; 将 Header 的屏幕坐标转换成 ListView 客户区坐标。
+    DllCall(
+        "User32\MapWindowPoints",
+        "Ptr", 0,
+        "Ptr", lvHwnd,
+        "Ptr", headerRect,
+        "UInt", 2,
+        "Int"
+    )
+    headerBottom := NumGet(headerRect, 12, "Int")
+    headerBottom := Max(0, Min(headerBottom, clientBottom - 1))
+
+    headerCount := DllCall(
+        "User32\SendMessageW",
+        "Ptr", headerHwnd,
+        "UInt", 0x1200, ; HDM_GETITEMCOUNT
+        "Ptr", 0,
+        "Ptr", 0,
+        "Ptr"
+    )
+    if (headerCount <= 0)
+        return
+
+    columnLines := []
+    gridRight := 0
+    itemRect := Buffer(16, 0)
+
+    Loop headerCount {
+        columnIndex := A_Index - 1
+        if !DllCall(
+            "User32\SendMessageW",
+            "Ptr", headerHwnd,
+            "UInt", 0x1207, ; HDM_GETITEMRECT
+            "Ptr", columnIndex,
+            "Ptr", itemRect,
+            "Ptr"
+        )
+            continue
+
+        itemLeft := NumGet(itemRect, 0, "Int")
+        itemRight := NumGet(itemRect, 8, "Int")
+        gridRight := Max(gridRight, itemRight)
+
+        ; 主题 Header 的可见分隔线位于项目 right 的前一个像素。
+        lineX := itemRight - 1
+        if (lineX >= 0 && lineX < clientRight)
+            columnLines.Push(lineX)
+    }
+
+    gridRight := Max(0, Min(gridRight, clientRight))
+    if (gridRight <= 0)
+        return
+
+    itemCount := DllCall(
+        "User32\SendMessageW",
+        "Ptr", lvHwnd,
+        "UInt", 0x1004, ; LVM_GETITEMCOUNT
+        "Ptr", 0,
+        "Ptr", 0,
+        "Ptr"
+    )
+
+    topIndex := 0
+    if (itemCount > 0) {
+        topIndex := DllCall(
+            "User32\SendMessageW",
+            "Ptr", lvHwnd,
+            "UInt", 0x1027, ; LVM_GETTOPINDEX
+            "Ptr", 0,
+            "Ptr", 0,
+            "Ptr"
+        )
+    }
+
+    rowLines := []
+    gridBottom := headerBottom
+    rowRect := Buffer(16, 0)
+
+    if (itemCount > 0 && topIndex < itemCount) {
+        Loop itemCount - topIndex {
+            rowIndex := topIndex + A_Index - 1
+            NumPut("Int", 0, rowRect, 0) ; LVIR_BOUNDS
+
+            if !DllCall(
+                "User32\SendMessageW",
+                "Ptr", lvHwnd,
+                "UInt", 0x100E, ; LVM_GETITEMRECT
+                "Ptr", rowIndex,
+                "Ptr", rowRect,
+                "Ptr"
+            )
+                continue
+
+            rowTop := NumGet(rowRect, 4, "Int")
+            rowBottom := NumGet(rowRect, 12, "Int")
+
+            if (rowTop >= clientBottom)
+                break
+            if (rowBottom <= headerBottom)
+                continue
+
+            lineY := Min(rowBottom - 1, clientBottom - 1)
+            if (lineY >= headerBottom)
+                rowLines.Push(lineY)
+
+            gridBottom := Max(gridBottom, Min(rowBottom, clientBottom))
+        }
+    }
+
+    ; 数据区网格使用系统浅灰色；Header 底边使用稍深的系统阴影色。
+    gridPen := DllCall(
+        "Gdi32\CreatePen",
+        "Int", 0,
+        "Int", 1,
+        "UInt", DllCall("User32\GetSysColor", "Int", 15, "UInt"), ; COLOR_3DFACE
+        "Ptr"
+    )
+    borderPen := DllCall(
+        "Gdi32\CreatePen",
+        "Int", 0,
+        "Int", 1,
+        "UInt", DllCall("User32\GetSysColor", "Int", 16, "UInt"), ; COLOR_3DSHADOW
+        "Ptr"
+    )
+
+    if gridPen {
+        oldPen := DllCall("Gdi32\SelectObject", "Ptr", hdc, "Ptr", gridPen, "Ptr")
+
+        if (gridBottom > headerBottom) {
+            for lineX in columnLines
+                DrawGdiLine(hdc, lineX, headerBottom, lineX, gridBottom)
+        }
+
+        for lineY in rowLines
+            DrawGdiLine(hdc, 0, lineY, gridRight, lineY)
+
+        if oldPen
+            DllCall("Gdi32\SelectObject", "Ptr", hdc, "Ptr", oldPen, "Ptr")
+        DllCall("Gdi32\DeleteObject", "Ptr", gridPen, "Int")
+    }
+
+    if borderPen {
+        oldPen := DllCall("Gdi32\SelectObject", "Ptr", hdc, "Ptr", borderPen, "Ptr")
+        DrawGdiLine(hdc, 0, headerBottom, gridRight, headerBottom)
+        if oldPen
+            DllCall("Gdi32\SelectObject", "Ptr", hdc, "Ptr", oldPen, "Ptr")
+        DllCall("Gdi32\DeleteObject", "Ptr", borderPen, "Int")
+    }
+}
+
+DrawGdiLine(hdc, x1, y1, x2, y2) {
+    DllCall("Gdi32\MoveToEx", "Ptr", hdc, "Int", x1, "Int", y1, "Ptr", 0, "Int")
+    DllCall("Gdi32\LineTo", "Ptr", hdc, "Int", x2, "Int", y2, "Int")
 }
 
 SetListViewColumnWidths(lv, preferredWidths) {
