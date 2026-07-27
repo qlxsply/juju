@@ -53,6 +53,9 @@ global END_HEADER := [
     "备注"
 ]
 
+global MAIN_LIST_COLUMN_WIDTHS := [300, 170, 170, 90, 170, 155]
+global HISTORY_LIST_COLUMN_WIDTHS := [220, 170, 170, 80, 170, 170, 155]
+
 global gConfig := Map()
 global gIngItems := []
 global gEndItems := []
@@ -350,7 +353,7 @@ ReconcileDuplicateItems() {
 ; ------------------------------------------------------------
 
 CreateMainGui() {
-    global gMainGui, gMainLV, gMainStatus
+    global gMainGui, gMainLV, gMainStatus, MAIN_LIST_COLUMN_WIDTHS
 
     gMainGui := Gui("-MaximizeBox", "toto - 进行中事项")
     gMainGui.Opt("+OwnDialogs")
@@ -363,7 +366,7 @@ CreateMainGui() {
         "x12 y12 w1080 h442 -Multi NoSortHdr",
         ["事项内容", "计划时间", "提醒时间", "提醒状态", "创建时间", "备注"]
     )
-    SetListViewColumnWidths(gMainLV, [320, 145, 145, 90, 145, 180])
+    SetListViewColumnWidths(gMainLV, MAIN_LIST_COLUMN_WIDTHS)
     EnableAlignedListViewGrid(gMainLV)
 
     gMainStatus := gMainGui.Add(
@@ -378,7 +381,7 @@ CreateMainGui() {
 }
 
 ShowMain(*) {
-    global gMainGui
+    global gMainGui, gMainLV, MAIN_LIST_COLUMN_WIDTHS
 
     LoadAllData(false)
     ProcessDueReminders()
@@ -386,7 +389,7 @@ ShowMain(*) {
     ScheduleNextReminder()
 
     gMainGui.Show("w1104 h502 Center")
-    SetListViewColumnWidths(gMainLV, [320, 145, 145, 90, 145, 180])
+    SetListViewColumnWidths(gMainLV, MAIN_LIST_COLUMN_WIDTHS)
     try WinActivate("ahk_id " gMainGui.Hwnd)
 }
 
@@ -404,6 +407,7 @@ RefreshMainFromDisk(*) {
 
 RefreshMainList() {
     global gMainLV, gMainRowIds, gIngItems, gMainStatus, DATA_DIR
+    global MAIN_LIST_COLUMN_WIDTHS
 
     if !IsObject(gMainLV)
         return
@@ -427,7 +431,7 @@ RefreshMainList() {
         gMainRowIds.Push(item["id"])
     }
 
-    SetListViewColumnWidths(gMainLV, [320, 145, 145, 90, 145, 180])
+    SetListViewColumnWidths(gMainLV, MAIN_LIST_COLUMN_WIDTHS)
     gMainLV.Opt("+Redraw")
     gMainStatus.Text := "进行中：" . gIngItems.Length
         . " 项；数据目录：" . DATA_DIR
@@ -1181,7 +1185,7 @@ CloseEndActionDialog(*) {
 }
 
 ShowHistory(*) {
-    global gHistoryGui, gHistoryLV, gMainGui
+    global gHistoryGui, gHistoryLV, gMainGui, HISTORY_LIST_COLUMN_WIDTHS
 
     LoadAllData(false)
 
@@ -1204,7 +1208,7 @@ ShowHistory(*) {
         "x12 y12 w1160 h410 -Multi NoSortHdr",
         ["事项内容", "计划时间", "提醒时间", "结束状态", "结束时间", "创建时间", "备注"]
     )
-    SetListViewColumnWidths(gHistoryLV, [250, 135, 135, 80, 145, 145, 230])
+    SetListViewColumnWidths(gHistoryLV, HISTORY_LIST_COLUMN_WIDTHS)
     EnableAlignedListViewGrid(gHistoryLV)
 
     btnRefresh := gHistoryGui.Add("Button", "x976 y436 w86 h30", "刷新")
@@ -1218,7 +1222,7 @@ ShowHistory(*) {
 
     RefreshHistoryList()
     gHistoryGui.Show("w1184 h480 Center")
-    SetListViewColumnWidths(gHistoryLV, [250, 135, 135, 80, 145, 145, 230])
+    SetListViewColumnWidths(gHistoryLV, HISTORY_LIST_COLUMN_WIDTHS)
 }
 
 RefreshHistoryFromDisk(*) {
@@ -1228,6 +1232,7 @@ RefreshHistoryFromDisk(*) {
 
 RefreshHistoryList() {
     global gHistoryGui, gHistoryLV, gHistoryRowIds, gEndItems
+    global HISTORY_LIST_COLUMN_WIDTHS
 
     if !IsObject(gHistoryGui) || !IsObject(gHistoryLV)
         return
@@ -1252,7 +1257,7 @@ RefreshHistoryList() {
         gHistoryRowIds.Push(item["id"])
     }
 
-    SetListViewColumnWidths(gHistoryLV, [250, 135, 135, 80, 145, 145, 230])
+    SetListViewColumnWidths(gHistoryLV, HISTORY_LIST_COLUMN_WIDTHS)
     gHistoryLV.Opt("+Redraw")
 }
 
@@ -3058,32 +3063,21 @@ HandleAlignedListViewGridNotify(wParam, lParam, msg, hwnd) {
     }
 
     if (drawStage = 0x00010001) { ; CDDS_ITEMPREPAINT
-        if (IsObject(gMainLV) && hwndFrom = gMainLV.Hwnd)
-            return 0x00000020 ; CDRF_NOTIFYSUBITEMDRAW
+        if (IsObject(gMainLV) && hwndFrom = gMainLV.Hwnd) {
+            rowNumber := GetListViewCustomDrawItemIndex(lParam) + 1
+            urgencyStyle := GetMainListUrgencyStyle(rowNumber)
+            if !IsObject(urgencyStyle)
+                return 0
+            if IsListViewRowSelected(hwndFrom, rowNumber - 1)
+                return 0
+
+            SetListViewCustomDrawTextColor(lParam, urgencyStyle["textColor"])
+            return 0x00000002 ; CDRF_NEWFONT
+        }
         return 0
     }
 
     if (drawStage = 0x00030001) { ; CDDS_ITEMPREPAINT | CDDS_SUBITEM
-        if !(IsObject(gMainLV) && hwndFrom = gMainLV.Hwnd)
-            return 0
-
-        rowNumber := GetListViewCustomDrawItemIndex(lParam) + 1
-        subItemIndex := GetListViewCustomDrawSubItem(lParam)
-        urgencyStyle := GetMainListUrgencyStyle(rowNumber)
-        if !IsObject(urgencyStyle)
-            return 0
-
-        if IsListViewRowSelected(hwndFrom, rowNumber - 1) {
-            SetListViewCustomDrawTextColor(lParam, urgencyStyle["selectedTextColor"])
-            SetListViewCustomDrawBackColor(lParam, urgencyStyle["selectedBackColor"])
-            return 0x00000002 ; CDRF_NEWFONT
-        }
-
-        if (subItemIndex = 1) {
-            SetListViewCustomDrawTextColor(lParam, urgencyStyle["textColor"])
-            return 0x00000002 ; CDRF_NEWFONT
-        }
-
         return 0
     }
 
@@ -3306,27 +3300,21 @@ GetPlannedUrgencyStyle(plannedAt) {
     nowStamp := A_Now
     if (DateDiff(plannedStamp, nowStamp, "Seconds") <= 3600) {
         return Map(
-            "textColor", MakeColorRef(185, 45, 45),
-            "selectedTextColor", MakeColorRef(255, 255, 255),
-            "selectedBackColor", MakeColorRef(198, 40, 40)
+            "textColor", MakeColorRef(185, 45, 45)
         )
     }
 
     today := SubStr(nowStamp, 1, 8)
     if (SubStr(plannedStamp, 1, 8) = today) {
         return Map(
-            "textColor", MakeColorRef(28, 122, 72),
-            "selectedTextColor", MakeColorRef(255, 255, 255),
-            "selectedBackColor", MakeColorRef(46, 125, 50)
+            "textColor", MakeColorRef(28, 122, 72)
         )
     }
 
     tomorrow := SubStr(DateAdd(nowStamp, 1, "Days"), 1, 8)
     if (SubStr(plannedStamp, 1, 8) = tomorrow) {
         return Map(
-            "textColor", MakeColorRef(166, 110, 0),
-            "selectedTextColor", MakeColorRef(255, 255, 255),
-            "selectedBackColor", MakeColorRef(184, 134, 11)
+            "textColor", MakeColorRef(166, 110, 0)
         )
     }
 
@@ -3342,18 +3330,8 @@ GetListViewCustomDrawItemIndex(lParam) {
     return NumGet(lParam, offset, "UPtr") + 0
 }
 
-GetListViewCustomDrawSubItem(lParam) {
-    offset := (A_PtrSize = 8) ? 88 : 56
-    return NumGet(lParam, offset, "Int")
-}
-
 SetListViewCustomDrawTextColor(lParam, colorRef) {
     offset := (A_PtrSize = 8) ? 80 : 48
-    NumPut("UInt", colorRef, lParam, offset)
-}
-
-SetListViewCustomDrawBackColor(lParam, colorRef) {
-    offset := (A_PtrSize = 8) ? 84 : 52
     NumPut("UInt", colorRef, lParam, offset)
 }
 
