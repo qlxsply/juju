@@ -71,3 +71,5 @@ x86/
 
 # Built Visual Studio Code Extensions
 *.vsix
+# Added by code-review-graph
+.code-review-graph/
