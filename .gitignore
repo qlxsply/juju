@@ -1,75 +1,77 @@
-### Windows
-# Windows thumbnail cache files
+# Windows
 Thumbs.db
-
-# Folder config file
+ehthumbs.db
 [Dd]esktop.ini
-
-# Recycle Bin used on file shares
 $RECYCLE.BIN/
-
-# Windows shortcuts
 *.lnk
 
-### JetBrains
-# JetBrains IDE directory
-.idea/
-
-# CMake build directories
-cmake-build-*/
-
-# File-based project format
-*.iws
-*.iml
-
-# IntelliJ build output
-out/
-
-### VisualStudio
-# User-specific files
-*.suo
-*.user
-
-# Build results
+# .NET / WinForms / Visual Studio
+[Bb]in/
+[Oo]bj/
 [Dd]ebug/
 [Rr]elease/
 x64/
 x86/
-[Ww][Ii][Nn]32/
 [Aa][Rr][Mm]/
 [Aa][Rr][Mm]64/
-[Bb]in/
-[Oo]bj/
-
-# Visual Studio cache/options directory
 .vs/
-
-# MSTest test Results
-[Tt]est[Rr]esult*/
-[Bb]uild[Ll]og.*
-
-# NuGet
+*.user
+*.rsuser
+*.suo
+*.userosscache
+*.sln.docstates
+*.cache
 *.nupkg
-**/[Pp]ackages/*
-!**/[Pp]ackages/build/
+*.snupkg
 *.nuget.props
 *.nuget.targets
+TestResults/
+[Tt]est[Rr]esult*/
+[Bb]uild[Ll]og.*
+artifacts/
+publish/
 
-# Publish Web Output
-*.[Pp]ublish.xml
+# NuGet local package folders
+packages/
+*.nuget.g.props
+*.nuget.g.targets
+project.assets.json
+project.nuget.cache
 
-### VS Code
-# VSCode settings (keep shared configuration)
+# JetBrains Rider / IntelliJ
+.idea/
+*.sln.iml
+*.iml
+*.iws
+out/
+
+# VS Code: retain explicitly shared workspace settings only
 .vscode/*
 !.vscode/settings.json
 !.vscode/tasks.json
 !.vscode/launch.json
 !.vscode/extensions.json
-
-# Local History for Visual Studio Code
 .history/
 
-# Built Visual Studio Code Extensions
-*.vsix
-# Added by code-review-graph
+# AutoHotkey compiler and local runtime output
+*.ahk.bak
+*.ahk.tmp
+*.ahk2exe.log
+*.exe.manifest
+
+# SQLite databases, journals, logs and local application state
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+*.sqlite-shm
+*.sqlite-wal
+*.log
+*.pid
+
+# Tool-specific user data is outside this repository by default; ignore it if copied in.
+**/.toto/
+
+# Code analysis tool state
 .code-review-graph/

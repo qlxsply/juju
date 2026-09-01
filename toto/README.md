@@ -1,120 +1,69 @@
 # toto
 
-`toto` 是一个面向 Windows 11 的轻量待办提醒工具，使用 AutoHotkey v2 编写。
+`toto` 是一个面向 Windows 11 的轻量事项管理与提醒工具。当前实现使用 C#、.NET 10 WinForms 和 SQLite；同目录的 `toto.ahk` 是旧版 AutoHotkey v2 行为基线，仅用于回归比对和旧数据迁移。
 
-## 主要功能
+## 功能
 
-- 默认使用 `Ctrl + Alt + Space` 全局唤醒，可在设置中修改。
-- 主界面展示进行中事项，按计划时间递增排序；无计划时间的事项排在末尾。
-- 支持新增、编辑、完成、取消和查看历史事项。
-- 完成事项记录为“已完成”，取消事项记录为“已取消”。
-- 使用单个一次性 Timer 调度最近提醒，避免高频轮询。
-- 提醒状态持久化，程序重启、系统恢复或解锁后会补发尚未提醒的逾期事项。
-- 主窗口关闭后隐藏到托盘，只有托盘菜单“退出”才会结束程序。
-- 支持单实例运行和登录 Windows 后自动启动。
+- 托盘常驻、单实例运行、全局唤醒快捷键和 Windows 登录后自动启动。
+- 进行中事项的新增、编辑、详情、完成和取消；主列表按计划时间和创建序号稳定排序。
+- 快速输入：`事项内容[@计划时间[@提前提醒分钟数]]`，支持 `HHmm`、`ddHHmm`、`MMddHHmm`、`yyyyMMddHHmm`、`+HHmm` 等时间格式。
+- 单次 Timer 调度事项提醒；提醒状态先写入数据库，再显示提醒窗口；处理锁屏、解锁、休眠恢复和系统时间变化。
+- SQLite 保存进行中与历史事项；历史列表支持数据库分页，默认每页 200 条。
+- 内容、备注和时间范围筛选；所有用户条件使用参数化 SQL。
+- 工作日特殊日期维护，以及可选的上班/下班汇总提醒。
+- 使用 `DataGridView` 原生网格线，避免旧版 ListView/GDI 自绘网格的 DPI 与滚动错位问题。
 
-## 运行要求
-
-- Windows 11
-- AutoHotkey v2.0 或更高版本
-
-安装 AutoHotkey v2 后，双击 `toto.ahk` 即可运行。
-
-首次运行会自动创建：
+## 架构
 
 ```text
-%USERPROFILE%\.toto\
-├── config.ini
-├── toto_ing.csv
-└── toto_end.csv
+toto/
+├── Toto.sln                         # Rider / Visual Studio 入口
+├── src/Toto.App/
+│   ├── Domain/                      # 事项、状态、查询条件等模型
+│   ├── Data/                        # SQLite schema、仓储和旧数据迁移
+│   ├── Services/                    # 单实例、快捷键、调度、工作日和启动项
+│   ├── UI/                          # WinForms 窗口和 DataGridView 界面
+│   ├── Program.cs
+│   └── TotoApplicationContext.cs    # 托盘与应用生命周期
+├── toto.ahk                         # 旧版 AHK 行为基线
+├── templates/                       # 旧 CSV/INI 格式示例
+└── toto_CSharp_NET10_WinForms_SQLite_改造实施规格.md
 ```
 
-`templates` 目录中的文件只是默认格式示例，程序不会直接读取这些模板。
+应用数据位于 `%USERPROFILE%\.toto\`：
 
-## 输入格式
+- `toto.db`：主 SQLite 数据库。
+- `legacy_backup/`：首次迁移旧 INI/CSV 前创建的备份。
+- `logs/`：按月滚动的运行日志。
 
-```text
-事项内容
-事项内容@计划时间
-事项内容@计划时间@提前提醒分钟数
+首次启动会备份并迁移同目录下已有的 `config.ini`、`toto_ing.csv` 和 `toto_end.csv`。迁移成功后保留原文件，不会将其删除或覆盖。
+
+## 开发与运行
+
+要求：Windows 11、.NET 10 SDK。首次构建需要访问 NuGet 以还原 `Microsoft.Data.Sqlite`。
+
+```powershell
+dotnet build .\Toto.sln
+dotnet run --project .\src\Toto.App\Toto.App.csproj
 ```
 
-计划时间支持：
+在 Rider 或 Visual Studio 中打开 `toto/Toto.sln`。
 
-| 位数 | 格式 | 示例 | 含义 |
-|---:|---|---|---|
-| 4 | `HHmm` | `1600` | 当日 16:00 |
-| 6 | `ddHHmm` | `201600` | 当月 20 日 16:00 |
-| 8 | `MMddHHmm` | `07201600` | 当年 7 月 20 日 16:00 |
-| 12 | `yyyyMMddHHmm` | `202707201600` | 2027 年 7 月 20 日 16:00 |
+发布 framework-dependent x64 版本：
 
-示例：
-
-```text
-整理桌面
-完成绩效评估@1600
-完成绩效评估@1600@5
-提交年度预算@202701151730@30
+```powershell
+dotnet publish .\src\Toto.App\Toto.App.csproj -c Release -r win-x64 --self-contained false
 ```
 
-规则：
+## 使用
 
-- 只有事项内容时，不设置计划时间，也不会提醒。
-- 设置计划时间但省略提醒分钟数时，使用 `config.ini` 中的默认值，初始为 5 分钟。
-- 提前提醒分钟数只能是非负整数。
-- 计划时间必须晚于当前时间，短格式不会自动滚动到明天、下月或下一年。
-- 事项内容不能包含 `@` 或换行。
-- 如果计划时间仍在未来，但提前提醒时间已经过去，保存后会立即提醒。
+- 默认全局唤醒：`Ctrl+Alt+Space`。
+- 默认应用内快捷键：新增 `Alt+A`、历史 `Alt+Q`、设置 `Alt+S`、刷新 `Alt+R`、详情 `Alt+D`、编辑 `Alt+E`、完成 `Alt+F`、取消 `Alt+C`。
+- 关闭主窗口或按 `Esc` 时仅隐藏到托盘；从托盘菜单选择“退出”才会结束进程。
+- 提醒窗口关闭不会改变事项状态；可在窗口中完成选中的事项。
 
-## 操作
+完整的行为边界、数据库结构和验收项见 [改造实施规格](toto_CSharp_NET10_WinForms_SQLite_改造实施规格.md)。
 
-- 全局快捷键：打开主界面。
-- 主界面 `Ctrl + A`：新增事项。
-- 双击事项：编辑。
-- “完成”：移动到历史事项，状态为“已完成”。
-- “取消”：移动到历史事项，状态为“已取消”。
-- 关闭主窗口或按 `Esc`：隐藏到托盘。
-- 托盘菜单“退出”：真正退出程序。
+## 旧版 AHK
 
-提醒窗口会置顶、尝试激活、播放系统提示音并闪烁；窗口必须手动关闭。受 Windows 前台窗口限制，UAC 安全桌面、锁屏或部分独占全屏程序中无法保证抢占输入焦点。
-
-## 配置文件
-
-默认配置：
-
-```ini
-[General]
-hotkey=^!Space
-default_remind_minutes=5
-auto_start=0
-```
-
-建议通过应用内“设置”修改，不要在程序运行期间手动编辑配置文件。
-
-## CSV 文件
-
-CSV 使用中文表头、UTF-8 BOM 和标准双引号转义。应用写入 CSV 时采用临时文件替换方式。
-
-不要在 Excel 等程序独占锁定 CSV 时修改事项，否则 toto 会提示写入失败，并保留原文件。
-
-## 可选：编译为 EXE
-
-安装 AutoHotkey v2 的 Ahk2Exe 后，可右键 `toto.ahk` 选择编译，或使用 Ahk2Exe 图形界面。编译后的 EXE 不需要目标电脑单独关联 `.ahk` 文件。
-
-## 建议首次验收
-
-1. 新建无计划时间事项，确认其排在列表末尾。
-2. 新建两条相同计划时间事项，确认保持创建顺序。
-3. 分别测试省略提醒分钟数和显式填写提醒分钟数。
-4. 到达提醒时间后确认只提醒一次。
-5. 提醒后重启程序，确认不会重复提醒。
-6. 创建即将到期事项，锁屏后等待到期，再解锁确认补发。
-7. 分别完成和取消事项，检查历史状态及倒序排列。
-8. 修改全局快捷键，并确认不重启即可生效。
-9. 启用开机启动，检查启动目录中的 `toto.lnk`。
-10. 在 Excel 中打开并锁定 CSV，确认写入失败时原数据仍在。
-
-## 当前版本
-
-- 版本：0.1.0
-- 主文件：`toto.ahk`
+若需运行旧版进行行为比对，安装 AutoHotkey v2 后运行 `toto.ahk`。旧版使用 CSV/INI 作为主存储；新版本使用 SQLite，二者不应同时操作同一份 `%USERPROFILE%\.toto` 数据目录。
