@@ -1,6 +1,6 @@
 # toto
 
-`toto` 是一个面向 Windows 11 的轻量事项管理与提醒工具。当前实现使用 C#、.NET 10 WinForms 和 SQLite；同目录的 `toto.ahk` 是旧版 AutoHotkey v2 行为基线，仅用于回归比对和旧数据迁移。
+`toto` 是一个面向 Windows 11 的轻量事项管理与提醒工具。当前实现使用 C#、.NET 10 WinForms 和 SQLite。
 
 ## 功能
 
@@ -25,9 +25,7 @@ toto/
 │   ├── UI/                          # WinForms 窗口和 DataGridView 界面
 │   ├── Program.cs
 │   └── TotoApplicationContext.cs    # 托盘与应用生命周期
-├── toto.ahk                         # 旧版 AHK 行为基线
-├── templates/                       # 旧 CSV/INI 格式示例
-└── toto_CSharp_NET10_WinForms_SQLite_改造实施规格.md
+└── templates/                       # CSV/INI 格式示例
 ```
 
 应用数据位于 `%USERPROFILE%\.toto\`：
@@ -61,9 +59,3 @@ dotnet publish .\src\Toto.App\Toto.App.csproj -c Release -r win-x64 --self-conta
 - 默认应用内快捷键：新增 `Alt+A`、历史 `Alt+Q`、设置 `Alt+S`、刷新 `Alt+R`、详情 `Alt+D`、编辑 `Alt+E`、完成 `Alt+F`、取消 `Alt+C`。
 - 关闭主窗口或按 `Esc` 时仅隐藏到托盘；从托盘菜单选择“退出”才会结束进程。
 - 提醒窗口关闭不会改变事项状态；可在窗口中完成选中的事项。
-
-完整的行为边界、数据库结构和验收项见 [改造实施规格](toto_CSharp_NET10_WinForms_SQLite_改造实施规格.md)。
-
-## 旧版 AHK
-
-若需运行旧版进行行为比对，安装 AutoHotkey v2 后运行 `toto.ahk`。旧版使用 CSV/INI 作为主存储；新版本使用 SQLite，二者不应同时操作同一份 `%USERPROFILE%\.toto` 数据目录。
