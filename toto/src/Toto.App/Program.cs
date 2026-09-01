@@ -12,7 +12,7 @@ internal static class Program
         var paths = new AppPaths(); var log = new AppLog(paths.LogDirectory); Application.ThreadException += (_, e) => log.Write($"Unhandled UI exception: {e.Exception.Message}"); AppDomain.CurrentDomain.UnhandledException += (_, e) => log.Write($"Unhandled exception: {e.ExceptionObject}");
         if (!SingleInstanceService.TryCreate(out var instance)) return;
         using (instance)
-        try { var database = new TotoDatabase(paths); new DatabaseInitializer(database).Initialize(); var items = new ItemRepository(database); var settings = new SettingsRepository(database); new LegacyMigrationService(paths, database, items, log).MigrateIfNeeded(); using var context = new TotoApplicationContext(paths, log, items, settings, new WorkCalendarRepository(database)); instance!.ShowRequested += context.ShowMain; Application.Run(context); }
+        try { var items = new ItemRepository(paths); var settings = new SettingsRepository(paths); items.EnsureFiles(); settings.EnsureExists(); var calendar = new WorkCalendarRepository(new HolidayCalendarDownloadService(paths)); calendar.GetYear(DateTime.Today.Year); var schedulerWindowEnd = DateTime.Today.AddDays(7); if (schedulerWindowEnd.Year != DateTime.Today.Year) calendar.GetYear(schedulerWindowEnd.Year); using var context = new TotoApplicationContext(paths, log, items, settings, calendar); instance!.SetShowHandler(context.ShowMain); Application.Run(context); }
         catch (Exception ex) { log.Write($"Startup failed: {ex}"); MessageBox.Show(ex.Message, "toto", MessageBoxButtons.OK, MessageBoxIcon.Error); }
     }
 }

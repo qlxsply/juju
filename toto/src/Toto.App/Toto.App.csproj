@@ -8,9 +8,6 @@
     <ApplicationIcon>..\..\my_icon.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.0" />
-  </ItemGroup>
-  <ItemGroup>
     <None Include="..\..\my_icon.ico" Link="my_icon.ico" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

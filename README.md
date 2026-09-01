@@ -4,7 +4,7 @@
 
 | 工具 | 用途 | 技术 |
 |---|---|---|
-| [`toto`](toto/README.md) | 常驻托盘的事项管理与定时提醒工具 | C#、.NET 10 WinForms、SQLite |
+| [`toto`](toto/README.md) | 常驻托盘的事项管理与定时提醒工具 | C#、.NET 10 WinForms、CSV/INI |
 | [`ime_switch`](ime_switch/README.md) | 在切换前台窗口时将中文 IME 调整为英文输入模式 | AutoHotkey v2 |
 
 ## 目录约定
