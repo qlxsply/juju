@@ -1,5 +1,6 @@
 using Toto.App.Data;
 using Toto.App.Domain;
+using Timer = System.Windows.Forms.Timer;
 
 namespace Toto.App.UI;
 
@@ -8,6 +9,7 @@ internal sealed class HistoryForm : EscapeCloseForm
 {
     /// <summary>查询历史事项的仓储。</summary>
     private readonly ItemRepository items;
+    private readonly SettingsRepository settings;
     /// <summary>将当前页结果绑定到表格的 WinForms 绑定源。</summary>
     private readonly DataGridView grid = MainForm.Grid();
     private readonly BindingSource binding = new();
@@ -18,44 +20,49 @@ internal sealed class HistoryForm : EscapeCloseForm
     private readonly DateTimePicker endedFrom = DatePicker();
     private readonly DateTimePicker endedTo = DatePicker();
     private readonly ComboBox pageSize = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 70 };
+    /// <summary>合并连续输入事件，避免每个按键都立即读取历史数据。</summary>
+    private readonly Timer searchTimer = new() { Interval = 200 };
     private QueryCriteria criteria = new();
     private int page = 1;
     private int total;
 
     /// <summary>初始化历史查询控件、分页操作和数据绑定。</summary>
     /// <param name="items">历史事项数据的仓储。</param>
-    public HistoryForm(ItemRepository items)
+    public HistoryForm(ItemRepository items, SettingsRepository settings)
     {
         this.items = items;
+        this.settings = settings;
         Text = "toto - 历史事项";
         StartPosition = FormStartPosition.CenterParent;
         Size = new Size(1150, 620);
+        WindowStateTracker.RestoreAndTrack(this, settings, "history");
         grid.Columns.RemoveAt(3);
         MainForm.AddColumn(grid, "结束状态", nameof(TodoItem.Status), 90);
         MainForm.AddColumn(grid, "结束时间", nameof(TodoItem.EndedAt), 155);
         grid.CellDoubleClick += (_, _) =>
         {
-            if (grid.CurrentRow?.DataBoundItem is TodoItem item) new ItemDetailForm(item).Show();
+            if (grid.CurrentRow?.DataBoundItem is TodoItem item) new ItemDetailForm(item, settings).Show();
         };
         grid.DataSource = binding;
+        searchTimer.Tick += (_, _) => SearchNow();
+        FormClosed += (_, _) => searchTimer.Dispose();
         // collection expression 根据 AddRange 参数类型推断并创建整数数组。
         pageSize.Items.AddRange([100, 200, 500]);
         pageSize.SelectedItem = 200;
         endedPreset.Items.AddRange(["不限", "本周", "上一周", "本月", "上一月", "本年", "上一年", "自定义"]);
         endedPreset.SelectedIndex = 0;
         endedPreset.SelectedIndexChanged += (_, _) => ApplyEndedPreset();
+        content.TextChanged += (_, _) => ScheduleSearch();
+        note.TextChanged += (_, _) => ScheduleSearch();
+        endedFrom.ValueChanged += (_, _) => ScheduleSearch();
+        endedTo.ValueChanged += (_, _) => ScheduleSearch();
+        // 勾选或取消日期控件内置复选框不会保证触发 ValueChanged，因此也监听鼠标和键盘操作。
+        endedFrom.MouseUp += (_, _) => ScheduleSearch();
+        endedTo.MouseUp += (_, _) => ScheduleSearch();
+        endedFrom.KeyUp += (_, _) => ScheduleSearch();
+        endedTo.KeyUp += (_, _) => ScheduleSearch();
         var top = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 42, Padding = new Padding(8), WrapContents = false };
-        MainForm.AddButton(top, "查询", (_, _) =>
-        {
-            criteria = new QueryCriteria
-            {
-                Content = content.Text, Note = note.Text,
-                EndedFrom = endedFrom.Checked ? endedFrom.Value.Date : null,
-                EndedTo = endedTo.Checked ? endedTo.Value.Date.AddDays(1) : null
-            };
-            page = 1;
-            LoadPage();
-        });
+        MainForm.AddButton(top, "查询", (_, _) => SearchNow());
         MainForm.AddButton(top, "重置", (_, _) =>
         {
             content.Clear();
@@ -63,9 +70,7 @@ internal sealed class HistoryForm : EscapeCloseForm
             endedPreset.SelectedIndex = 0;
             endedFrom.Checked = false;
             endedTo.Checked = false;
-            criteria = new();
-            page = 1;
-            LoadPage();
+            SearchNow();
         });
         top.Controls.AddRange([content, note, new Label { Text = "结束日期：", AutoSize = true, Padding = new Padding(5, 6, 0, 0) }, endedPreset, endedFrom, endedTo]);
         var bottom = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 42, Padding = new Padding(8) };
@@ -121,6 +126,27 @@ internal sealed class HistoryForm : EscapeCloseForm
         pageLabel.Text = $"共 {total} 条，第 {page}/{MaxPage()} 页";
     }
 
+    /// <summary>在筛选条件变化后延迟查询，将连续输入合并为一次数据读取。</summary>
+    private void ScheduleSearch()
+    {
+        searchTimer.Stop();
+        searchTimer.Start();
+    }
+
+    /// <summary>立即根据所有当前筛选控件重建条件，并从第一页显示结果。</summary>
+    private void SearchNow()
+    {
+        searchTimer.Stop();
+        criteria = new QueryCriteria
+        {
+            Content = content.Text, Note = note.Text,
+            EndedFrom = endedFrom.Checked ? endedFrom.Value.Date : null,
+            EndedTo = endedTo.Checked ? endedTo.Value.Date.AddDays(1) : null
+        };
+        page = 1;
+        LoadPage();
+    }
+
     /// <summary>根据总记录数和选定页大小计算至少为一的最大页码。</summary>
     /// <returns>可导航到的最后页码。</returns>
     private int MaxPage() => Math.Max(1, (int)Math.Ceiling(total / (double)(int)pageSize.SelectedItem!));
@@ -169,5 +195,6 @@ internal sealed class HistoryForm : EscapeCloseForm
         endedTo.Checked = toInclusive is not null;
         if (from is not null) endedFrom.Value = from.Value;
         if (toInclusive is not null) endedTo.Value = toInclusive.Value;
+        ScheduleSearch();
     }
 }

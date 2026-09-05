@@ -1,3 +1,4 @@
+using System.Globalization;
 using Toto.App.Domain;
 
 namespace Toto.App.Data;
@@ -46,6 +47,32 @@ internal sealed class SettingsRepository(AppPaths paths)
         lock (gate) SaveCore(settings);
     }
 
+    /// <summary>读取指定窗口上次正常显示时的边界；未记录或格式无效时返回空。</summary>
+    public Rectangle? LoadWindowBounds(string window)
+    {
+        lock (gate)
+        {
+            var text = IniFile.Load(paths.ConfigPath).Get("WindowState", window);
+            var values = text?.Split(',');
+            if (values is not { Length: 4 } || !int.TryParse(values[0], out var left) ||
+                !int.TryParse(values[1], out var top) || !int.TryParse(values[2], out var width) ||
+                !int.TryParse(values[3], out var height) || width <= 0 || height <= 0)
+                return null;
+            return new Rectangle(left, top, width, height);
+        }
+    }
+
+    /// <summary>保存窗口上次正常显示时的左上角位置和大小。</summary>
+    public void SaveWindowBounds(string window, Rectangle bounds)
+    {
+        lock (gate)
+        {
+            var ini = IniFile.Load(paths.ConfigPath);
+            ini.Set("WindowState", window, $"{bounds.Left},{bounds.Top},{bounds.Width},{bounds.Height}");
+            ini.SaveAtomically(paths.ConfigPath);
+        }
+    }
+
     /// <summary>判断指定日期和弹窗类型是否已经显示过。</summary>
     public bool WasScheduledPopupShown(DateOnly date, ScheduledPopupKind kind)
     {
@@ -58,8 +85,18 @@ internal sealed class SettingsRepository(AppPaths paths)
         lock (gate)
         {
             var ini = IniFile.Load(paths.ConfigPath);
+            // 仅保留当天的上班/下班标记，避免计划弹窗状态按日期无限增长。
+            var expired = ini.GetSection("ScheduledPopups").Keys
+                .Where(key => IsExpiredPopupKey(key, date))
+                .ToArray();
+            foreach (var expiredKey in expired) ini.Remove("ScheduledPopups", expiredKey);
+
             var key = PopupKey(date, kind);
-            if (ini.Get("ScheduledPopups", key) is not null) return false;
+            if (ini.Get("ScheduledPopups", key) is not null)
+            {
+                if (expired.Length > 0) ini.SaveAtomically(paths.ConfigPath);
+                return false;
+            }
             ini.Set("ScheduledPopups", key, DateTimeText.Text(shownAt));
             ini.SaveAtomically(paths.ConfigPath);
             return true;
@@ -78,4 +115,16 @@ internal sealed class SettingsRepository(AppPaths paths)
     /// <summary>生成 INI 中用于标识一次计划弹窗的稳定键。</summary>
     private static string PopupKey(DateOnly date, ScheduledPopupKind kind) =>
         $"{date:yyyy-MM-dd}.{(kind == ScheduledPopupKind.WorkStart ? "work_start" : "work_end")}";
+
+    /// <summary>判断是否为早于当前日期的已知计划弹窗标记；未知键不会被清理。</summary>
+    private static bool IsExpiredPopupKey(string key, DateOnly currentDate)
+    {
+        const string workStart = ".work_start";
+        const string workEnd = ".work_end";
+        if (!key.EndsWith(workStart, StringComparison.Ordinal) && !key.EndsWith(workEnd, StringComparison.Ordinal)) return false;
+
+        var dateText = key[..key.IndexOf('.')];
+        return DateOnly.TryParseExact(dateText, "yyyy-MM-dd", CultureInfo.InvariantCulture,
+            DateTimeStyles.None, out var recordedDate) && recordedDate < currentDate;
+    }
 }

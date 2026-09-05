@@ -11,8 +11,8 @@ internal sealed class ItemEditForm : EscapeCloseForm
     public event Action? Saved;
     /// <summary>执行事项创建和更新的仓储。</summary>
     private readonly ItemRepository items;
-    /// <summary>用于读取默认提醒分钟数的只读设置。</summary>
-    private readonly IReadOnlyDictionary<string, string> settings;
+    /// <summary>用于读取默认提醒分钟数和保存窗口状态的设置仓储。</summary>
+    private readonly SettingsRepository settings;
     private readonly TodoItem? editing;
     private readonly TextBox quick = new() { Dock = DockStyle.Top, PlaceholderText = "事项内容[@计划时间[@提前提醒分钟数]]" };
     private readonly TextBox content = new() { Dock = DockStyle.Fill };
@@ -22,9 +22,9 @@ internal sealed class ItemEditForm : EscapeCloseForm
 
     /// <summary>初始化新增或编辑事项所需的控件和初始值。</summary>
     /// <param name="items">事项仓储。</param>
-    /// <param name="settings">只读应用设置。</param>
+    /// <param name="settings">应用设置和窗口状态仓储。</param>
     /// <param name="editing">待编辑事项；为空时创建新事项。</param>
-    public ItemEditForm(ItemRepository items, IReadOnlyDictionary<string, string> settings, TodoItem? editing)
+    public ItemEditForm(ItemRepository items, SettingsRepository settings, TodoItem? editing)
     {
         this.items = items;
         this.settings = settings;
@@ -32,6 +32,7 @@ internal sealed class ItemEditForm : EscapeCloseForm
         Text = editing is null ? "toto - 新增事项" : "toto - 编辑事项";
         StartPosition = FormStartPosition.CenterParent;
         Size = new Size(760, 370);
+        WindowStateTracker.RestoreAndTrack(this, settings, "item-edit");
         var layout = new TableLayoutPanel
             { Dock = DockStyle.Fill, Padding = new Padding(12), ColumnCount = 2, RowCount = 6 };
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 85));
@@ -81,7 +82,7 @@ internal sealed class ItemEditForm : EscapeCloseForm
         if (editing is null)
         {
             if (!QuickItemParser.TryParse(quick.Text,
-                    int.TryParse(settings.GetValueOrDefault("default_remind_minutes"), out var minutes) ? minutes : 5,
+                    int.TryParse(settings.Load().GetValueOrDefault("default_remind_minutes"), out var minutes) ? minutes : 5,
                     out var value, out var plan, out var remindAt, out var error))
             {
                 MessageBox.Show(error, Text, MessageBoxButtons.OK, MessageBoxIcon.Warning);
@@ -144,11 +145,12 @@ internal sealed class ItemDetailForm : EscapeCloseForm
 {
     /// <summary>初始化并显示指定事项的全部字段。</summary>
     /// <param name="item">要展示的事项。</param>
-    public ItemDetailForm(TodoItem item)
+    public ItemDetailForm(TodoItem item, SettingsRepository settings)
     {
         Text = item.Status == ItemStatus.Active ? "toto - 进行中事项详情" : "toto - 历史事项详情";
         StartPosition = FormStartPosition.CenterParent;
         Size = new Size(620, 420);
+        WindowStateTracker.RestoreAndTrack(this, settings, "item-detail");
         var panel = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(12), ColumnCount = 2 };
         panel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 90));
         panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
@@ -189,11 +191,12 @@ internal sealed class EndItemForm : EscapeCloseForm
     /// <summary>初始化结束事项确认对话框。</summary>
     /// <param name="item">即将结束的事项。</param>
     /// <param name="status">要应用的完成或取消状态。</param>
-    public EndItemForm(TodoItem item, ItemStatus status)
+    public EndItemForm(TodoItem item, ItemStatus status, SettingsRepository settings)
     {
         Text = "toto - " + (status == ItemStatus.Completed ? "完成" : "取消");
         StartPosition = FormStartPosition.CenterParent;
         Size = new Size(500, 260);
+        WindowStateTracker.RestoreAndTrack(this, settings, "item-end");
         note.Text = item.Note;
         var layout = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(12), RowCount = 3 };
         layout.Controls.Add(

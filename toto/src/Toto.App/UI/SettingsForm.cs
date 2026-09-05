@@ -27,6 +27,7 @@ internal sealed class SettingsForm : EscapeCloseForm
         Text = "toto - 设置";
         StartPosition = FormStartPosition.CenterParent;
         Size = new Size(570, 510);
+        WindowStateTracker.RestoreAndTrack(this, repository, "settings");
         var settings = repository.Load();
         var tabs = new TabControl { Dock = DockStyle.Fill };
         var general = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(12), ColumnCount = 2 };

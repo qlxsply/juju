@@ -8,6 +8,7 @@ internal sealed class WorkCalendarForm : EscapeCloseForm
 {
     /// <summary>保存日历数据的仓储。</summary>
     private readonly WorkCalendarRepository repository;
+    private readonly SettingsRepository settings;
     /// <summary>选择当前显示年份的数值控件。</summary>
     private readonly NumericUpDown year = new()
     {
@@ -25,12 +26,15 @@ internal sealed class WorkCalendarForm : EscapeCloseForm
 
     /// <summary>初始化工作日管理窗口。</summary>
     /// <param name="repository">要操作的日历仓储。</param>
-    public WorkCalendarForm(WorkCalendarRepository repository)
+    /// <param name="settings">应用设置和窗口状态仓储。</param>
+    public WorkCalendarForm(WorkCalendarRepository repository, SettingsRepository settings)
     {
         this.repository = repository;
+        this.settings = settings;
         Text = "toto - 工作日管理";
         StartPosition = FormStartPosition.CenterParent;
         Size = new Size(760, 500);
+        WindowStateTracker.RestoreAndTrack(this, settings, "work-calendar");
         var top = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 42, Padding = new Padding(8), WrapContents = false };
         MainForm.AddButton(top, "下载/更新", (_, _) => Download());
         MainForm.AddButton(top, "刷新", (_, _) => LoadItems());
@@ -97,7 +101,7 @@ internal sealed class WorkCalendarForm : EscapeCloseForm
     /// <param name="old">待编辑的旧值；为空时新增日期。</param>
     private void Edit(HolidayCalendarDay? old)
     {
-        var form = new CalendarEditForm(old);
+        var form = new CalendarEditForm(old, settings);
         form.Saved += item =>
         {
             repository.Upsert(item);
@@ -121,11 +125,12 @@ internal sealed class CalendarEditForm : EscapeCloseForm
 
     /// <summary>初始化日历日期编辑对话框。</summary>
     /// <param name="old">要预填的旧值；为空时创建空白对话框。</param>
-    public CalendarEditForm(HolidayCalendarDay? old)
+    public CalendarEditForm(HolidayCalendarDay? old, SettingsRepository settings)
     {
         Text = "节假日设置";
         StartPosition = FormStartPosition.CenterParent;
         Size = new Size(380, 200);
+        WindowStateTracker.RestoreAndTrack(this, settings, "calendar-edit");
         // C# 的 is not null 是可空流分析友好的模式匹配，而不是 Java 的普通引用比较。
         if (old is not null)
         {

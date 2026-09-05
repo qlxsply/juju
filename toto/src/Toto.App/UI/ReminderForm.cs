@@ -10,6 +10,7 @@ internal sealed class ReminderForm : EscapeCloseForm
 {
     /// <summary>执行事项完成操作的仓储。</summary>
     private readonly ItemRepository repository;
+    private readonly SettingsRepository settings;
     private readonly List<TodoItem> displayedItems;
 
     private readonly DataGridView grid = new()
@@ -23,15 +24,18 @@ internal sealed class ReminderForm : EscapeCloseForm
     /// <summary>初始化提醒窗口并绑定要显示的事项。</summary>
     /// <param name="repository">事项仓储。</param>
     /// <param name="items">显示在表格中的只读事项集合。</param>
+    /// <param name="settings">应用设置和窗口状态仓储。</param>
     /// <param name="title">窗口标题。</param>
-    public ReminderForm(ItemRepository repository, IReadOnlyList<TodoItem> items, string title)
+    public ReminderForm(ItemRepository repository, IReadOnlyList<TodoItem> items, SettingsRepository settings, string title)
     {
         this.repository = repository;
+        this.settings = settings;
         displayedItems = [..items];
         Text = title;
         TopMost = true;
         StartPosition = FormStartPosition.CenterScreen;
         Size = new Size(720, 400);
+        WindowStateTracker.RestoreAndTrack(this, settings, "reminder");
         MainForm.AddColumn(grid, "事项内容", nameof(TodoItem.Content), 320, true);
         MainForm.AddColumn(grid, "计划时间", nameof(TodoItem.PlannedAt), 160);
         MainForm.AddColumn(grid, "提醒时间", nameof(TodoItem.RemindAt), 160);
@@ -40,7 +44,7 @@ internal sealed class ReminderForm : EscapeCloseForm
         MainForm.AddButton(bottom, "完成选中", (_, _) =>
         {
             if (grid.CurrentRow?.DataBoundItem is not TodoItem item) return;
-            var form = new EndItemForm(item, ItemStatus.Completed) { TopMost = true };
+            var form = new EndItemForm(item, ItemStatus.Completed, settings) { TopMost = true };
             form.Confirmed += note =>
             {
                 if (!repository.End(item.Id, ItemStatus.Completed, note, DateTime.Now)) return;

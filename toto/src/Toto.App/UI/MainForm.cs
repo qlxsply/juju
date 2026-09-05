@@ -36,6 +36,7 @@ internal sealed class MainForm : EscapeCloseForm
         StartPosition = FormStartPosition.CenterScreen;
         MinimumSize = new Size(850, 450);
         Size = new Size(1100, 600);
+        WindowStateTracker.RestoreAndTrack(this, settings, "main");
         KeyPreview = true;
         grid.DataSource = binding;
         // WinForms 事件以委托形式传递事件源和参数；这里用 lambda 忽略二者。
@@ -57,7 +58,7 @@ internal sealed class MainForm : EscapeCloseForm
     /// <summary>显示独立的新增事项窗口，并在保存后刷新调度。</summary>
     public void ShowEditor()
     {
-        var editor = new ItemEditForm(items, settings.Load(), null);
+        var editor = new ItemEditForm(items, settings, null);
         editor.Saved += OnItemSaved;
         editor.Show();
     }
@@ -76,7 +77,7 @@ internal sealed class MainForm : EscapeCloseForm
     private void EditSelected()
     {
         if (Selected() is not { } item) return;
-        var editor = new ItemEditForm(items, settings.Load(), item);
+        var editor = new ItemEditForm(items, settings, item);
         editor.Saved += OnItemSaved;
         editor.Show();
     }
@@ -84,7 +85,7 @@ internal sealed class MainForm : EscapeCloseForm
     /// <summary>显示当前选中事项的只读详情窗口。</summary>
     private void ShowDetail()
     {
-        if (Selected() is { } item) new ItemDetailForm(item).Show();
+        if (Selected() is { } item) new ItemDetailForm(item, settings).Show();
     }
 
     /// <summary>以指定结束状态关闭当前选中的事项。</summary>
@@ -92,7 +93,7 @@ internal sealed class MainForm : EscapeCloseForm
     private void EndSelected(ItemStatus state)
     {
         if (Selected() is not { } item) return;
-        var form = new EndItemForm(item, state) { TopMost = true };
+        var form = new EndItemForm(item, state, settings) { TopMost = true };
         form.Confirmed += note =>
         {
             if (!items.End(item.Id, state, note, DateTime.Now)) return;
@@ -144,7 +145,7 @@ internal sealed class MainForm : EscapeCloseForm
         var configured = settings.Load();
         var actions = new Dictionary<string, Action>
         {
-            ["shortcut_add"] = ShowEditor, ["shortcut_history"] = () => new HistoryForm(items).Show(this),
+            ["shortcut_add"] = ShowEditor, ["shortcut_history"] = () => new HistoryForm(items, settings).Show(this),
             ["shortcut_settings"] = ShowSettings, ["shortcut_refresh"] = RefreshItems, ["shortcut_detail"] = ShowDetail,
             ["shortcut_edit"] = EditSelected, ["shortcut_complete"] = () => EndSelected(ItemStatus.Completed),
             ["shortcut_cancel"] = () => EndSelected(ItemStatus.Cancelled)

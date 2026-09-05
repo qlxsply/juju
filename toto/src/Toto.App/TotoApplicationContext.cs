@@ -83,9 +83,9 @@ internal sealed class TotoApplicationContext : ApplicationContext
             ShowMain();
             main!.ShowEditor();
         });
-        menu.Items.Add("历史事项", null, (_, _) => new HistoryForm(items).Show(main));
+        menu.Items.Add("历史事项", null, (_, _) => new HistoryForm(items, settings).Show(main));
         menu.Items.Add("设置", null, (_, _) => ShowSettingsWindow());
-        menu.Items.Add("工作日管理", null, (_, _) => new WorkCalendarForm(repository).Show());
+        menu.Items.Add("工作日管理", null, (_, _) => new WorkCalendarForm(repository, settings).Show());
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("退出", null, (_, _) => ExitThread());
         return menu;
@@ -120,14 +120,14 @@ internal sealed class TotoApplicationContext : ApplicationContext
     /// <param name="due">需要提醒的只读事项集合。</param>
     private void ShowReminders(IReadOnlyList<TodoItem> due)
     {
-        ShowReminderWindow(new ReminderForm(items, due, "toto 提醒"));
+        ShowReminderWindow(new ReminderForm(items, due, settings, "toto 提醒"));
     }
 
     /// <summary>根据上班或下班计划显示全部进行中事项。</summary>
     /// <param name="kind">决定弹窗标题的计划类型。</param>
     private void ShowWorkPopup(ScheduledPopupKind kind)
     {
-        ShowReminderWindow(new ReminderForm(items, items.GetActive(),
+        ShowReminderWindow(new ReminderForm(items, items.GetActive(), settings,
             kind == ScheduledPopupKind.WorkStart ? "toto - 上班事项提醒" : "toto - 下班事项提醒"));
     }
 
