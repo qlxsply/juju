@@ -1,0 +1,52 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "*_v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release-toto:
+    # 其他工具可在此工作流中新增按各自 <tool>_v 前缀筛选的 job。
+    if: startsWith(github.ref_name, 'toto_v')
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up .NET 10 SDK
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Publish and package Toto
+        id: package
+        shell: pwsh
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          $tag = $env:RELEASE_TAG
+          if ($tag -notmatch '^toto_v(?<version>\d+\.\d+\.\d+)$') {
+            throw "Invalid Toto release tag '$tag'. Expected toto_vA.B.C, for example toto_v1.0.0."
+          }
+
+          $publishDirectory = Join-Path $env:RUNNER_TEMP 'toto-win-x64'
+          & .\toto\scripts\Publish-Portable.ps1 -OutputDirectory $publishDirectory
+          if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+          }
+
+          $archive = Join-Path $env:GITHUB_WORKSPACE "toto_v$($Matches.version).win64.zip"
+          Compress-Archive -Path (Join-Path $publishDirectory 'toto.exe') -DestinationPath $archive -Force
+          "asset=$archive" | Add-Content -Path $env:GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          generate_release_notes: true
+          files: ${{ steps.package.outputs.asset }}
