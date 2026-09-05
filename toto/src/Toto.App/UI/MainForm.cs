@@ -1,38 +1,189 @@
-using System.ComponentModel;
 using Toto.App.Data;
 using Toto.App.Domain;
 using Toto.App.Services;
+using Timer = System.Windows.Forms.Timer;
 
 namespace Toto.App.UI;
 
 internal sealed class MainForm : Form
 {
-    private readonly ItemRepository items; private readonly SettingsRepository settings; private readonly ReminderScheduler scheduler; private readonly Action settingsChanged; private readonly DataGridView grid = Grid(); private readonly BindingSource binding = new(); private readonly Label status = new() { AutoSize = true }; private readonly System.Windows.Forms.Timer urgencyTimer = new() { Interval = 60000 };
-    public MainForm(ItemRepository items, SettingsRepository settings, ReminderScheduler scheduler, Action settingsChanged)
+    private readonly ItemRepository items;
+    private readonly SettingsRepository settings;
+    private readonly ReminderScheduler scheduler;
+    private readonly Action settingsChanged;
+    private readonly DataGridView grid = Grid();
+    private readonly BindingSource binding = new();
+    private readonly Label status = new() { AutoSize = true };
+    private readonly Timer urgencyTimer = new() { Interval = 60000 };
+
+    public MainForm(ItemRepository items, SettingsRepository settings, ReminderScheduler scheduler,
+        Action settingsChanged)
     {
-        this.items = items; this.settings = settings; this.scheduler = scheduler; this.settingsChanged = settingsChanged; Text = "toto - 进行中事项"; StartPosition = FormStartPosition.CenterScreen; MinimumSize = new Size(850, 450); Size = new Size(1100, 600); KeyPreview = true;
-        grid.DataSource = binding; grid.CellDoubleClick += (_, _) => ShowDetail(); grid.CellFormatting += FormatCell; Controls.Add(grid); Controls.Add(status); status.Dock = DockStyle.Bottom; status.Padding = new Padding(10); urgencyTimer.Tick += (_, _) => grid.Invalidate(); VisibleChanged += (_, _) => urgencyTimer.Enabled = Visible; FormClosing += HideOnClose; RefreshItems();
+        this.items = items;
+        this.settings = settings;
+        this.scheduler = scheduler;
+        this.settingsChanged = settingsChanged;
+        Text = "toto - 进行中事项";
+        StartPosition = FormStartPosition.CenterScreen;
+        MinimumSize = new Size(850, 450);
+        Size = new Size(1100, 600);
+        KeyPreview = true;
+        grid.DataSource = binding;
+        grid.CellDoubleClick += (_, _) => ShowDetail();
+        grid.CellFormatting += FormatCell;
+        Controls.Add(grid);
+        Controls.Add(status);
+        status.Dock = DockStyle.Bottom;
+        status.Padding = new Padding(10);
+        urgencyTimer.Tick += (_, _) => grid.Invalidate();
+        VisibleChanged += (_, _) => urgencyTimer.Enabled = Visible;
+        FormClosing += HideOnClose;
+        RefreshItems();
     }
+
     public void RefreshItems() => Bind(null);
-    public void ShowEditor() { using var editor = new ItemEditForm(items, settings.Load(), null); if (editor.ShowDialog(this) == DialogResult.OK) { RefreshItems(); scheduler.Reschedule(); } }
-    private void Bind(QueryCriteria? criteria) { var result = items.GetActive(criteria); binding.DataSource = result; status.Text = $"进行中：{result.Count} 项"; }
-    private void EditSelected() { if (Selected() is { } item) { using var editor = new ItemEditForm(items, settings.Load(), item); if (editor.ShowDialog(this) == DialogResult.OK) { RefreshItems(); scheduler.Reschedule(); } } }
-    private void ShowDetail() { if (Selected() is { } item) new ItemDetailForm(item).ShowDialog(this); }
-    private void EndSelected(ItemStatus state) { if (Selected() is not { } item) return; using var form = new EndItemForm(item, state); if (form.ShowDialog(this) == DialogResult.OK && items.End(item.Id, state, form.Note, DateTime.Now)) { RefreshItems(); scheduler.Reschedule(); } }
+
+    public void ShowEditor()
+    {
+        using var editor = new ItemEditForm(items, settings.Load(), null);
+        if (editor.ShowDialog(this) != DialogResult.OK) return;
+        RefreshItems();
+        scheduler.Reschedule();
+    }
+
+    private void Bind(QueryCriteria? criteria)
+    {
+        var result = items.GetActive(criteria);
+        binding.DataSource = result;
+        status.Text = $"进行中：{result.Count} 项";
+    }
+
+    private void EditSelected()
+    {
+        if (Selected() is not { } item) return;
+        using var editor = new ItemEditForm(items, settings.Load(), item);
+        if (editor.ShowDialog(this) != DialogResult.OK) return;
+        RefreshItems();
+        scheduler.Reschedule();
+    }
+
+    private void ShowDetail()
+    {
+        if (Selected() is { } item) new ItemDetailForm(item).ShowDialog(this);
+    }
+
+    private void EndSelected(ItemStatus state)
+    {
+        if (Selected() is not { } item) return;
+        using var form = new EndItemForm(item, state);
+        if (form.ShowDialog(this) != DialogResult.OK || !items.End(item.Id, state, form.Note, DateTime.Now)) return;
+        RefreshItems();
+        scheduler.Reschedule();
+    }
+
     private TodoItem? Selected() => grid.CurrentRow?.DataBoundItem as TodoItem;
-    private void FormatCell(object? sender, DataGridViewCellFormattingEventArgs e) { if (grid.Rows[e.RowIndex].DataBoundItem is not TodoItem item || grid.Rows[e.RowIndex].Selected) return; if (item.PlannedAt is { } planned) { var color = planned <= DateTime.Now.AddHours(1) ? Color.Firebrick : planned.Date == DateTime.Today ? Color.ForestGreen : planned.Date == DateTime.Today.AddDays(1) ? Color.Olive : grid.ForeColor; e.CellStyle.ForeColor = color; } if (e.Value is ItemStatus state) e.Value = state == ItemStatus.Completed ? "已完成" : state == ItemStatus.Cancelled ? "已取消" : "进行中"; if (e.Value is ReminderStatus reminder) e.Value = reminder switch { ReminderStatus.None => "无提醒", ReminderStatus.Pending => "未提醒", _ => "已提醒" }; }
-    private void HideOnClose(object? sender, FormClosingEventArgs e) { if (e.CloseReason == CloseReason.UserClosing) { e.Cancel = true; Hide(); } }
-    protected override bool ProcessCmdKey(ref Message msg, Keys keyData) { var configured = settings.Load(); var actions = new Dictionary<string, Action> { ["shortcut_add"] = ShowEditor, ["shortcut_history"] = () => new HistoryForm(items).Show(this), ["shortcut_settings"] = ShowSettings, ["shortcut_refresh"] = RefreshItems, ["shortcut_detail"] = ShowDetail, ["shortcut_edit"] = EditSelected, ["shortcut_complete"] = () => EndSelected(ItemStatus.Completed), ["shortcut_cancel"] = () => EndSelected(ItemStatus.Cancelled) }; foreach (var (name, action) in actions) if (Hotkey.TryParse(configured.GetValueOrDefault(name), out var key) && key == keyData) { action(); return true; } return base.ProcessCmdKey(ref msg, keyData); }
-    private void ShowSettings() { using var form = new SettingsForm(settings, scheduler); if (form.ShowDialog(this) == DialogResult.OK) settingsChanged(); }
-    internal static DataGridView Grid() { var value = new DataGridView { Dock = DockStyle.Fill, AutoGenerateColumns = false, ReadOnly = true, MultiSelect = false, SelectionMode = DataGridViewSelectionMode.FullRowSelect, AllowUserToAddRows = false, AllowUserToDeleteRows = false, AllowUserToOrderColumns = false, CellBorderStyle = DataGridViewCellBorderStyle.Single, ColumnHeadersBorderStyle = DataGridViewHeaderBorderStyle.Single, AutoSizeRowsMode = DataGridViewAutoSizeRowsMode.None }; AddColumn(value, "事项内容", nameof(TodoItem.Content), 260); AddColumn(value, "计划时间", nameof(TodoItem.PlannedAt), 155); AddColumn(value, "提醒时间", nameof(TodoItem.RemindAt), 155); AddColumn(value, "提醒状态", nameof(TodoItem.ReminderStatus), 90); AddColumn(value, "创建时间", nameof(TodoItem.CreatedAt), 155); AddColumn(value, "备注", nameof(TodoItem.Note), 240, true); return value; }
-    internal static void AddColumn(DataGridView grid, string header, string property, int width, bool fill = false) => grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = header, DataPropertyName = property, Width = width, AutoSizeMode = fill ? DataGridViewAutoSizeColumnMode.Fill : DataGridViewAutoSizeColumnMode.None });
-    internal static void AddButton(Control parent, string text, EventHandler handler) { var button = new Button { Text = text, AutoSize = true, Height = 28 }; button.Click += handler; parent.Controls.Add(button); }
+
+    private void FormatCell(object? sender, DataGridViewCellFormattingEventArgs e)
+    {
+        if (grid.Rows[e.RowIndex].DataBoundItem is not TodoItem item || grid.Rows[e.RowIndex].Selected) return;
+        if (item.PlannedAt is { } planned)
+        {
+            var color = planned <= DateTime.Now.AddHours(1) ? Color.Firebrick :
+                planned.Date == DateTime.Today ? Color.ForestGreen :
+                planned.Date == DateTime.Today.AddDays(1) ? Color.Olive : grid.ForeColor;
+            e.CellStyle.ForeColor = color;
+        }
+
+        if (e.Value is ItemStatus state)
+            e.Value = state == ItemStatus.Completed ? "已完成" : state == ItemStatus.Cancelled ? "已取消" : "进行中";
+        if (e.Value is ReminderStatus reminder)
+            e.Value = reminder switch { ReminderStatus.None => "无提醒", ReminderStatus.Pending => "未提醒", _ => "已提醒" };
+    }
+
+    private void HideOnClose(object? sender, FormClosingEventArgs e)
+    {
+        if (e.CloseReason != CloseReason.UserClosing) return;
+        e.Cancel = true;
+        Hide();
+    }
+
+    protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+    {
+        var configured = settings.Load();
+        var actions = new Dictionary<string, Action>
+        {
+            ["shortcut_add"] = ShowEditor, ["shortcut_history"] = () => new HistoryForm(items).Show(this),
+            ["shortcut_settings"] = ShowSettings, ["shortcut_refresh"] = RefreshItems, ["shortcut_detail"] = ShowDetail,
+            ["shortcut_edit"] = EditSelected, ["shortcut_complete"] = () => EndSelected(ItemStatus.Completed),
+            ["shortcut_cancel"] = () => EndSelected(ItemStatus.Cancelled)
+        };
+        foreach (var (name, action) in actions)
+            if (Hotkey.TryParse(configured.GetValueOrDefault(name), out var key) && key == keyData)
+            {
+                action();
+                return true;
+            }
+
+        return base.ProcessCmdKey(ref msg, keyData);
+    }
+
+    private void ShowSettings()
+    {
+        using var form = new SettingsForm(settings, scheduler);
+        if (form.ShowDialog(this) == DialogResult.OK) settingsChanged();
+    }
+
+    internal static DataGridView Grid()
+    {
+        var value = new DataGridView
+        {
+            Dock = DockStyle.Fill, AutoGenerateColumns = false, ReadOnly = true, MultiSelect = false,
+            SelectionMode = DataGridViewSelectionMode.FullRowSelect, AllowUserToAddRows = false,
+            AllowUserToDeleteRows = false, AllowUserToOrderColumns = false,
+            CellBorderStyle = DataGridViewCellBorderStyle.Single,
+            ColumnHeadersBorderStyle = DataGridViewHeaderBorderStyle.Single,
+            AutoSizeRowsMode = DataGridViewAutoSizeRowsMode.None
+        };
+        AddColumn(value, "事项内容", nameof(TodoItem.Content), 260);
+        AddColumn(value, "计划时间", nameof(TodoItem.PlannedAt), 155);
+        AddColumn(value, "提醒时间", nameof(TodoItem.RemindAt), 155);
+        AddColumn(value, "提醒状态", nameof(TodoItem.ReminderStatus), 90);
+        AddColumn(value, "创建时间", nameof(TodoItem.CreatedAt), 155);
+        AddColumn(value, "备注", nameof(TodoItem.Note), 240, true);
+        return value;
+    }
+
+    internal static void AddColumn(DataGridView grid, string header, string property, int width, bool fill = false) =>
+        grid.Columns.Add(new DataGridViewTextBoxColumn
+        {
+            HeaderText = header, DataPropertyName = property, Width = width,
+            AutoSizeMode = fill ? DataGridViewAutoSizeColumnMode.Fill : DataGridViewAutoSizeColumnMode.None
+        });
+
+    internal static void AddButton(Control parent, string text, EventHandler handler)
+    {
+        var button = new Button { Text = text, AutoSize = true, Height = 28 };
+        button.Click += handler;
+        parent.Controls.Add(button);
+    }
 }
 
 internal static class Hotkey
 {
     public static bool TryParse(string? text, out Keys keys)
     {
-        keys = Keys.None; if (string.IsNullOrWhiteSpace(text)) return false; foreach (var part in text.Split('+', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)) { if (part.Equals("Ctrl", StringComparison.OrdinalIgnoreCase)) keys |= Keys.Control; else if (part.Equals("Alt", StringComparison.OrdinalIgnoreCase)) keys |= Keys.Alt; else if (part.Equals("Shift", StringComparison.OrdinalIgnoreCase)) keys |= Keys.Shift; else if (part.Equals("Win", StringComparison.OrdinalIgnoreCase)) keys |= Keys.LWin; else if (!Enum.TryParse<Keys>(part, true, out var key)) return false; else keys |= key; } return keys != Keys.None;
+        keys = Keys.None;
+        if (string.IsNullOrWhiteSpace(text)) return false;
+        foreach (var part in text.Split('+', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            if (part.Equals("Ctrl", StringComparison.OrdinalIgnoreCase)) keys |= Keys.Control;
+            else if (part.Equals("Alt", StringComparison.OrdinalIgnoreCase)) keys |= Keys.Alt;
+            else if (part.Equals("Shift", StringComparison.OrdinalIgnoreCase)) keys |= Keys.Shift;
+            else if (part.Equals("Win", StringComparison.OrdinalIgnoreCase)) keys |= Keys.LWin;
+            else if (!Enum.TryParse<Keys>(part, true, out var key)) return false;
+            else keys |= key;
+        }
+
+        return keys != Keys.None;
     }
 }

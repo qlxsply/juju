@@ -1,13 +1,37 @@
 namespace Toto.App.Domain;
 
-internal enum ItemStatus { Active = 0, Completed = 1, Cancelled = 2 }
-internal enum ReminderStatus { None = 0, Pending = 1, Reminded = 2 }
-internal enum ScheduledPopupKind { WorkStart = 1, WorkEnd = 2 }
+internal enum ItemStatus
+{
+    Active = 0,
+    Completed = 1,
+    Cancelled = 2
+}
+
+internal enum ReminderStatus
+{
+    None = 0,
+    Pending = 1,
+    Reminded = 2
+}
+
+internal enum ScheduledPopupKind
+{
+    WorkStart = 1,
+    WorkEnd = 2
+}
 
 internal sealed record TodoItem(
-    string Id, string Content, DateTime? PlannedAt, DateTime? RemindAt, DateTime CreatedAt,
-    long CreatedSeq, ItemStatus Status, ReminderStatus? ReminderStatus, DateTime? RemindedAt,
-    DateTime? EndedAt, string Note);
+    string Id,
+    string Content,
+    DateTime? PlannedAt,
+    DateTime? RemindAt,
+    DateTime CreatedAt,
+    long CreatedSeq,
+    ItemStatus Status,
+    ReminderStatus? ReminderStatus,
+    DateTime? RemindedAt,
+    DateTime? EndedAt,
+    string Note);
 
 internal sealed record HolidayCalendarDay(string Name, DateOnly Date, bool IsOffDay);
 
