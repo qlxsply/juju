@@ -4,6 +4,8 @@ using Timer = System.Threading.Timer;
 
 namespace Toto.App.Services;
 
+/// <summary>计算下一次提醒或工作日弹窗，并在 UI 同步上下文中通知订阅者。</summary>
+/// <remarks>计时器和同步上下文属于需释放或线程关联的资源；关闭时必须调用 <see cref="Dispose"/>。</remarks>
 internal sealed class ReminderScheduler : IDisposable
 {
     private readonly ItemRepository items;
@@ -13,24 +15,31 @@ internal sealed class ReminderScheduler : IDisposable
     private readonly SynchronizationContext context;
     private bool locked;
     private bool disposed;
+    /// <summary>当一个或多个事项到达提醒时间时触发。</summary>
+    // event 仅允许类内部触发；订阅者使用 +=/-=，这比 Java 公开监听器集合更受封装保护。
     public event Action<IReadOnlyList<TodoItem>>? DueReminders;
+    /// <summary>当工作日计划弹窗到期时触发。</summary>
     public event Action<ScheduledPopupKind>? ScheduledPopup;
 
+    /// <summary>创建调度器并捕获当前 UI 同步上下文，用于将通知切回 UI 线程。</summary>
     public ReminderScheduler(ItemRepository items, SettingsRepository settings, WorkCalendarService calendar)
     {
         this.items = items;
         this.settings = settings;
         this.calendar = calendar;
         context = SynchronizationContext.Current ?? new WindowsFormsSynchronizationContext();
+        // Timer 回调在线程池线程执行，不能直接操作 WinForms 控件；后续通过 context.Post 切回 UI 线程。
         timer = new Timer(_ => Tick(), null, Timeout.Infinite, Timeout.Infinite);
     }
 
+    /// <summary>设置锁定状态；锁定时停止所有已安排的计时器回调。</summary>
     public void SetLocked(bool value)
     {
         locked = value;
         Reschedule();
     }
 
+    /// <summary>根据下一次待提醒事项、工作日弹窗和兜底唤醒时间安排一次回调。</summary>
     public void Reschedule()
     {
         if (disposed) return;
@@ -47,8 +56,10 @@ internal sealed class ReminderScheduler : IDisposable
         timer.Change(delay, Timeout.Infinite);
     }
 
+    /// <summary>立即执行一次检查，通常用于从暂停状态恢复。</summary>
     public void Resume() => Tick();
 
+    /// <summary>查找未来七天内最早尚未显示的工作日计划弹窗时间。</summary>
     private DateTime? NextWorkPopup(DateTime now)
     {
         var values = settings.Load();
@@ -73,6 +84,7 @@ internal sealed class ReminderScheduler : IDisposable
         return candidates.Count == 0 ? null : candidates.Min();
     }
 
+    /// <summary>处理到期提醒和计划弹窗，然后安排下一次检查。</summary>
     private void Tick()
     {
         if (disposed || locked) return;
@@ -100,6 +112,7 @@ internal sealed class ReminderScheduler : IDisposable
         Reschedule();
     }
 
+    /// <summary>停止并释放底层线程池计时器。</summary>
     public void Dispose()
     {
         disposed = true;

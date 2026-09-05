@@ -3,9 +3,12 @@ using Toto.App.Domain;
 
 namespace Toto.App.UI;
 
+/// <summary>按内容和备注筛选已结束事项，并以分页表格显示历史记录的窗口。</summary>
 internal sealed class HistoryForm : Form
 {
+    /// <summary>查询历史事项的仓储。</summary>
     private readonly ItemRepository items;
+    /// <summary>将当前页结果绑定到表格的 WinForms 绑定源。</summary>
     private readonly DataGridView grid = MainForm.Grid();
     private readonly BindingSource binding = new();
     private readonly Label pageLabel = new() { AutoSize = true };
@@ -16,6 +19,8 @@ internal sealed class HistoryForm : Form
     private int page = 1;
     private int total;
 
+    /// <summary>初始化历史查询控件、分页操作和数据绑定。</summary>
+    /// <param name="items">历史事项数据的仓储。</param>
     public HistoryForm(ItemRepository items)
     {
         this.items = items;
@@ -30,6 +35,7 @@ internal sealed class HistoryForm : Form
             if (grid.CurrentRow?.DataBoundItem is TodoItem item) new ItemDetailForm(item).ShowDialog(this);
         };
         grid.DataSource = binding;
+        // collection expression 根据 AddRange 参数类型推断并创建整数数组。
         pageSize.Items.AddRange([100, 200, 500]);
         pageSize.SelectedItem = 200;
         var top = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 42, Padding = new Padding(8) };
@@ -83,6 +89,7 @@ internal sealed class HistoryForm : Form
         LoadPage();
     }
 
+    /// <summary>按当前筛选条件和页码读取历史事项，并更新分页提示。</summary>
     private void LoadPage()
     {
         var result = items.GetHistory(criteria, page, (int)pageSize.SelectedItem!);
@@ -91,5 +98,7 @@ internal sealed class HistoryForm : Form
         pageLabel.Text = $"共 {total} 条，第 {page}/{MaxPage()} 页";
     }
 
+    /// <summary>根据总记录数和选定页大小计算至少为一的最大页码。</summary>
+    /// <returns>可导航到的最后页码。</returns>
     private int MaxPage() => Math.Max(1, (int)Math.Ceiling(total / (double)(int)pageSize.SelectedItem!));
 }

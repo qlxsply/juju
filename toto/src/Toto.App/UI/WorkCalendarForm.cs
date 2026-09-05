@@ -3,9 +3,12 @@ using Toto.App.Domain;
 
 namespace Toto.App.UI;
 
+/// <summary>提供节假日和调休日期的查看、下载、添加、编辑与删除界面。</summary>
 internal sealed class WorkCalendarForm : Form
 {
+    /// <summary>保存日历数据的仓储。</summary>
     private readonly WorkCalendarRepository repository;
+    /// <summary>选择当前显示年份的数值控件。</summary>
     private readonly NumericUpDown year = new() { Minimum = 2000, Maximum = 2100, Value = DateTime.Today.Year };
 
     private readonly DataGridView grid = new()
@@ -15,6 +18,8 @@ internal sealed class WorkCalendarForm : Form
         CellBorderStyle = DataGridViewCellBorderStyle.Single
     };
 
+    /// <summary>初始化工作日管理窗口。</summary>
+    /// <param name="repository">要操作的日历仓储。</param>
     public WorkCalendarForm(WorkCalendarRepository repository)
     {
         this.repository = repository;
@@ -36,12 +41,14 @@ internal sealed class WorkCalendarForm : Form
             }
         });
         top.Controls.Add(year);
+        // WinForms 控件事件使用委托回调；lambda 是内联事件处理程序。
         year.ValueChanged += (_, _) => LoadItems();
         Controls.Add(grid);
         Controls.Add(top);
         LoadItems();
     }
 
+    /// <summary>读取所选年份的日历数据并绑定到表格。</summary>
     private void LoadItems()
     {
         try
@@ -54,6 +61,7 @@ internal sealed class WorkCalendarForm : Form
         }
     }
 
+    /// <summary>下载所选年份的日历数据，然后刷新表格。</summary>
     private void Download()
     {
         try
@@ -67,6 +75,8 @@ internal sealed class WorkCalendarForm : Form
         }
     }
 
+    /// <summary>打开新增或编辑日历日期的对话框。</summary>
+    /// <param name="old">待编辑的旧值；为空时新增日期。</param>
     private void Edit(HolidayCalendarDay? old)
     {
         using var form = new CalendarEditForm(old);
@@ -78,18 +88,24 @@ internal sealed class WorkCalendarForm : Form
     }
 }
 
+/// <summary>编辑单个节假日或调休日期的模态对话框。</summary>
 internal sealed class CalendarEditForm : Form
 {
     private readonly DateTimePicker date = new() { Format = DateTimePickerFormat.Short };
     private readonly TextBox name = new();
     private readonly CheckBox isOffDay = new() { Text = "休息日", AutoSize = true };
+    /// <summary>根据当前控件内容构造待保存的日历日期。</summary>
+    /// <remarks><c>HolidayCalendarDay</c> 是不可变记录类型，<c>new</c> 在此创建其新实例。</remarks>
     public HolidayCalendarDay Value => new(name.Text.Trim(), DateOnly.FromDateTime(date.Value), isOffDay.Checked);
 
+    /// <summary>初始化日历日期编辑对话框。</summary>
+    /// <param name="old">要预填的旧值；为空时创建空白对话框。</param>
     public CalendarEditForm(HolidayCalendarDay? old)
     {
         Text = "节假日设置";
         StartPosition = FormStartPosition.CenterParent;
         Size = new Size(380, 200);
+        // C# 的 is not null 是可空流分析友好的模式匹配，而不是 Java 的普通引用比较。
         if (old is not null)
         {
             date.Value = old.Date.ToDateTime(TimeOnly.MinValue);

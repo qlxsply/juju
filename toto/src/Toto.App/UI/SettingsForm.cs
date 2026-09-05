@@ -3,15 +3,21 @@ using Toto.App.Services;
 
 namespace Toto.App.UI;
 
+/// <summary>编辑全局热键、提醒时间、应用内快捷键和开机启动选项的模态窗口。</summary>
 internal sealed class SettingsForm : Form
 {
+    /// <summary>读取和保存配置的仓储。</summary>
     private readonly SettingsRepository repository;
+    /// <summary>设置变更后需重新安排的提醒调度器。</summary>
     private readonly ReminderScheduler scheduler;
     private readonly Dictionary<string, TextBox> values = new();
     private readonly CheckBox autoStart = new() { Text = "登录 Windows 后自动启动 toto", AutoSize = true };
     private readonly CheckBox workStartEnabled = new() { Text = "上班时间自动弹出全部进行中事项", AutoSize = true };
     private readonly CheckBox workEndEnabled = new() { Text = "下班时间自动弹出全部进行中事项", AutoSize = true };
 
+    /// <summary>初始化并以现有设置填充窗口。</summary>
+    /// <param name="repository">设置仓储。</param>
+    /// <param name="scheduler">保存成功后要重新调度的提醒服务。</param>
     public SettingsForm(SettingsRepository repository, ReminderScheduler scheduler)
     {
         this.repository = repository;
@@ -44,6 +50,7 @@ internal sealed class SettingsForm : Form
         work.Controls.Add(workEndEnabled, 1, 2);
         work.RowCount = 3;
         Add(work, "下班时间 HH:mm", "work_end_time", settings);
+        // CheckedChanged 是 WinForms 事件，+= 将 lambda 委托订阅到控件的状态变更通知。
         workStartEnabled.CheckedChanged += (_, _) => values["work_start_time"].Enabled = workStartEnabled.Checked;
         workEndEnabled.CheckedChanged += (_, _) => values["work_end_time"].Enabled = workEndEnabled.Checked;
         values["work_start_time"].Enabled = workStartEnabled.Checked;
@@ -55,6 +62,11 @@ internal sealed class SettingsForm : Form
         Controls.Add(save);
     }
 
+    /// <summary>向表格布局添加标签和与指定配置键关联的文本框。</summary>
+    /// <param name="layout">承载设置行的布局面板。</param>
+    /// <param name="label">显示给用户的标签。</param>
+    /// <param name="key">设置字典中的键。</param>
+    /// <param name="settings">用于预填文本框的只读设置。</param>
     private void Add(TableLayoutPanel layout, string label, string key, IReadOnlyDictionary<string, string> settings)
     {
         var row = layout.RowCount++;
@@ -64,6 +76,9 @@ internal sealed class SettingsForm : Form
         layout.Controls.Add(box, 1, row);
     }
 
+    /// <summary>验证输入、保存设置、更新开机启动状态并重新安排提醒。</summary>
+    /// <param name="sender">触发 Click 事件的保存按钮。</param>
+    /// <param name="e">WinForms Click 事件参数。</param>
     private void Save(object? sender, EventArgs e)
     {
         if (!int.TryParse(values["default_remind_minutes"].Text, out var minutes) || minutes < 0)

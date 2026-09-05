@@ -2,8 +2,11 @@ using System.Globalization;
 
 namespace Toto.App.Services;
 
+/// <summary>解析快速添加事项的文本语法，并计算计划和提醒时间。</summary>
+/// <remarks>输入格式为 <c>内容@计划时间@提前提醒分钟数</c>；后两段均可省略。</remarks>
 internal static class QuickItemParser
 {
+    /// <summary>尝试解析用户输入；失败时返回 <see langword="false"/> 并提供本地化错误信息。</summary>
     public static bool TryParse(string input, int defaultMinutes, out string content, out DateTime? plannedAt,
         out DateTime? remindAt, out string error)
     {
@@ -44,6 +47,7 @@ internal static class QuickItemParser
         return true;
     }
 
+    /// <summary>解析紧凑计划时间，并拒绝当前时刻之前的时间。</summary>
     private static bool TryParsePlan(string value, out DateTime date)
     {
         date = default;

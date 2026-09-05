@@ -4,9 +4,12 @@ using Toto.App.Services;
 
 namespace Toto.App.UI;
 
+/// <summary>新增或编辑单个事项的模态窗口，支持快速文本解析和完整字段编辑。</summary>
 internal sealed class ItemEditForm : Form
 {
+    /// <summary>执行事项创建和更新的仓储。</summary>
     private readonly ItemRepository items;
+    /// <summary>用于读取默认提醒分钟数的只读设置。</summary>
     private readonly IReadOnlyDictionary<string, string> settings;
     private readonly TodoItem? editing;
     private readonly TextBox quick = new() { Dock = DockStyle.Top, PlaceholderText = "事项内容[@计划时间[@提前提醒分钟数]]" };
@@ -15,6 +18,10 @@ internal sealed class ItemEditForm : Form
     private readonly DateTimePicker remind = TimePicker();
     private readonly TextBox note = new() { Multiline = true, Height = 90, Dock = DockStyle.Fill };
 
+    /// <summary>初始化新增或编辑事项所需的控件和初始值。</summary>
+    /// <param name="items">事项仓储。</param>
+    /// <param name="settings">只读应用设置。</param>
+    /// <param name="editing">待编辑事项；为空时创建新事项。</param>
     public ItemEditForm(ItemRepository items, IReadOnlyDictionary<string, string> settings, TodoItem? editing)
     {
         this.items = items;
@@ -55,6 +62,7 @@ internal sealed class ItemEditForm : Form
         var cancel = new Button { Text = "取消", DialogResult = DialogResult.Cancel };
         var buttons = new FlowLayoutPanel
             { AutoSize = true, Dock = DockStyle.Bottom, FlowDirection = FlowDirection.RightToLeft };
+        // [cancel, save] 是 C# 12 collection expression，按目标参数类型创建控件数组。
         buttons.Controls.AddRange([cancel, save]);
         layout.Controls.Add(buttons, 1, 5);
         Controls.Add(layout);
@@ -62,6 +70,9 @@ internal sealed class ItemEditForm : Form
         CancelButton = cancel;
     }
 
+    /// <summary>验证输入后创建新事项，或以修改后的记录副本更新现有事项。</summary>
+    /// <param name="sender">触发 Click 事件的保存按钮。</param>
+    /// <param name="e">WinForms Click 事件参数。</param>
     private void Save(object? sender, EventArgs e)
     {
         if (editing is null)
@@ -91,6 +102,7 @@ internal sealed class ItemEditForm : Form
             var status = newRemind is null ? ReminderStatus.None :
                 changed ? ReminderStatus.Pending : editing.ReminderStatus;
             var reminded = changed || newRemind is null ? null : editing.RemindedAt;
+            // with 为 C# record 的非破坏性复制：保留未列出的值并生成新实例，不会修改原对象。
             if (!items.Update(editing with
                 {
                     Content = content.Text.Trim(), PlannedAt = planned.Checked ? planned.Value : null,
@@ -106,11 +118,16 @@ internal sealed class ItemEditForm : Form
         Close();
     }
 
+    /// <summary>创建支持勾选启用状态的日期时间选择控件。</summary>
+    /// <returns>按应用格式配置的日期时间选择控件。</returns>
     private static DateTimePicker TimePicker() => new()
     {
         Format = DateTimePickerFormat.Custom, CustomFormat = "yyyy-MM-dd HH:mm:ss", ShowCheckBox = true, Width = 220
     };
 
+    /// <summary>将可空时间值写入选择控件，并同步其勾选状态。</summary>
+    /// <param name="picker">要更新的日期时间选择控件。</param>
+    /// <param name="value">时间值；为空时取消勾选控件。</param>
     private static void SetTime(DateTimePicker picker, DateTime? value)
     {
         picker.Checked = value is not null;
@@ -118,8 +135,11 @@ internal sealed class ItemEditForm : Form
     }
 }
 
+/// <summary>以只读字段展示单个进行中或历史事项详情的窗口。</summary>
 internal sealed class ItemDetailForm : Form
 {
+    /// <summary>初始化并显示指定事项的全部字段。</summary>
+    /// <param name="item">要展示的事项。</param>
     public ItemDetailForm(TodoItem item)
     {
         Text = item.Status == ItemStatus.Active ? "toto - 进行中事项详情" : "toto - 历史事项详情";
@@ -153,11 +173,16 @@ internal sealed class ItemDetailForm : Form
     }
 }
 
+/// <summary>确认完成或取消事项，并允许编辑结束备注的模态对话框。</summary>
 internal sealed class EndItemForm : Form
 {
     private readonly TextBox note = new() { Multiline = true, Dock = DockStyle.Fill };
+    /// <summary>获取用户输入的结束备注。</summary>
     public string Note => note.Text;
 
+    /// <summary>初始化结束事项确认对话框。</summary>
+    /// <param name="item">即将结束的事项。</param>
+    /// <param name="status">要应用的完成或取消状态。</param>
     public EndItemForm(TodoItem item, ItemStatus status)
     {
         Text = "toto - " + (status == ItemStatus.Completed ? "完成" : "取消");
