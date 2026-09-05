@@ -4,7 +4,7 @@ using Toto.App.Domain;
 namespace Toto.App.UI;
 
 /// <summary>按内容和备注筛选已结束事项，并以分页表格显示历史记录的窗口。</summary>
-internal sealed class HistoryForm : Form
+internal sealed class HistoryForm : EscapeCloseForm
 {
     /// <summary>查询历史事项的仓储。</summary>
     private readonly ItemRepository items;
@@ -12,8 +12,11 @@ internal sealed class HistoryForm : Form
     private readonly DataGridView grid = MainForm.Grid();
     private readonly BindingSource binding = new();
     private readonly Label pageLabel = new() { AutoSize = true };
-    private readonly TextBox content = new() { PlaceholderText = "事项内容包含", Width = 180 };
-    private readonly TextBox note = new() { PlaceholderText = "备注包含", Width = 150 };
+    private readonly TextBox content = new() { PlaceholderText = "事项内容包含", Width = 180, AutoSize = false, Height = 28, Margin = new Padding(3) };
+    private readonly TextBox note = new() { PlaceholderText = "备注包含", Width = 150, AutoSize = false, Height = 28, Margin = new Padding(3) };
+    private readonly ComboBox endedPreset = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 96, Height = 28, Margin = new Padding(3) };
+    private readonly DateTimePicker endedFrom = DatePicker();
+    private readonly DateTimePicker endedTo = DatePicker();
     private readonly ComboBox pageSize = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 70 };
     private QueryCriteria criteria = new();
     private int page = 1;
@@ -32,16 +35,24 @@ internal sealed class HistoryForm : Form
         MainForm.AddColumn(grid, "结束时间", nameof(TodoItem.EndedAt), 155);
         grid.CellDoubleClick += (_, _) =>
         {
-            if (grid.CurrentRow?.DataBoundItem is TodoItem item) new ItemDetailForm(item).ShowDialog(this);
+            if (grid.CurrentRow?.DataBoundItem is TodoItem item) new ItemDetailForm(item).Show();
         };
         grid.DataSource = binding;
         // collection expression 根据 AddRange 参数类型推断并创建整数数组。
         pageSize.Items.AddRange([100, 200, 500]);
         pageSize.SelectedItem = 200;
-        var top = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 42, Padding = new Padding(8) };
+        endedPreset.Items.AddRange(["不限", "本周", "上一周", "本月", "上一月", "本年", "上一年", "自定义"]);
+        endedPreset.SelectedIndex = 0;
+        endedPreset.SelectedIndexChanged += (_, _) => ApplyEndedPreset();
+        var top = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 42, Padding = new Padding(8), WrapContents = false };
         MainForm.AddButton(top, "查询", (_, _) =>
         {
-            criteria = new QueryCriteria { Content = content.Text, Note = note.Text };
+            criteria = new QueryCriteria
+            {
+                Content = content.Text, Note = note.Text,
+                EndedFrom = endedFrom.Checked ? endedFrom.Value.Date : null,
+                EndedTo = endedTo.Checked ? endedTo.Value.Date.AddDays(1) : null
+            };
             page = 1;
             LoadPage();
         });
@@ -49,12 +60,20 @@ internal sealed class HistoryForm : Form
         {
             content.Clear();
             note.Clear();
+            endedPreset.SelectedIndex = 0;
+            endedFrom.Checked = false;
+            endedTo.Checked = false;
             criteria = new();
             page = 1;
             LoadPage();
         });
-        top.Controls.AddRange([content, note]);
+        top.Controls.AddRange([content, note, new Label { Text = "结束日期：", AutoSize = true, Padding = new Padding(5, 6, 0, 0) }, endedPreset, endedFrom, endedTo]);
         var bottom = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 42, Padding = new Padding(8) };
+        // 标签使用与按钮相同的 28px 高度，避免 FlowLayoutPanel 中出现垂直错位。
+        pageLabel.AutoSize = false;
+        pageLabel.Size = new Size(140, 28);
+        pageLabel.TextAlign = ContentAlignment.MiddleCenter;
+        pageLabel.Margin = new Padding(3);
         MainForm.AddButton(bottom, "首页", (_, _) =>
         {
             page = 1;
@@ -76,7 +95,11 @@ internal sealed class HistoryForm : Form
             LoadPage();
         });
         bottom.Controls.Add(pageLabel);
-        bottom.Controls.Add(new Label { Text = "每页：", AutoSize = true, Padding = new Padding(16, 5, 0, 0) });
+        bottom.Controls.Add(new Label
+        {
+            Text = "每页：", AutoSize = false, Size = new Size(58, 28), TextAlign = ContentAlignment.MiddleRight,
+            Margin = new Padding(3, 3, 0, 3)
+        });
         bottom.Controls.Add(pageSize);
         pageSize.SelectedIndexChanged += (_, _) =>
         {
@@ -101,4 +124,50 @@ internal sealed class HistoryForm : Form
     /// <summary>根据总记录数和选定页大小计算至少为一的最大页码。</summary>
     /// <returns>可导航到的最后页码。</returns>
     private int MaxPage() => Math.Max(1, (int)Math.Ceiling(total / (double)(int)pageSize.SelectedItem!));
+
+    /// <summary>创建精确到日期的可选范围控件；查询时结束日期会转换为下一日的排他边界。</summary>
+    private static DateTimePicker DatePicker() => new()
+    {
+        Format = DateTimePickerFormat.Custom, CustomFormat = "yyyy-MM-dd", ShowCheckBox = true, Width = 112, Height = 28,
+        Margin = new Padding(3)
+    };
+
+    /// <summary>将结束日期预设转换为包含起始日、排除次日的日期范围。</summary>
+    private void ApplyEndedPreset()
+    {
+        var today = DateTime.Today;
+        DateTime? from = null;
+        DateTime? toInclusive = null;
+        switch (endedPreset.SelectedItem as string)
+        {
+            case "本周":
+                from = today.AddDays(-((int)today.DayOfWeek + 6) % 7);
+                toInclusive = from.Value.AddDays(6);
+                break;
+            case "上一周":
+                toInclusive = today.AddDays(-((int)today.DayOfWeek + 6) % 7).AddDays(-1);
+                from = toInclusive.Value.AddDays(-6);
+                break;
+            case "本月":
+                from = new DateTime(today.Year, today.Month, 1);
+                toInclusive = from.Value.AddMonths(1).AddDays(-1);
+                break;
+            case "上一月":
+                from = new DateTime(today.Year, today.Month, 1).AddMonths(-1);
+                toInclusive = from.Value.AddMonths(1).AddDays(-1);
+                break;
+            case "本年":
+                from = new DateTime(today.Year, 1, 1);
+                toInclusive = new DateTime(today.Year, 12, 31);
+                break;
+            case "上一年":
+                from = new DateTime(today.Year - 1, 1, 1);
+                toInclusive = new DateTime(today.Year - 1, 12, 31);
+                break;
+        }
+        endedFrom.Checked = from is not null;
+        endedTo.Checked = toInclusive is not null;
+        if (from is not null) endedFrom.Value = from.Value;
+        if (toInclusive is not null) endedTo.Value = toInclusive.Value;
+    }
 }

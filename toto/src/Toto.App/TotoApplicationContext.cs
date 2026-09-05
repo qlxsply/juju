@@ -31,6 +31,8 @@ internal sealed class TotoApplicationContext : ApplicationContext
     private readonly int uiThread = Environment.CurrentManagedThreadId;
     /// <summary>当前主窗口；窗口关闭并释放后可重新创建，因此允许为空。</summary>
     private MainForm? main;
+    /// <summary>当前打开的独立提醒窗体；保留引用以便关闭时刷新主列表并在退出时清理。</summary>
+    private readonly List<ReminderForm> reminderForms = [];
 
     /// <summary>初始化应用服务，订阅系统事件并启动提醒调度。</summary>
     /// <param name="paths">应用文件路径。</param>
@@ -82,13 +84,8 @@ internal sealed class TotoApplicationContext : ApplicationContext
             main!.ShowEditor();
         });
         menu.Items.Add("历史事项", null, (_, _) => new HistoryForm(items).Show(main));
-        menu.Items.Add("设置", null, (_, _) =>
-        {
-            // using 声明保证模态窗体关闭后释放其原生窗口句柄。
-            using var form = new SettingsForm(settings, scheduler);
-            if (form.ShowDialog(main) == DialogResult.OK) RegisterGlobalHotkey();
-        });
-        menu.Items.Add("工作日管理", null, (_, _) => new WorkCalendarForm(repository).ShowDialog(main));
+        menu.Items.Add("设置", null, (_, _) => ShowSettingsWindow());
+        menu.Items.Add("工作日管理", null, (_, _) => new WorkCalendarForm(repository).Show());
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("退出", null, (_, _) => ExitThread());
         return menu;
@@ -119,23 +116,40 @@ internal sealed class TotoApplicationContext : ApplicationContext
     private void RegisterGlobalHotkey() =>
         hotkey.Register(settings.Load().GetValueOrDefault("hotkey", "Ctrl+Alt+Space"));
 
-    /// <summary>以模态窗口显示已到提醒时间的事项。</summary>
+    /// <summary>以独立非模态窗口显示已到提醒时间的事项，不禁用主窗口。</summary>
     /// <param name="due">需要提醒的只读事项集合。</param>
     private void ShowReminders(IReadOnlyList<TodoItem> due)
     {
-        using var form = new ReminderForm(items, due, "toto 提醒");
-        form.ShowDialog(main);
-        main?.RefreshItems();
+        ShowReminderWindow(new ReminderForm(items, due, "toto 提醒"));
     }
 
     /// <summary>根据上班或下班计划显示全部进行中事项。</summary>
     /// <param name="kind">决定弹窗标题的计划类型。</param>
     private void ShowWorkPopup(ScheduledPopupKind kind)
     {
-        using var form = new ReminderForm(items, items.GetActive(),
-            kind == ScheduledPopupKind.WorkStart ? "toto - 上班事项提醒" : "toto - 下班事项提醒");
-        form.ShowDialog(main);
-        main?.RefreshItems();
+        ShowReminderWindow(new ReminderForm(items, items.GetActive(),
+            kind == ScheduledPopupKind.WorkStart ? "toto - 上班事项提醒" : "toto - 下班事项提醒"));
+    }
+
+    /// <summary>显示并跟踪独立提醒窗口；关闭任一提醒窗口不会影响其他窗口或主窗口。</summary>
+    private void ShowReminderWindow(ReminderForm form)
+    {
+        reminderForms.Add(form);
+        form.FormClosed += (_, _) =>
+        {
+            reminderForms.Remove(form);
+            main?.RefreshItems();
+        };
+        form.Show();
+        form.Activate();
+    }
+
+    /// <summary>显示独立设置窗口，并在保存后重新注册全局快捷键。</summary>
+    private void ShowSettingsWindow()
+    {
+        var form = new SettingsForm(settings, scheduler);
+        form.SettingsSaved += RegisterGlobalHotkey;
+        form.Show();
     }
 
     /// <summary>响应 Windows 会话锁定和解锁，暂停或恢复提醒调度。</summary>
@@ -161,6 +175,7 @@ internal sealed class TotoApplicationContext : ApplicationContext
         SystemEvents.SessionSwitch -= SessionSwitch;
         tray.Visible = false;
         tray.Dispose();
+        foreach (var form in reminderForms.ToArray()) form.Close();
         hotkey.Dispose();
         scheduler.Dispose();
         base.ExitThreadCore();

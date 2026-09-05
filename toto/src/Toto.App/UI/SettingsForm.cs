@@ -3,9 +3,11 @@ using Toto.App.Services;
 
 namespace Toto.App.UI;
 
-/// <summary>编辑全局热键、提醒时间、应用内快捷键和开机启动选项的模态窗口。</summary>
-internal sealed class SettingsForm : Form
+/// <summary>编辑全局热键、提醒时间、应用内快捷键和开机启动选项的独立非模态窗口。</summary>
+internal sealed class SettingsForm : EscapeCloseForm
 {
+    /// <summary>设置成功保存后通知应用重新注册快捷键的非模态回调。</summary>
+    public event Action? SettingsSaved;
     /// <summary>读取和保存配置的仓储。</summary>
     private readonly SettingsRepository repository;
     /// <summary>设置变更后需重新安排的提醒调度器。</summary>
@@ -116,7 +118,7 @@ internal sealed class SettingsForm : Form
 
         repository.Save(all);
         scheduler.Reschedule();
-        DialogResult = DialogResult.OK;
+        SettingsSaved?.Invoke();
         Close();
     }
 }

@@ -6,16 +6,18 @@ using Toto.App.Domain;
 namespace Toto.App.UI;
 
 /// <summary>置顶显示到期事项或工作日计划事项，并可直接完成选中事项的提醒窗口。</summary>
-internal sealed class ReminderForm : Form
+internal sealed class ReminderForm : EscapeCloseForm
 {
     /// <summary>执行事项完成操作的仓储。</summary>
     private readonly ItemRepository repository;
+    private readonly List<TodoItem> displayedItems;
 
     private readonly DataGridView grid = new()
     {
         Dock = DockStyle.Fill, AutoGenerateColumns = false, ReadOnly = true,
         SelectionMode = DataGridViewSelectionMode.FullRowSelect, MultiSelect = false, AllowUserToAddRows = false,
-        CellBorderStyle = DataGridViewCellBorderStyle.Single
+        CellBorderStyle = DataGridViewCellBorderStyle.Single,
+        ShowCellToolTips = false
     };
 
     /// <summary>初始化提醒窗口并绑定要显示的事项。</summary>
@@ -25,6 +27,7 @@ internal sealed class ReminderForm : Form
     public ReminderForm(ItemRepository repository, IReadOnlyList<TodoItem> items, string title)
     {
         this.repository = repository;
+        displayedItems = [..items];
         Text = title;
         TopMost = true;
         StartPosition = FormStartPosition.CenterScreen;
@@ -32,14 +35,20 @@ internal sealed class ReminderForm : Form
         MainForm.AddColumn(grid, "事项内容", nameof(TodoItem.Content), 320, true);
         MainForm.AddColumn(grid, "计划时间", nameof(TodoItem.PlannedAt), 160);
         MainForm.AddColumn(grid, "提醒时间", nameof(TodoItem.RemindAt), 160);
-        grid.DataSource = items;
+        grid.DataSource = displayedItems;
         var bottom = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 42, Padding = new Padding(8) };
         MainForm.AddButton(bottom, "完成选中", (_, _) =>
         {
             if (grid.CurrentRow?.DataBoundItem is not TodoItem item) return;
-            using var form = new EndItemForm(item, ItemStatus.Completed);
-            if (form.ShowDialog(this) == DialogResult.OK)
-                repository.End(item.Id, ItemStatus.Completed, form.Note, DateTime.Now);
+            var form = new EndItemForm(item, ItemStatus.Completed) { TopMost = true };
+            form.Confirmed += note =>
+            {
+                if (!repository.End(item.Id, ItemStatus.Completed, note, DateTime.Now)) return;
+                displayedItems.RemoveAll(value => value.Id == item.Id);
+                grid.DataSource = null;
+                grid.DataSource = displayedItems;
+            };
+            form.Show();
         });
         MainForm.AddButton(bottom, "关闭", (_, _) => Close());
         Controls.Add(grid);

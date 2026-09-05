@@ -6,7 +6,7 @@ using Timer = System.Windows.Forms.Timer;
 namespace Toto.App.UI;
 
 /// <summary>显示进行中事项、处理应用内快捷键并提供新增、编辑和结束操作的主窗口。</summary>
-internal sealed class MainForm : Form
+internal sealed class MainForm : EscapeCloseForm
 {
     /// <summary>进行中事项的数据访问入口。</summary>
     private readonly ItemRepository items;
@@ -54,13 +54,12 @@ internal sealed class MainForm : Form
     /// <summary>重新读取并绑定全部进行中事项。</summary>
     public void RefreshItems() => Bind(null);
 
-    /// <summary>显示新增事项的模态编辑对话框，并在保存后刷新调度。</summary>
+    /// <summary>显示独立的新增事项窗口，并在保存后刷新调度。</summary>
     public void ShowEditor()
     {
-        using var editor = new ItemEditForm(items, settings.Load(), null);
-        if (editor.ShowDialog(this) != DialogResult.OK) return;
-        RefreshItems();
-        scheduler.Reschedule();
+        var editor = new ItemEditForm(items, settings.Load(), null);
+        editor.Saved += OnItemSaved;
+        editor.Show();
     }
 
     /// <summary>查询符合条件的进行中事项，并更新 WinForms 数据绑定源。</summary>
@@ -77,16 +76,15 @@ internal sealed class MainForm : Form
     private void EditSelected()
     {
         if (Selected() is not { } item) return;
-        using var editor = new ItemEditForm(items, settings.Load(), item);
-        if (editor.ShowDialog(this) != DialogResult.OK) return;
-        RefreshItems();
-        scheduler.Reschedule();
+        var editor = new ItemEditForm(items, settings.Load(), item);
+        editor.Saved += OnItemSaved;
+        editor.Show();
     }
 
     /// <summary>显示当前选中事项的只读详情窗口。</summary>
     private void ShowDetail()
     {
-        if (Selected() is { } item) new ItemDetailForm(item).ShowDialog(this);
+        if (Selected() is { } item) new ItemDetailForm(item).Show();
     }
 
     /// <summary>以指定结束状态关闭当前选中的事项。</summary>
@@ -94,10 +92,13 @@ internal sealed class MainForm : Form
     private void EndSelected(ItemStatus state)
     {
         if (Selected() is not { } item) return;
-        using var form = new EndItemForm(item, state);
-        if (form.ShowDialog(this) != DialogResult.OK || !items.End(item.Id, state, form.Note, DateTime.Now)) return;
-        RefreshItems();
-        scheduler.Reschedule();
+        var form = new EndItemForm(item, state) { TopMost = true };
+        form.Confirmed += note =>
+        {
+            if (!items.End(item.Id, state, note, DateTime.Now)) return;
+            OnItemSaved();
+        };
+        form.Show();
     }
 
     /// <summary>返回当前行绑定的事项；未选中或类型不匹配时返回空。</summary>
@@ -161,8 +162,16 @@ internal sealed class MainForm : Form
     /// <summary>显示设置对话框，并在保存后调用应用级设置变更委托。</summary>
     private void ShowSettings()
     {
-        using var form = new SettingsForm(settings, scheduler);
-        if (form.ShowDialog(this) == DialogResult.OK) settingsChanged();
+        var form = new SettingsForm(settings, scheduler);
+        form.SettingsSaved += settingsChanged;
+        form.Show();
+    }
+
+    /// <summary>统一处理新增、编辑或结束操作成功后的刷新和重新调度。</summary>
+    private void OnItemSaved()
+    {
+        RefreshItems();
+        scheduler.Reschedule();
     }
 
     /// <summary>创建用于事项列表的标准只读表格及其基础列。</summary>
@@ -176,7 +185,9 @@ internal sealed class MainForm : Form
             AllowUserToDeleteRows = false, AllowUserToOrderColumns = false,
             CellBorderStyle = DataGridViewCellBorderStyle.Single,
             ColumnHeadersBorderStyle = DataGridViewHeaderBorderStyle.Single,
-            AutoSizeRowsMode = DataGridViewAutoSizeRowsMode.None
+            AutoSizeRowsMode = DataGridViewAutoSizeRowsMode.None,
+            // 自动提示会显示 DateTime 原始值，并且不使用列的显示格式。
+            ShowCellToolTips = false
         };
         AddColumn(value, "事项内容", nameof(TodoItem.Content), 260);
         AddColumn(value, "计划时间", nameof(TodoItem.PlannedAt), 155);
@@ -194,11 +205,19 @@ internal sealed class MainForm : Form
     /// <param name="width">非填充列的像素宽度。</param>
     /// <param name="fill">是否填充剩余可用宽度。</param>
     internal static void AddColumn(DataGridView grid, string header, string property, int width, bool fill = false) =>
-        grid.Columns.Add(new DataGridViewTextBoxColumn
+        grid.Columns.Add(CreateColumn(header, property, width, fill));
+
+    /// <summary>创建数据绑定列，并将所有 <c>*At</c> 日期时间属性显示为不含秒的格式。</summary>
+    private static DataGridViewTextBoxColumn CreateColumn(string header, string property, int width, bool fill)
+    {
+        var column = new DataGridViewTextBoxColumn
         {
             HeaderText = header, DataPropertyName = property, Width = width,
             AutoSizeMode = fill ? DataGridViewAutoSizeColumnMode.Fill : DataGridViewAutoSizeColumnMode.None
-        });
+        };
+        if (property.EndsWith("At", StringComparison.Ordinal)) column.DefaultCellStyle.Format = DateTimeText.DisplayFormat;
+        return column;
+    }
 
     /// <summary>创建按钮、订阅其 Click 事件并添加到父控件。</summary>
     /// <param name="parent">承载按钮的控件。</param>

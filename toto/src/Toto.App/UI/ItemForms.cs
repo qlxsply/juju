@@ -4,16 +4,18 @@ using Toto.App.Services;
 
 namespace Toto.App.UI;
 
-/// <summary>新增或编辑单个事项的模态窗口，支持快速文本解析和完整字段编辑。</summary>
-internal sealed class ItemEditForm : Form
+/// <summary>新增或编辑单个事项的独立非模态窗口，支持快速文本解析和完整字段编辑。</summary>
+internal sealed class ItemEditForm : EscapeCloseForm
 {
+    /// <summary>事项成功保存后通知调用方刷新列表和调度器的非模态回调。</summary>
+    public event Action? Saved;
     /// <summary>执行事项创建和更新的仓储。</summary>
     private readonly ItemRepository items;
     /// <summary>用于读取默认提醒分钟数的只读设置。</summary>
     private readonly IReadOnlyDictionary<string, string> settings;
     private readonly TodoItem? editing;
     private readonly TextBox quick = new() { Dock = DockStyle.Top, PlaceholderText = "事项内容[@计划时间[@提前提醒分钟数]]" };
-    private readonly TextBox content = new();
+    private readonly TextBox content = new() { Dock = DockStyle.Fill };
     private readonly DateTimePicker planned = TimePicker();
     private readonly DateTimePicker remind = TimePicker();
     private readonly TextBox note = new() { Multiline = true, Height = 90, Dock = DockStyle.Fill };
@@ -29,7 +31,7 @@ internal sealed class ItemEditForm : Form
         this.editing = editing;
         Text = editing is null ? "toto - 新增事项" : "toto - 编辑事项";
         StartPosition = FormStartPosition.CenterParent;
-        Size = new Size(580, 370);
+        Size = new Size(760, 370);
         var layout = new TableLayoutPanel
             { Dock = DockStyle.Fill, Padding = new Padding(12), ColumnCount = 2, RowCount = 6 };
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 85));
@@ -57,9 +59,10 @@ internal sealed class ItemEditForm : Form
             layout.Controls.Add(note, 1, 3);
         }
 
-        var save = new Button { Text = "保存", DialogResult = DialogResult.None };
+        var save = new Button { Text = "保存" };
         save.Click += Save;
-        var cancel = new Button { Text = "取消", DialogResult = DialogResult.Cancel };
+        var cancel = new Button { Text = "取消" };
+        cancel.Click += (_, _) => Close();
         var buttons = new FlowLayoutPanel
             { AutoSize = true, Dock = DockStyle.Bottom, FlowDirection = FlowDirection.RightToLeft };
         // [cancel, save] 是 C# 12 collection expression，按目标参数类型创建控件数组。
@@ -114,7 +117,8 @@ internal sealed class ItemEditForm : Form
             }
         }
 
-        DialogResult = DialogResult.OK;
+        // 非模态窗体不能依赖 DialogResult；通过事件将成功结果回传给打开它的窗口。
+        Saved?.Invoke();
         Close();
     }
 
@@ -122,7 +126,7 @@ internal sealed class ItemEditForm : Form
     /// <returns>按应用格式配置的日期时间选择控件。</returns>
     private static DateTimePicker TimePicker() => new()
     {
-        Format = DateTimePickerFormat.Custom, CustomFormat = "yyyy-MM-dd HH:mm:ss", ShowCheckBox = true, Width = 220
+        Format = DateTimePickerFormat.Custom, CustomFormat = DateTimeText.DisplayFormat, ShowCheckBox = true, Width = 220
     };
 
     /// <summary>将可空时间值写入选择控件，并同步其勾选状态。</summary>
@@ -136,7 +140,7 @@ internal sealed class ItemEditForm : Form
 }
 
 /// <summary>以只读字段展示单个进行中或历史事项详情的窗口。</summary>
-internal sealed class ItemDetailForm : Form
+internal sealed class ItemDetailForm : EscapeCloseForm
 {
     /// <summary>初始化并显示指定事项的全部字段。</summary>
     /// <param name="item">要展示的事项。</param>
@@ -150,14 +154,14 @@ internal sealed class ItemDetailForm : Form
         panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         foreach (var pair in new[]
                  {
-                     ("事项内容", item.Content), ("计划时间", item.PlannedAt?.ToString(DateTimeText.Format) ?? ""),
-                     ("提醒时间", item.RemindAt?.ToString(DateTimeText.Format) ?? ""),
+                      ("事项内容", item.Content), ("计划时间", item.PlannedAt?.ToString(DateTimeText.DisplayFormat) ?? ""),
+                      ("提醒时间", item.RemindAt?.ToString(DateTimeText.DisplayFormat) ?? ""),
                      (item.Status == ItemStatus.Active ? "提醒状态" : "结束状态",
                          item.Status == ItemStatus.Active ? item.ReminderStatus?.ToString() : item.Status.ToString()),
                      (item.Status == ItemStatus.Active ? "响铃时间" : "结束时间",
-                         (item.Status == ItemStatus.Active ? item.RemindedAt : item.EndedAt)?.ToString(DateTimeText
-                             .Format) ?? ""),
-                     ("创建时间", item.CreatedAt.ToString(DateTimeText.Format)), ("备注", item.Note)
+                          (item.Status == ItemStatus.Active ? item.RemindedAt : item.EndedAt)?.ToString(DateTimeText
+                              .DisplayFormat) ?? ""),
+                      ("创建时间", item.CreatedAt.ToString(DateTimeText.DisplayFormat)), ("备注", item.Note)
                  })
         {
             panel.Controls.Add(new Label { Text = pair.Item1 + "：", AutoSize = true }, 0, panel.RowCount);
@@ -173,12 +177,14 @@ internal sealed class ItemDetailForm : Form
     }
 }
 
-/// <summary>确认完成或取消事项，并允许编辑结束备注的模态对话框。</summary>
-internal sealed class EndItemForm : Form
+/// <summary>确认完成或取消事项，并允许编辑结束备注的独立非模态窗口。</summary>
+internal sealed class EndItemForm : EscapeCloseForm
 {
     private readonly TextBox note = new() { Multiline = true, Dock = DockStyle.Fill };
     /// <summary>获取用户输入的结束备注。</summary>
     public string Note => note.Text;
+    /// <summary>用户确认结束操作时传出备注的非模态回调。</summary>
+    public event Action<string>? Confirmed;
 
     /// <summary>初始化结束事项确认对话框。</summary>
     /// <param name="item">即将结束的事项。</param>
@@ -196,7 +202,12 @@ internal sealed class EndItemForm : Form
                 Text = $"确认“{(status == ItemStatus.Completed ? "已完成" : "已取消")}”：{item.Content}", AutoSize = true
             }, 0, 0);
         layout.Controls.Add(note, 0, 1);
-        var ok = new Button { Text = "确认", DialogResult = DialogResult.OK };
+        var ok = new Button { Text = "确认" };
+        ok.Click += (_, _) =>
+        {
+            Confirmed?.Invoke(Note);
+            Close();
+        };
         layout.Controls.Add(ok, 0, 2);
         Controls.Add(layout);
         AcceptButton = ok;

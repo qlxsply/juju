@@ -4,18 +4,23 @@ using Toto.App.Domain;
 namespace Toto.App.UI;
 
 /// <summary>提供节假日和调休日期的查看、下载、添加、编辑与删除界面。</summary>
-internal sealed class WorkCalendarForm : Form
+internal sealed class WorkCalendarForm : EscapeCloseForm
 {
     /// <summary>保存日历数据的仓储。</summary>
     private readonly WorkCalendarRepository repository;
     /// <summary>选择当前显示年份的数值控件。</summary>
-    private readonly NumericUpDown year = new() { Minimum = 2000, Maximum = 2100, Value = DateTime.Today.Year };
+    private readonly NumericUpDown year = new()
+    {
+        Minimum = 2020, Maximum = LatestSelectableYear(), Value = DateTime.Today.Year, Width = 86, Height = 28,
+        TextAlign = HorizontalAlignment.Center, Margin = new Padding(3)
+    };
 
     private readonly DataGridView grid = new()
     {
         Dock = DockStyle.Fill, AutoGenerateColumns = true, ReadOnly = true,
         SelectionMode = DataGridViewSelectionMode.FullRowSelect, MultiSelect = false, AllowUserToAddRows = false,
-        CellBorderStyle = DataGridViewCellBorderStyle.Single
+        CellBorderStyle = DataGridViewCellBorderStyle.Single,
+        ShowCellToolTips = false
     };
 
     /// <summary>初始化工作日管理窗口。</summary>
@@ -26,7 +31,7 @@ internal sealed class WorkCalendarForm : Form
         Text = "toto - 工作日管理";
         StartPosition = FormStartPosition.CenterParent;
         Size = new Size(760, 500);
-        var top = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 42, Padding = new Padding(8) };
+        var top = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 42, Padding = new Padding(8), WrapContents = false };
         MainForm.AddButton(top, "下载/更新", (_, _) => Download());
         MainForm.AddButton(top, "刷新", (_, _) => LoadItems());
         MainForm.AddButton(top, "新增", (_, _) => Edit(null));
@@ -48,6 +53,14 @@ internal sealed class WorkCalendarForm : Form
         LoadItems();
     }
 
+    /// <summary>计算当前客户端日期允许选择和下载的最大年份。</summary>
+    /// <remarks>第 N 年只在第 N-1 年 12 月 1 日后可选，避免上游尚未发布时产生无意义下载错误。</remarks>
+    private static int LatestSelectableYear()
+    {
+        var today = DateTime.Today;
+        return today >= new DateTime(today.Year, 12, 1) ? today.Year + 1 : today.Year;
+    }
+
     /// <summary>读取所选年份的日历数据并绑定到表格。</summary>
     private void LoadItems()
     {
@@ -64,6 +77,11 @@ internal sealed class WorkCalendarForm : Form
     /// <summary>下载所选年份的日历数据，然后刷新表格。</summary>
     private void Download()
     {
+        if ((int)year.Value > LatestSelectableYear())
+        {
+            MessageBox.Show("该年份的法定节假日尚未到允许下载的日期。", Text, MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
         try
         {
             repository.Download((int)year.Value);
@@ -79,18 +97,21 @@ internal sealed class WorkCalendarForm : Form
     /// <param name="old">待编辑的旧值；为空时新增日期。</param>
     private void Edit(HolidayCalendarDay? old)
     {
-        using var form = new CalendarEditForm(old);
-        if (form.ShowDialog(this) == DialogResult.OK)
+        var form = new CalendarEditForm(old);
+        form.Saved += item =>
         {
-            repository.Upsert(form.Value);
+            repository.Upsert(item);
             LoadItems();
-        }
+        };
+        form.Show();
     }
 }
 
-/// <summary>编辑单个节假日或调休日期的模态对话框。</summary>
-internal sealed class CalendarEditForm : Form
+/// <summary>编辑单个节假日或调休日期的独立非模态窗口。</summary>
+internal sealed class CalendarEditForm : EscapeCloseForm
 {
+    /// <summary>日历日期保存后传出新值的非模态回调。</summary>
+    public event Action<HolidayCalendarDay>? Saved;
     private readonly DateTimePicker date = new() { Format = DateTimePickerFormat.Short };
     private readonly TextBox name = new();
     private readonly CheckBox isOffDay = new() { Text = "休息日", AutoSize = true };
@@ -120,7 +141,17 @@ internal sealed class CalendarEditForm : Form
             panel.Controls.Add(pair.Item2, 1, panel.RowCount++);
         }
 
-        var save = new Button { Text = "保存", DialogResult = DialogResult.OK };
+        var save = new Button { Text = "保存" };
+        save.Click += (_, _) =>
+        {
+            if (string.IsNullOrWhiteSpace(name.Text))
+            {
+                MessageBox.Show("名称不能为空。", Text, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+            Saved?.Invoke(Value);
+            Close();
+        };
         panel.Controls.Add(save, 1, panel.RowCount);
         Controls.Add(panel);
         AcceptButton = save;

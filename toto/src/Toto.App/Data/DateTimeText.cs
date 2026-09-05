@@ -7,6 +7,8 @@ internal static class DateTimeText
 {
     /// <summary>CSV 和 INI 文件使用的日期时间格式。</summary>
     public const string Format = "yyyy-MM-dd HH:mm:ss";
+    /// <summary>WinForms 界面显示的日期时间格式；持久化仍使用 <see cref="Format"/> 保留秒级精度。</summary>
+    public const string DisplayFormat = "yyyy-MM-dd HH:mm";
     /// <summary>将可选日期时间格式化为空字符串或固定文本。</summary>
     // C# 的 DateTime? 是可空值类型；不同于 Java 引用，未设置时不分配对象。
     public static string Text(DateTime? value) => value?.ToString(Format, CultureInfo.InvariantCulture) ?? "";
