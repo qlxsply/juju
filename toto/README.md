@@ -65,11 +65,19 @@ dotnet run --project .\src\Toto.App\Toto.App.csproj
 
 在 Rider 或 Visual Studio 中打开 `toto/Toto.sln`。
 
-发布 framework-dependent x64 版本：
+## 便携发布
+
+项目的发布配置位于 `src/Toto.App/Properties/PublishProfiles/PortableWinX64.pubxml`。它生成 Windows 11 x64 的自包含单文件 `toto.exe`：目标电脑无需安装 .NET，也无需安装过程，复制该 EXE 后可直接运行。
+
+在 Toto 项目目录运行一键发布脚本：
 
 ```powershell
-dotnet publish .\src\Toto.App\Toto.App.csproj -c Release -r win-x64 --self-contained false
+.\scripts\Publish-Portable.ps1
 ```
+
+默认输出：`artifacts\toto-win-x64\toto.exe`。
+
+也可在 Visual Studio 2026 中右键 `Toto.App` 项目，选择“发布”，并选择 `PortableWinX64` 配置文件。发布目录中只有 `toto.exe`；将它复制到任意 Windows 11 x64 电脑即可使用。
 
 ## 使用
 

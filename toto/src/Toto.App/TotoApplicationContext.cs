@@ -50,7 +50,9 @@ internal sealed class TotoApplicationContext : ApplicationContext
         scheduler.ScheduledPopup += kind => ShowWorkPopup(kind);
         tray = new NotifyIcon
         {
-            Icon = new Icon(Path.Combine(AppContext.BaseDirectory, "my_icon.ico")), Text = "toto", Visible = true,
+            // 从 EXE 的嵌入应用图标创建托盘图标，单文件发布时不再依赖旁边的 my_icon.ico。
+            Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath) ?? SystemIcons.Application,
+            Text = "toto", Visible = true,
             ContextMenuStrip = BuildTray(calendarRepository, calendar)
         };
         tray.DoubleClick += (_, _) => ShowMain();

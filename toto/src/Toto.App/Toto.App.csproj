@@ -5,9 +5,7 @@
     <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <AssemblyName>toto</AssemblyName>
     <ApplicationIcon>..\..\my_icon.ico</ApplicationIcon>
   </PropertyGroup>
-  <ItemGroup>
-    <None Include="..\..\my_icon.ico" Link="my_icon.ico" CopyToOutputDirectory="PreserveNewest" />
-  </ItemGroup>
 </Project>
