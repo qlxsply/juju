@@ -19,6 +19,7 @@ internal sealed class ItemEditForm : EscapeCloseForm
     private readonly DateTimePicker planned = TimePicker();
     private readonly DateTimePicker remind = TimePicker();
     private readonly TextBox note = new() { Multiline = true, Height = 90, Dock = DockStyle.Fill };
+    private bool submitting;
 
     /// <summary>初始化新增或编辑事项所需的控件和初始值。</summary>
     /// <param name="items">事项仓储。</param>
@@ -79,48 +80,59 @@ internal sealed class ItemEditForm : EscapeCloseForm
     /// <param name="e">WinForms Click 事件参数。</param>
     private void Save(object? sender, EventArgs e)
     {
-        if (editing is null)
+        if (submitting) return;
+        submitting = true;
+        try
         {
-            if (!QuickItemParser.TryParse(quick.Text,
-                    int.TryParse(settings.Load().GetValueOrDefault("default_remind_minutes"), out var minutes) ? minutes : 5,
-                    out var value, out var plan, out var remindAt, out var error))
+            if (editing is null)
             {
-                MessageBox.Show(error, Text, MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
-            }
-
-            items.Add(new TodoItem(Guid.NewGuid().ToString(), value, plan, remindAt, DateTime.Now,
-                items.NextCreatedSeq(), ItemStatus.Active,
-                remindAt is null ? ReminderStatus.None : ReminderStatus.Pending, null, null, ""));
-        }
-        else
-        {
-            if (string.IsNullOrWhiteSpace(content.Text) || content.Text.Contains('\n') || content.Text.Contains('\r'))
-            {
-                MessageBox.Show("事项内容不能为空且不能包含换行。", Text);
-                return;
-            }
-
-            DateTime? newRemind = remind.Checked ? remind.Value : null;
-            var changed = newRemind != editing.RemindAt;
-            var status = newRemind is null ? ReminderStatus.None :
-                changed ? ReminderStatus.Pending : editing.ReminderStatus;
-            var reminded = changed || newRemind is null ? null : editing.RemindedAt;
-            // with 为 C# record 的非破坏性复制：保留未列出的值并生成新实例，不会修改原对象。
-            if (!items.Update(editing with
+                if (!QuickItemParser.TryParse(quick.Text,
+                        int.TryParse(settings.Load().GetValueOrDefault("default_remind_minutes"), out var minutes)
+                            ? minutes
+                            : 5,
+                        out var value, out var plan, out var remindAt, out var error))
                 {
-                    Content = content.Text.Trim(), PlannedAt = planned.Checked ? planned.Value : null,
-                    RemindAt = newRemind, ReminderStatus = status, RemindedAt = reminded, Note = note.Text
-                }))
-            {
-                MessageBox.Show("事项不存在或已被处理。", Text);
-                return;
-            }
-        }
+                    MessageBox.Show(error, Text, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
 
-        // 非模态窗体不能依赖 DialogResult；通过事件将成功结果回传给打开它的窗口。
-        Saved?.Invoke();
-        Close();
+                // 创建序号由仓储在同一写入锁内分配，避免与其他操作竞争。
+                items.Add(new TodoItem(Guid.NewGuid().ToString(), value, plan, remindAt, DateTime.Now, 0,
+                    ItemStatus.Active, remindAt is null ? ReminderStatus.None : ReminderStatus.Pending, null, null, ""));
+            }
+            else
+            {
+                if (string.IsNullOrWhiteSpace(content.Text) || content.Text.Contains('\n') || content.Text.Contains('\r'))
+                {
+                    MessageBox.Show("事项内容不能为空且不能包含换行。", Text);
+                    return;
+                }
+
+                DateTime? newRemind = remind.Checked ? remind.Value : null;
+                var changed = newRemind != editing.RemindAt;
+                var status = newRemind is null ? ReminderStatus.None :
+                    changed ? ReminderStatus.Pending : editing.ReminderStatus;
+                var reminded = changed || newRemind is null ? null : editing.RemindedAt;
+                // with 为 C# record 的非破坏性复制：保留未列出的值并生成新实例，不会修改原对象。
+                if (!items.Update(editing with
+                    {
+                        Content = content.Text.Trim(), PlannedAt = planned.Checked ? planned.Value : null,
+                        RemindAt = newRemind, ReminderStatus = status, RemindedAt = reminded, Note = note.Text
+                    }))
+                {
+                    MessageBox.Show("事项不存在或已被处理。", Text);
+                    return;
+                }
+            }
+
+            // 非模态窗体不能依赖 DialogResult；通过事件将成功结果回传给打开它的窗口。
+            Saved?.Invoke();
+            Close();
+        }
+        finally
+        {
+            submitting = false;
+        }
     }
 
     /// <summary>创建支持勾选启用状态的日期时间选择控件。</summary>
@@ -183,6 +195,7 @@ internal sealed class ItemDetailForm : EscapeCloseForm
 internal sealed class EndItemForm : EscapeCloseForm
 {
     private readonly TextBox note = new() { Multiline = true, Dock = DockStyle.Fill };
+    private bool submitting;
     /// <summary>获取用户输入的结束备注。</summary>
     public string Note => note.Text;
     /// <summary>用户确认结束操作时传出备注的非模态回调。</summary>
@@ -208,8 +221,20 @@ internal sealed class EndItemForm : EscapeCloseForm
         var ok = new Button { Text = "确认" };
         ok.Click += (_, _) =>
         {
-            Confirmed?.Invoke(Note);
-            Close();
+            if (submitting) return;
+            submitting = true;
+            ok.Enabled = false;
+            try
+            {
+                Confirmed?.Invoke(Note);
+                Close();
+            }
+            catch
+            {
+                submitting = false;
+                ok.Enabled = true;
+                throw;
+            }
         };
         layout.Controls.Add(ok, 0, 2);
         Controls.Add(layout);

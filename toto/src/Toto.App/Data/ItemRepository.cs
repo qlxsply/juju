@@ -6,6 +6,9 @@ namespace Toto.App.Data;
 /// <remarks>圆括号中的 <c>AppPaths paths</c> 是 C# 主构造函数参数，可直接在实例方法中使用。</remarks>
 internal sealed class ItemRepository(AppPaths paths)
 {
+    /// <summary>串行化所有 CSV 读取和写入，避免 UI 与后台提醒互相覆盖完整文件。</summary>
+    private readonly Lock gate = new();
+
     private static readonly string[] ActiveHeader =
         ["事项ID", "事项内容", "计划时间", "提醒时间", "创建时间", "创建序号", "提醒状态", "响铃时间", "备注"];
 
@@ -15,84 +18,115 @@ internal sealed class ItemRepository(AppPaths paths)
     /// <summary>确保活动事项和历史事项 CSV 文件均已创建。</summary>
     public void EnsureFiles()
     {
-        // [] 是目标类型集合表达式；此处由参数类型推断为空的 IReadOnlyList<string>。
-        if (!File.Exists(paths.ActiveCsvPath)) CsvFile.WriteAtomically(paths.ActiveCsvPath, ActiveHeader, []);
-        if (!File.Exists(paths.HistoryCsvPath)) CsvFile.WriteAtomically(paths.HistoryCsvPath, HistoryHeader, []);
+        lock (gate)
+        {
+            // [] 是目标类型集合表达式；此处由参数类型推断为空的 IReadOnlyList<string>。
+            if (!File.Exists(paths.ActiveCsvPath)) CsvFile.WriteAtomically(paths.ActiveCsvPath, ActiveHeader, []);
+            if (!File.Exists(paths.HistoryCsvPath)) CsvFile.WriteAtomically(paths.HistoryCsvPath, HistoryHeader, []);
+        }
     }
 
     /// <summary>按可选条件获取活动事项，并按计划时间和创建序号排序。</summary>
-    public IReadOnlyList<TodoItem> GetActive(QueryCriteria? criteria = null) => Filter(ReadActive(), criteria)
-        .OrderBy(item => item.PlannedAt is null).ThenBy(item => item.PlannedAt).ThenBy(item => item.CreatedSeq)
-        .ToArray();
+    public IReadOnlyList<TodoItem> GetActive(QueryCriteria? criteria = null)
+    {
+        lock (gate)
+            return Filter(ReadActive(), criteria).OrderBy(item => item.PlannedAt is null)
+                .ThenBy(item => item.PlannedAt).ThenBy(item => item.CreatedSeq).ToArray();
+    }
 
     /// <summary>按可选条件返回一页历史事项，并规范化页码和页大小。</summary>
     public HistoryPage GetHistory(QueryCriteria? criteria, int page, int pageSize)
     {
-        page = Math.Max(1, page);
-        pageSize = pageSize is 100 or 200 or 500 ? pageSize : 200;
-        var all = Filter(ReadHistory(), criteria).OrderByDescending(item => item.EndedAt)
-            .ThenByDescending(item => item.CreatedSeq).ToArray();
-        return new HistoryPage(all.Skip((page - 1) * pageSize).Take(pageSize).ToArray(), all.Length, page, pageSize);
+        lock (gate)
+        {
+            page = Math.Max(1, page);
+            pageSize = pageSize is 100 or 200 or 500 ? pageSize : 200;
+            var all = Filter(ReadHistory(), criteria).OrderByDescending(item => item.EndedAt)
+                .ThenByDescending(item => item.CreatedSeq).ToArray();
+            return new HistoryPage(all.Skip((page - 1) * pageSize).Take(pageSize).ToArray(), all.Length, page,
+                pageSize);
+        }
     }
 
     /// <summary>从活动和历史数据中按标识获取唯一事项；未找到时返回空值。</summary>
-    public TodoItem? Get(string id) => ReadActive().Concat(ReadHistory()).SingleOrDefault(item => item.Id == id);
+    public TodoItem? Get(string id)
+    {
+        lock (gate) return ReadActive().Concat(ReadHistory()).SingleOrDefault(item => item.Id == id);
+    }
 
-    /// <summary>计算下一个单调递增的创建序号。</summary>
-    public long NextCreatedSeq() =>
-        ReadActive().Concat(ReadHistory()).Select(item => item.CreatedSeq).DefaultIfEmpty().Max() + 1;
-
-    /// <summary>将新事项写入活动事项文件。</summary>
+    /// <summary>为新事项分配序号并写入活动事项文件。</summary>
     public void Add(TodoItem item)
     {
-        var active = ReadActive();
-        active.Add(item);
-        SaveActive(active);
+        lock (gate)
+        {
+            var active = ReadActive();
+            var history = ReadHistory();
+            if (active.Any(value => value.Id == item.Id) || history.Any(value => value.Id == item.Id))
+                throw new InvalidOperationException($"事项 ID 已存在：{item.Id}");
+            var sequence = active.Concat(history).Select(value => value.CreatedSeq).DefaultIfEmpty().Max() + 1;
+            active.Add(item with { CreatedSeq = sequence });
+            SaveActive(active);
+        }
     }
 
     /// <summary>更新活动事项；目标不存在时返回 <see langword="false"/>。</summary>
     public bool Update(TodoItem item)
     {
-        var active = ReadActive();
-        var index = active.FindIndex(x => x.Id == item.Id);
-        if (index < 0) return false;
-        active[index] = item;
-        SaveActive(active);
-        return true;
+        lock (gate)
+        {
+            var active = ReadActive();
+            var index = active.FindIndex(x => x.Id == item.Id);
+            if (index < 0) return false;
+            active[index] = item;
+            SaveActive(active);
+            return true;
+        }
     }
 
     /// <summary>将活动事项结束并移入历史文件；目标不存在时返回 <see langword="false"/>。</summary>
     public bool End(string id, ItemStatus status, string note, DateTime endedAt)
     {
-        var active = ReadActive();
-        var index = active.FindIndex(item => item.Id == id);
-        if (index < 0) return false;
-        // record 的 with 表达式复制实例并仅替换指定属性，类似 Java record 的“复制构造”模式但由语言提供。
-        var item = active[index] with { Status = status, EndedAt = endedAt, Note = note };
-        var history = ReadHistory();
-        history.Add(item);
-        SaveHistory(history);
-        active.RemoveAt(index);
-        SaveActive(active);
-        return true;
+        lock (gate)
+        {
+            var active = ReadActive();
+            var index = active.FindIndex(item => item.Id == id);
+            if (index < 0) return false;
+            // record 的 with 表达式复制实例并仅替换指定属性，类似 Java record 的“复制构造”模式但由语言提供。
+            var item = active[index] with { Status = status, EndedAt = endedAt, Note = note };
+            var history = ReadHistory();
+            if (history.Any(value => value.Id == id)) return false;
+            history.Add(item);
+            SaveHistory(history);
+            active.RemoveAt(index);
+            SaveActive(active);
+            return true;
+        }
     }
 
     /// <summary>获取最早待触发的提醒时间；没有待提醒事项时返回空值。</summary>
-    public DateTime? GetNextReminder() => ReadActive()
-        .Where(item => item.ReminderStatus == ReminderStatus.Pending && item.RemindAt is not null)
-        .Select(item => item.RemindAt).Min();
+    public DateTime? GetNextReminder()
+    {
+        lock (gate)
+            return ReadActive().Where(item => item.ReminderStatus == ReminderStatus.Pending && item.RemindAt is not null)
+                .Select(item => item.RemindAt).Min();
+    }
 
     /// <summary>将截至指定时间应触发的提醒标记为已提醒，并返回更新后的事项快照。</summary>
     public IReadOnlyList<TodoItem> MarkDueReminders(DateTime now)
     {
-        var active = ReadActive();
-        var due = active.Where(item => item.ReminderStatus == ReminderStatus.Pending && item.RemindAt <= now).ToArray();
-        if (due.Length == 0) return due;
-        foreach (var item in due)
-            active[active.FindIndex(x => x.Id == item.Id)] =
-                item with { ReminderStatus = ReminderStatus.Reminded, RemindedAt = now };
-        SaveActive(active);
-        return due.Select(item => item with { ReminderStatus = ReminderStatus.Reminded, RemindedAt = now }).ToArray();
+        lock (gate)
+        {
+            var active = ReadActive();
+            var due = active.Where(item => item.ReminderStatus == ReminderStatus.Pending && item.RemindAt <= now)
+                .ToArray();
+            if (due.Length == 0) return due;
+            foreach (var item in due)
+                active[active.FindIndex(x => x.Id == item.Id)] =
+                    item with { ReminderStatus = ReminderStatus.Reminded, RemindedAt = now };
+            SaveActive(active);
+            return due.Select(item => item with { ReminderStatus = ReminderStatus.Reminded, RemindedAt = now })
+                .ToArray();
+        }
     }
 
     /// <summary>读取活动事项 CSV。</summary>

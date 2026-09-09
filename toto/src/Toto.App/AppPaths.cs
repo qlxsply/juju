@@ -6,9 +6,15 @@ namespace Toto.App;
 /// </summary>
 internal sealed class AppPaths
 {
+    public AppPaths() : this(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".toto"))
+    {
+    }
+
+    /// <summary>使用指定数据目录创建路径集合，便于隔离测试且不影响实际用户数据。</summary>
+    internal AppPaths(string dataDirectory) => DataDirectory = dataDirectory;
+
     /// <summary>获取 toto 数据、配置和日志的根目录。</summary>
-    public string DataDirectory { get; } =
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".toto");
+    public string DataDirectory { get; }
 
     /// <summary>获取 INI 格式配置文件的完整路径。</summary>
     public string ConfigPath => Path.Combine(DataDirectory, "config.ini");
