@@ -12,6 +12,7 @@ use crate::{
         tool_manager::ToolManager,
         window_manager::WindowManager,
     },
+    services::storage::StorageManager,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -24,6 +25,7 @@ pub(crate) enum ActivationTarget {
 pub(crate) struct AppState {
     pub(crate) lifecycle: Arc<AppLifecycle>,
     pub(crate) settings: Arc<SettingsService>,
+    pub(crate) storage: Arc<StorageManager>,
     pub(crate) registry: Arc<ToolRegistry>,
     pub(crate) tools: Arc<ToolManager>,
     pub(crate) windows: Arc<WindowManager>,
@@ -35,6 +37,7 @@ impl AppState {
     pub(crate) fn new(
         lifecycle: Arc<AppLifecycle>,
         settings: Arc<SettingsService>,
+        storage: Arc<StorageManager>,
         registry: Arc<ToolRegistry>,
         tools: Arc<ToolManager>,
         windows: Arc<WindowManager>,
@@ -44,6 +47,7 @@ impl AppState {
         Self {
             lifecycle,
             settings,
+            storage,
             registry,
             tools,
             windows,

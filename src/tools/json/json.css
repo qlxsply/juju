@@ -1,0 +1,11 @@
+.json-tool { display: grid; grid-template-columns: 240px minmax(0, 1fr); height: 100vh; background: #101419; color: #e6ebf1; font: 14px/1.4 "Segoe UI", sans-serif; }
+.json-sidebar { border-right: 1px solid #27313c; padding: 14px 10px; overflow: auto; }
+.json-sidebar-header, .json-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.json-sidebar-header { color: #91a3b5; font-size: 11px; letter-spacing: .12em; margin-bottom: 12px; }
+button { border: 1px solid #344353; background: #19222c; border-radius: 5px; color: inherit; cursor: pointer; padding: 6px 9px; }
+button:hover, .json-sidebar button.is-selected { background: #244b68; border-color: #3c8bbd; }
+.json-sidebar > button { border: 0; border-radius: 4px; display: block; margin: 2px 0; overflow: hidden; padding: 8px; text-align: left; text-overflow: ellipsis; white-space: nowrap; width: 100%; }
+.json-workspace { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; min-width: 0; }
+.json-toolbar { border-bottom: 1px solid #27313c; padding: 11px 14px; }.json-toolbar div { display: flex; flex-wrap: wrap; gap: 6px; }.json-editor { min-height: 0; }.json-workspace footer { border-top: 1px solid #27313c; color: #91a3b5; padding: 7px 14px; }
+.json-editor.is-hidden { display: none; }.json-diff-shell { display: grid; grid-template-rows: auto minmax(0, 1fr); min-height: 0; }.json-diff { min-height: 0; }.json-diff-warning { background: #4c3614; color: #ffd981; margin: 0; padding: 7px 14px; }.json-compare-select { align-items: center; color: #91a3b5; display: flex; justify-content: center; }
+@media (max-width: 680px) { .json-tool { grid-template-columns: 150px minmax(0, 1fr); }.json-toolbar { align-items: flex-start; flex-direction: column; } }

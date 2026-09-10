@@ -18,9 +18,10 @@ async function renderCurrentView() {
   let App;
   if (view === "launcher") {
     App = (await import("./launcher/LauncherApp")).LauncherApp;
-  } else if (view === "tool" || view === "settings") {
-    const MockWindowApp = (await import("./MockWindowApp")).MockWindowApp;
-    App = () => <MockWindowApp view={view} />;
+  } else if (view === "tool") {
+    App = (await import("./tools/json/JsonToolApp")).JsonToolApp;
+  } else if (view === "settings") {
+    App = (await import("./settings/SettingsApp")).SettingsApp;
   } else {
     App = (await import("./BootstrapApp")).BootstrapApp;
   }

@@ -36,6 +36,21 @@ impl GlobalShortcutManager {
         }
         Ok(())
     }
+
+    pub(crate) fn replace(&self, app: &AppHandle, accelerator: &str) -> Result<(), GlobalShortcutError> {
+        let next = Shortcut::from_str(accelerator)
+            .map_err(|error| GlobalShortcutError::Invalid(error.to_string()))?;
+        app.global_shortcut().register(next)?;
+        let previous = self
+            .registered
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .replace(next);
+        if let Some(previous) = previous {
+            app.global_shortcut().unregister(previous)?;
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, Error)]

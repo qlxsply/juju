@@ -35,6 +35,10 @@ pub fn run() {
                 })
                 .build(),
         )
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            None,
+        ))
         .setup(|app| {
             let config_dir = app.path().local_data_dir()?.join("juju");
             let config_path = config_dir.join("config.toml");
@@ -42,6 +46,9 @@ pub fn run() {
             let window_state = Arc::new(WindowStateStore::load_or_create(&config_dir)?);
             let settings =
                 core::settings::SettingsService::load_or_create(config_dir, default_data_root)?;
+            let storage = Arc::new(services::storage::StorageManager::load_or_create(
+                settings.snapshot().data_root,
+            )?);
             let shortcut = settings.snapshot().launcher.shortcut;
             let registry = Arc::new(ToolRegistry::new()?);
             let windows = Arc::new(WindowManager::new(window_state));
@@ -52,6 +59,7 @@ pub fn run() {
             let state = AppState::new(
                 Arc::new(AppLifecycle::default()),
                 Arc::new(settings),
+                Arc::clone(&storage),
                 registry,
                 tools,
                 windows,
@@ -63,6 +71,7 @@ pub fn run() {
             debug_assert_eq!(state.settings.snapshot().schema_version, 1);
             debug_assert!(state.registry.get(core::registry::ToolId::Json).is_some());
             app.manage(state);
+            storage.start_watching(app.handle().clone())?;
             app.state::<AppState>()
                 .global_shortcut
                 .register_initial(app.handle(), &shortcut)?;
@@ -74,6 +83,17 @@ pub fn run() {
             app::commands::window_ready,
             app::commands::launcher_close,
             app::commands::launcher_open_target,
+            app::commands::json_list_documents,
+            app::commands::json_create_document,
+            app::commands::json_read_document,
+            app::commands::json_write_document,
+            app::commands::json_rename_document,
+            app::commands::json_delete_document,
+            app::commands::app_use_existing_data_root,
+            app::commands::app_migrate_data_root,
+            app::commands::app_get_settings,
+            app::commands::app_update_launcher_settings,
+            app::commands::app_set_autostart,
         ]);
 
     let app = builder
