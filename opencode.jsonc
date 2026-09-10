@@ -4,12 +4,9 @@
     "code-review-graph": {
       "type": "local",
       "command": [
-        "D:\\DevEnv\\Python\\python.exe",
-        "-m",
-        "code_review_graph",
-        "serve",
-        "--repo",
-        "E:\\Github\\qlxsply\\juju"
+        "uvx",
+        "code-review-graph",
+        "serve"
       ]
     }
   }

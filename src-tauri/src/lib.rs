@@ -9,7 +9,10 @@ use std::sync::Arc;
 use app::{
     global_shortcut::GlobalShortcutManager, launcher::LauncherManager, lifecycle::AppLifecycle,
 };
-use core::{ActivationTarget, AppState};
+use core::{
+    registry::ToolRegistry, tool_manager::ToolManager, window_manager::WindowManager,
+    window_state::WindowStateStore, ActivationTarget, AppState,
+};
 use tauri::Manager;
 use tauri_plugin_global_shortcut::ShortcutState;
 
@@ -36,18 +39,29 @@ pub fn run() {
             let config_dir = app.path().local_data_dir()?.join("juju");
             let config_path = config_dir.join("config.toml");
             let default_data_root = app.path().home_dir()?.join(".juju");
+            let window_state = Arc::new(WindowStateStore::load_or_create(&config_dir)?);
             let settings =
                 core::settings::SettingsService::load_or_create(config_dir, default_data_root)?;
             let shortcut = settings.snapshot().launcher.shortcut;
+            let registry = Arc::new(ToolRegistry::new()?);
+            let windows = Arc::new(WindowManager::new(window_state));
+            let tools = Arc::new(ToolManager::new(
+                Arc::clone(&registry),
+                Arc::clone(&windows),
+            ));
             let state = AppState::new(
                 Arc::new(AppLifecycle::default()),
                 Arc::new(settings),
+                registry,
+                tools,
+                windows,
                 Arc::new(GlobalShortcutManager::default()),
                 Arc::new(LauncherManager::default()),
             );
 
             debug_assert_eq!(state.settings.config_path(), config_path);
             debug_assert_eq!(state.settings.snapshot().schema_version, 1);
+            debug_assert!(state.registry.get(core::registry::ToolId::Json).is_some());
             app.manage(state);
             app.state::<AppState>()
                 .global_shortcut

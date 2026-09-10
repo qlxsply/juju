@@ -1,15 +1,13 @@
 use std::{
-    fs::{self, OpenOptions},
-    io::{self, Write},
+    fs, io,
     path::{Path, PathBuf},
     sync::RwLock,
-    time::{SystemTime, UNIX_EPOCH},
 };
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::platform::windows::fs::replace_file;
+use crate::platform::windows::fs::atomic_write;
 
 const CURRENT_SCHEMA_VERSION: u32 = 1;
 const CONFIG_FILE_NAME: &str = "config.toml";
@@ -148,14 +146,6 @@ impl SettingsService {
     pub(crate) fn config_path(&self) -> &Path {
         &self.config_path
     }
-
-    #[cfg(test)]
-    pub(crate) fn new_for_test(config_path: PathBuf) -> Self {
-        Self {
-            config_path,
-            settings: RwLock::new(AppSettings::defaults(PathBuf::from("C:\\.juju"))),
-        }
-    }
 }
 
 fn create_app_directories(config_dir: &Path) -> Result<(), SettingsError> {
@@ -178,39 +168,10 @@ fn write_settings(path: &Path, settings: &AppSettings) -> Result<(), SettingsErr
     let mut content = toml::to_string_pretty(settings)?;
     content.push('\n');
 
-    let nonce = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_nanos();
-    let temporary_path = path.with_extension(format!("toml.tmp-{}-{nonce}", std::process::id()));
-    let result = (|| {
-        let mut file = OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&temporary_path)
-            .map_err(|source| SettingsError::Write {
-                path: temporary_path.clone(),
-                source,
-            })?;
-        file.write_all(content.as_bytes())
-            .and_then(|_| file.sync_all())
-            .map_err(|source| SettingsError::Write {
-                path: temporary_path.clone(),
-                source,
-            })?;
-        drop(file);
-
-        replace_file(&temporary_path, path).map_err(|source| SettingsError::Write {
-            path: path.to_path_buf(),
-            source,
-        })
-    })();
-
-    if result.is_err() {
-        let _ = fs::remove_file(&temporary_path);
-    }
-
-    result
+    atomic_write(path, content.as_bytes()).map_err(|source| SettingsError::Write {
+        path: path.to_path_buf(),
+        source,
+    })
 }
 
 #[derive(Debug, Error)]

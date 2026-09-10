@@ -15,10 +15,15 @@ const root = getRootElement();
 
 async function renderCurrentView() {
   const view = new URLSearchParams(window.location.search).get("view");
-  const App =
-    view === "launcher"
-      ? (await import("./launcher/LauncherApp")).LauncherApp
-      : (await import("./BootstrapApp")).BootstrapApp;
+  let App;
+  if (view === "launcher") {
+    App = (await import("./launcher/LauncherApp")).LauncherApp;
+  } else if (view === "tool" || view === "settings") {
+    const MockWindowApp = (await import("./MockWindowApp")).MockWindowApp;
+    App = () => <MockWindowApp view={view} />;
+  } else {
+    App = (await import("./BootstrapApp")).BootstrapApp;
+  }
 
   createRoot(root).render(
     <StrictMode>
