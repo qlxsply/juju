@@ -1,17 +1,30 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
-import { BootstrapApp } from "./BootstrapApp";
 import "./styles/global.css";
 
-const root = document.getElementById("root");
-
-if (!root) {
-  throw new Error("Missing #root element");
+function getRootElement(): HTMLElement {
+  const root = document.getElementById("root");
+  if (!root) {
+    throw new Error("Missing #root element");
+  }
+  return root;
 }
 
-createRoot(root).render(
-  <StrictMode>
-    <BootstrapApp />
-  </StrictMode>,
-);
+const root = getRootElement();
+
+async function renderCurrentView() {
+  const view = new URLSearchParams(window.location.search).get("view");
+  const App =
+    view === "launcher"
+      ? (await import("./launcher/LauncherApp")).LauncherApp
+      : (await import("./BootstrapApp")).BootstrapApp;
+
+  createRoot(root).render(
+    <StrictMode>
+      <App />
+    </StrictMode>,
+  );
+}
+
+void renderCurrentView();
