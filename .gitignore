@@ -75,3 +75,20 @@ out/
 
 # Code analysis tool state
 .code-review-graph/
+
+# Node / Vite
+node_modules/
+dist/
+coverage/
+
+# Rust / Tauri
+target/
+src-tauri/target/
+src-tauri/gen/
+src-tauri/icons/*
+!src-tauri/icons/icon.ico
+
+# Local environment files
+.env
+.env.*
+!.env.example
