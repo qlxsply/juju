@@ -1,11 +1,14 @@
 use std::{io, mem::size_of};
 
 use windows::Win32::{
-    Foundation::{POINT, RECT},
+    Foundation::{HWND, POINT, RECT},
     Graphics::Gdi::{GetMonitorInfoW, MonitorFromPoint, MONITORINFO, MONITOR_DEFAULTTONEAREST},
     UI::{
-        Input::KeyboardAndMouse::{GetAsyncKeyState, VIRTUAL_KEY, VK_CONTROL, VK_MENU, VK_SHIFT},
-        WindowsAndMessaging::GetCursorPos,
+        Input::KeyboardAndMouse::{
+            GetAsyncKeyState, VIRTUAL_KEY, VK_1, VK_CONTROL, VK_ESCAPE, VK_MENU, VK_NUMPAD1, VK_S,
+            VK_SHIFT,
+        },
+        WindowsAndMessaging::{GetAncestor, GetCursorPos, GetForegroundWindow, GA_ROOT},
     },
 };
 
@@ -37,6 +40,22 @@ pub(crate) fn current_monitor_work_area() -> io::Result<WorkArea> {
 
 pub(crate) fn leader_modifiers_released() -> bool {
     !key_is_down(VK_CONTROL) && !key_is_down(VK_SHIFT) && !key_is_down(VK_MENU)
+}
+
+pub(crate) fn launcher_keys_down() -> [bool; 4] {
+    [
+        key_is_down(VK_1),
+        key_is_down(VK_NUMPAD1),
+        key_is_down(VK_S),
+        key_is_down(VK_ESCAPE),
+    ]
+}
+
+pub(crate) fn window_is_foreground(window: HWND) -> bool {
+    unsafe {
+        let foreground = GetForegroundWindow();
+        !foreground.is_invalid() && GetAncestor(foreground, GA_ROOT) == window
+    }
 }
 
 pub(crate) fn centered_position(work_area: WorkArea, width: u32, height: u32) -> (i32, i32) {

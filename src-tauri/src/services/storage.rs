@@ -1,10 +1,10 @@
 use std::{
     collections::{hash_map::DefaultHasher, HashMap},
     fs,
+    hash::{Hash, Hasher},
     io,
     path::{Path, PathBuf},
     sync::{Arc, Mutex, RwLock},
-    hash::{Hash, Hasher},
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
@@ -94,7 +94,10 @@ impl StorageManager {
     pub(crate) fn use_existing_root(&self, root: PathBuf) -> Result<(), StorageError> {
         if root.is_dir()
             && fs::read_dir(&root)
-                .map_err(|source| StorageError::Io { path: root.clone(), source })?
+                .map_err(|source| StorageError::Io {
+                    path: root.clone(),
+                    source,
+                })?
                 .next()
                 .is_none()
         {
@@ -102,7 +105,10 @@ impl StorageManager {
         } else {
             validate_existing_data_root(&root)?;
         }
-        *self.root.write().unwrap_or_else(|poisoned| poisoned.into_inner()) = root;
+        *self
+            .root
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = root;
         Ok(())
     }
 
@@ -116,15 +122,23 @@ impl StorageManager {
         }
         if destination.exists()
             && fs::read_dir(&destination)
-                .map_err(|source| StorageError::Io { path: destination.clone(), source })?
+                .map_err(|source| StorageError::Io {
+                    path: destination.clone(),
+                    source,
+                })?
                 .next()
                 .is_some()
         {
-            return Err(StorageError::DocumentAlreadyExists(destination.display().to_string()));
+            return Err(StorageError::DocumentAlreadyExists(
+                destination.display().to_string(),
+            ));
         }
         copy_directory(&source, &destination)?;
         validate_existing_data_root(&destination)?;
-        *self.root.write().unwrap_or_else(|poisoned| poisoned.into_inner()) = destination;
+        *self
+            .root
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = destination;
         Ok(())
     }
 
@@ -139,10 +153,14 @@ impl StorageManager {
                 path: directory.clone(),
                 source,
             })?;
-            if !entry.file_type().map_err(|source| StorageError::Io {
-                path: entry.path(),
-                source,
-            })?.is_file() {
+            if !entry
+                .file_type()
+                .map_err(|source| StorageError::Io {
+                    path: entry.path(),
+                    source,
+                })?
+                .is_file()
+            {
                 continue;
             }
             let document_id = entry.file_name().to_string_lossy().into_owned();
@@ -177,7 +195,8 @@ impl StorageManager {
     pub(crate) fn read_document(&self, document_id: String) -> Result<JsonDocument, StorageError> {
         let id = JsonDocumentId::parse(&document_id)?;
         let path = self.documents_dir().join(&id.0);
-        let content = fs::read_to_string(&path).map_err(|source| map_read_error(path.clone(), source, &id.0))?;
+        let content = fs::read_to_string(&path)
+            .map_err(|source| map_read_error(path.clone(), source, &id.0))?;
         Ok(JsonDocument {
             document_id: id.0,
             revision: revision_for(&path)?,
@@ -214,7 +233,11 @@ impl StorageManager {
         })
     }
 
-    pub(crate) fn rename_document(&self, document_id: String, new_name: String) -> Result<(), StorageError> {
+    pub(crate) fn rename_document(
+        &self,
+        document_id: String,
+        new_name: String,
+    ) -> Result<(), StorageError> {
         let old_id = JsonDocumentId::parse(&document_id)?;
         let new_id = JsonDocumentId::parse(&new_name)?;
         let directory = self.documents_dir();
@@ -223,7 +246,8 @@ impl StorageManager {
         if new_path.exists() {
             return Err(StorageError::DocumentAlreadyExists(new_id.0));
         }
-        fs::rename(&old_path, &new_path).map_err(|source| map_read_error(old_path, source, &old_id.0))?;
+        fs::rename(&old_path, &new_path)
+            .map_err(|source| map_read_error(old_path, source, &old_id.0))?;
         Ok(())
     }
 
@@ -231,9 +255,13 @@ impl StorageManager {
         let id = JsonDocumentId::parse(&document_id)?;
         let source = self.documents_dir().join(&id.0);
         let trash = self.root().join(JSON_DIRECTORY).join(TRASH_DIRECTORY);
-        let stamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs();
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
         let destination = trash.join(format!("{stamp}__{}", id.0));
-        fs::rename(&source, &destination).map_err(|source_error| map_read_error(source, source_error, &id.0))?;
+        fs::rename(&source, &destination)
+            .map_err(|source_error| map_read_error(source, source_error, &id.0))?;
         Ok(())
     }
 
@@ -243,21 +271,30 @@ impl StorageManager {
         let recent_events = Arc::clone(&self.recent_events);
         let mut watcher = recommended_watcher(move |event: notify::Result<notify::Event>| {
             let Ok(event) = event else { return };
-            if !matches!(event.kind, EventKind::Modify(_) | EventKind::Create(_) | EventKind::Remove(_)) {
+            if !matches!(
+                event.kind,
+                EventKind::Modify(_) | EventKind::Create(_) | EventKind::Remove(_)
+            ) {
                 return;
             }
             for path in event.paths {
-                let Some(file_name) = path.file_name().and_then(|name| name.to_str()) else { continue };
+                let Some(file_name) = path.file_name().and_then(|name| name.to_str()) else {
+                    continue;
+                };
                 if JsonDocumentId::parse(file_name).is_err() {
                     continue;
                 }
-                let mut writes = self_writes.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+                let mut writes = self_writes
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner());
                 writes.retain(|_, recorded| recorded.elapsed() < SELF_WRITE_WINDOW);
                 if writes.contains_key(file_name) {
                     continue;
                 }
                 drop(writes);
-                let mut emitted = recent_events.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+                let mut emitted = recent_events
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner());
                 emitted.retain(|_, recorded| recorded.elapsed() < WATCH_DEBOUNCE);
                 if emitted.contains_key(file_name) {
                     continue;
@@ -266,13 +303,21 @@ impl StorageManager {
                 drop(emitted);
                 let revision = revision_for(&path).ok();
                 let kind = if path.exists() { "modified" } else { "deleted" };
-                let _ = app.emit("json://external-change", ExternalChange {
-                    document_id: file_name.to_owned(), revision, kind,
-                });
+                let _ = app.emit(
+                    "json://external-change",
+                    ExternalChange {
+                        document_id: file_name.to_owned(),
+                        revision,
+                        kind,
+                    },
+                );
             }
         })?;
         watcher.watch(&directory, RecursiveMode::NonRecursive)?;
-        *self.watcher.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(watcher);
+        *self
+            .watcher
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(watcher);
         Ok(())
     }
 
@@ -297,10 +342,16 @@ impl JsonDocumentId {
             || value.contains(['/', '\\'])
             || value.contains("..")
             || value.trim() != value
-            || value.chars().any(|character| matches!(character, '<' | '>' | ':' | '"' | '|' | '?' | '*'));
+            || value
+                .chars()
+                .any(|character| matches!(character, '<' | '>' | ':' | '"' | '|' | '?' | '*'));
         let stem = value.strip_suffix(".json").unwrap_or_default();
-        let reserved = ["CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9"];
-        if invalid || stem.is_empty() || reserved.iter().any(|name| stem.eq_ignore_ascii_case(name)) {
+        let reserved = [
+            "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7",
+            "COM8", "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+        ];
+        if invalid || stem.is_empty() || reserved.iter().any(|name| stem.eq_ignore_ascii_case(name))
+        {
             return Err(StorageError::InvalidDocumentName(value.to_owned()));
         }
         Ok(Self(value.to_owned()))
@@ -308,12 +359,28 @@ impl JsonDocumentId {
 }
 
 fn initialize_data_root(root: &Path) -> Result<(), StorageError> {
-    fs::create_dir_all(root.join(JSON_DIRECTORY).join(DOCUMENTS_DIRECTORY)).map_err(|source| StorageError::Io { path: root.to_path_buf(), source })?;
-    fs::create_dir_all(root.join(JSON_DIRECTORY).join(TRASH_DIRECTORY)).map_err(|source| StorageError::Io { path: root.to_path_buf(), source })?;
+    fs::create_dir_all(root.join(JSON_DIRECTORY).join(DOCUMENTS_DIRECTORY)).map_err(|source| {
+        StorageError::Io {
+            path: root.to_path_buf(),
+            source,
+        }
+    })?;
+    fs::create_dir_all(root.join(JSON_DIRECTORY).join(TRASH_DIRECTORY)).map_err(|source| {
+        StorageError::Io {
+            path: root.to_path_buf(),
+            source,
+        }
+    })?;
     let manifest = root.join(DATA_MANIFEST);
     if !manifest.exists() {
-        atomic_write(&manifest, format!("data_schema_version = {DATA_SCHEMA_VERSION}\n").as_bytes())
-            .map_err(|source| StorageError::Io { path: manifest, source })?;
+        atomic_write(
+            &manifest,
+            format!("data_schema_version = {DATA_SCHEMA_VERSION}\n").as_bytes(),
+        )
+        .map_err(|source| StorageError::Io {
+            path: manifest,
+            source,
+        })?;
     }
     validate_existing_data_root(root)
 }
@@ -323,8 +390,12 @@ fn validate_existing_data_root(root: &Path) -> Result<(), StorageError> {
         return Err(StorageError::DataRootUnavailable(root.to_path_buf()));
     }
     let manifest = root.join(DATA_MANIFEST);
-    let content = fs::read_to_string(&manifest).map_err(|source| StorageError::Io { path: manifest.clone(), source })?;
-    let manifest: DataManifest = toml::from_str(&content).map_err(|_| StorageError::InvalidDataRoot(root.to_path_buf()))?;
+    let content = fs::read_to_string(&manifest).map_err(|source| StorageError::Io {
+        path: manifest.clone(),
+        source,
+    })?;
+    let manifest: DataManifest =
+        toml::from_str(&content).map_err(|_| StorageError::InvalidDataRoot(root.to_path_buf()))?;
     if manifest.data_schema_version != DATA_SCHEMA_VERSION {
         return Err(StorageError::InvalidDataRoot(root.to_path_buf()));
     }
@@ -340,12 +411,27 @@ struct DataManifest {
 }
 
 fn revision_for(path: &Path) -> Result<String, StorageError> {
-    let metadata = fs::metadata(path).map_err(|source| StorageError::Io { path: path.to_path_buf(), source })?;
-    let modified = metadata.modified().unwrap_or(UNIX_EPOCH).duration_since(UNIX_EPOCH).unwrap_or_default().as_nanos();
-    let content = fs::read(path).map_err(|source| StorageError::Io { path: path.to_path_buf(), source })?;
+    let metadata = fs::metadata(path).map_err(|source| StorageError::Io {
+        path: path.to_path_buf(),
+        source,
+    })?;
+    let modified = metadata
+        .modified()
+        .unwrap_or(UNIX_EPOCH)
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let content = fs::read(path).map_err(|source| StorageError::Io {
+        path: path.to_path_buf(),
+        source,
+    })?;
     let mut hasher = DefaultHasher::new();
     content.hash(&mut hasher);
-    Ok(format!("{modified}:{}:{:x}", metadata.len(), hasher.finish()))
+    Ok(format!(
+        "{modified}:{}:{:x}",
+        metadata.len(),
+        hasher.finish()
+    ))
 }
 
 fn map_read_error(path: PathBuf, source: io::Error, document_id: &str) -> StorageError {
@@ -357,14 +443,33 @@ fn map_read_error(path: PathBuf, source: io::Error, document_id: &str) -> Storag
 }
 
 fn copy_directory(source: &Path, destination: &Path) -> Result<(), StorageError> {
-    fs::create_dir_all(destination).map_err(|error| StorageError::Io { path: destination.to_path_buf(), source: error })?;
-    for entry in fs::read_dir(source).map_err(|error| StorageError::Io { path: source.to_path_buf(), source: error })? {
-        let entry = entry.map_err(|error| StorageError::Io { path: source.to_path_buf(), source: error })?;
+    fs::create_dir_all(destination).map_err(|error| StorageError::Io {
+        path: destination.to_path_buf(),
+        source: error,
+    })?;
+    for entry in fs::read_dir(source).map_err(|error| StorageError::Io {
+        path: source.to_path_buf(),
+        source: error,
+    })? {
+        let entry = entry.map_err(|error| StorageError::Io {
+            path: source.to_path_buf(),
+            source: error,
+        })?;
         let target = destination.join(entry.file_name());
-        if entry.file_type().map_err(|error| StorageError::Io { path: entry.path(), source: error })?.is_dir() {
+        if entry
+            .file_type()
+            .map_err(|error| StorageError::Io {
+                path: entry.path(),
+                source: error,
+            })?
+            .is_dir()
+        {
             copy_directory(&entry.path(), &target)?;
         } else {
-            fs::copy(entry.path(), &target).map_err(|error| StorageError::Io { path: target, source: error })?;
+            fs::copy(entry.path(), &target).map_err(|error| StorageError::Io {
+                path: target,
+                source: error,
+            })?;
         }
     }
     Ok(())
@@ -372,8 +477,8 @@ fn copy_directory(source: &Path, destination: &Path) -> Result<(), StorageError>
 
 #[cfg(test)]
 mod tests {
-    use std::fs;
     use super::{StorageError, StorageManager};
+    use std::fs;
 
     fn temporary_root(name: &str) -> std::path::PathBuf {
         let path = std::env::temp_dir().join(format!("juju-storage-{name}-{}", std::process::id()));
@@ -388,12 +493,32 @@ mod tests {
         assert!(root.join("juju.toml").is_file());
         let created = storage.create_document().unwrap();
         assert_eq!(created.document_id, "未命名-1.json");
-        let saved = storage.write_document(created.document_id.clone(), "{\"ok\":true}".into(), created.revision).unwrap();
-        assert_eq!(storage.read_document(saved.document_id.clone()).unwrap().content, "{\"ok\":true}");
-        storage.rename_document(saved.document_id.clone(), "renamed.json".into()).unwrap();
+        let saved = storage
+            .write_document(
+                created.document_id.clone(),
+                "{\"ok\":true}".into(),
+                created.revision,
+            )
+            .unwrap();
+        assert_eq!(
+            storage
+                .read_document(saved.document_id.clone())
+                .unwrap()
+                .content,
+            "{\"ok\":true}"
+        );
+        storage
+            .rename_document(saved.document_id.clone(), "renamed.json".into())
+            .unwrap();
         storage.delete_document("renamed.json".into()).unwrap();
         assert!(storage.list_documents().unwrap().is_empty());
-        assert!(root.join("json").join(".trash").read_dir().unwrap().next().is_some());
+        assert!(root
+            .join("json")
+            .join(".trash")
+            .read_dir()
+            .unwrap()
+            .next()
+            .is_some());
         fs::remove_dir_all(root).unwrap();
     }
 
@@ -402,10 +527,21 @@ mod tests {
         let root = temporary_root("conflict");
         let storage = StorageManager::load_or_create(root.clone()).unwrap();
         let created = storage.create_document().unwrap();
-        fs::write(root.join("json").join("documents").join(&created.document_id), "{\"external\": true}").unwrap();
-        let error = storage.write_document(created.document_id.clone(), "{}".into(), created.revision).unwrap_err();
+        fs::write(
+            root.join("json")
+                .join("documents")
+                .join(&created.document_id),
+            "{\"external\": true}",
+        )
+        .unwrap();
+        let error = storage
+            .write_document(created.document_id.clone(), "{}".into(), created.revision)
+            .unwrap_err();
         assert!(matches!(error, StorageError::ExternalModificationConflict));
-        assert!(matches!(storage.read_document("../escape.json".into()), Err(StorageError::InvalidDocumentName(_))));
+        assert!(matches!(
+            storage.read_document("../escape.json".into()),
+            Err(StorageError::InvalidDocumentName(_))
+        ));
         fs::remove_dir_all(root).unwrap();
     }
 }

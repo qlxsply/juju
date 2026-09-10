@@ -1,6 +1,6 @@
 :root {
-  color: #eee8dc;
-  background: #15130f;
+  color: #1f1f1f;
+  background: #f3f3f3;
   font-family: "Segoe UI Variable", "Segoe UI", sans-serif;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -27,9 +27,7 @@ body {
   min-height: 100vh;
   padding: 32px;
   place-items: center;
-  background:
-    radial-gradient(circle at 20% 15%, rgb(190 129 63 / 18%), transparent 32%),
-    #15130f;
+  background: #f3f3f3;
 }
 
 .bootstrap-card {
@@ -38,10 +36,10 @@ body {
   align-items: center;
   gap: 24px;
   padding: 28px;
-  border: 1px solid #3d372d;
+  border: 1px solid #d1d1d1;
   border-radius: 18px;
-  background: #1d1a15;
-  box-shadow: 0 24px 80px rgb(0 0 0 / 35%);
+  background: #fff;
+  box-shadow: 0 12px 32px rgb(0 0 0 / 12%);
 }
 
 .bootstrap-mark {
@@ -51,8 +49,8 @@ body {
   flex: 0 0 auto;
   place-items: center;
   border-radius: 16px;
-  color: #1a1510;
-  background: #daa15d;
+  color: #fff;
+  background: #0067c0;
   font-family: Georgia, serif;
   font-size: 42px;
   font-weight: 700;
@@ -61,7 +59,7 @@ body {
 .bootstrap-eyebrow,
 .bootstrap-copy {
   margin: 0;
-  color: #aaa192;
+  color: #5f5f5f;
 }
 
 .bootstrap-eyebrow {

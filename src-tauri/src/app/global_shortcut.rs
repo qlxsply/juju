@@ -37,7 +37,11 @@ impl GlobalShortcutManager {
         Ok(())
     }
 
-    pub(crate) fn replace(&self, app: &AppHandle, accelerator: &str) -> Result<(), GlobalShortcutError> {
+    pub(crate) fn replace(
+        &self,
+        app: &AppHandle,
+        accelerator: &str,
+    ) -> Result<(), GlobalShortcutError> {
         let next = Shortcut::from_str(accelerator)
             .map_err(|error| GlobalShortcutError::Invalid(error.to_string()))?;
         app.global_shortcut().register(next)?;

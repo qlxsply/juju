@@ -59,6 +59,7 @@ export function JsonToolApp() {
     void import("monaco-editor").then((monaco) => {
       if (disposed || !hostRef.current) return;
       const model = monaco.editor.createModel(current?.content ?? "", "json");
+      monaco.editor.setTheme("vs");
       const editor = monaco.editor.create(hostRef.current, {
         model,
         automaticLayout: true,

@@ -154,18 +154,34 @@ impl SettingsService {
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         let previous = settings.data_root.clone();
         settings.data_root = data_root;
-        if let Err(error) = settings.validate().and_then(|()| write_settings(&self.config_path, &settings)) {
+        if let Err(error) = settings
+            .validate()
+            .and_then(|()| write_settings(&self.config_path, &settings))
+        {
             settings.data_root = previous;
             return Err(error);
         }
         Ok(())
     }
 
-    pub(crate) fn update_launcher(&self, shortcut: String, timeout_ms: u64) -> Result<(), SettingsError> {
-        let mut settings = self.settings.write().unwrap_or_else(|poisoned| poisoned.into_inner());
+    pub(crate) fn update_launcher(
+        &self,
+        shortcut: String,
+        timeout_ms: u64,
+    ) -> Result<(), SettingsError> {
+        let mut settings = self
+            .settings
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         let previous = settings.launcher.clone();
-        settings.launcher = LauncherSettings { shortcut, timeout_ms };
-        if let Err(error) = settings.validate().and_then(|()| write_settings(&self.config_path, &settings)) {
+        settings.launcher = LauncherSettings {
+            shortcut,
+            timeout_ms,
+        };
+        if let Err(error) = settings
+            .validate()
+            .and_then(|()| write_settings(&self.config_path, &settings))
+        {
             settings.launcher = previous;
             return Err(error);
         }
@@ -173,7 +189,10 @@ impl SettingsService {
     }
 
     pub(crate) fn update_autostart(&self, autostart: bool) -> Result<(), SettingsError> {
-        let mut settings = self.settings.write().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let mut settings = self
+            .settings
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         settings.app.autostart = autostart;
         write_settings(&self.config_path, &settings)
     }

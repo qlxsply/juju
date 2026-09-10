@@ -12,8 +12,12 @@ use tauri::{
 };
 use thiserror::Error;
 
-use crate::platform::windows::monitor::{
-    centered_position, current_monitor_work_area, leader_modifiers_released,
+use crate::{
+    core::{ActivationTarget, AppState},
+    platform::windows::monitor::{
+        centered_position, current_monitor_work_area, launcher_keys_down,
+        leader_modifiers_released, window_is_foreground,
+    },
 };
 
 pub(crate) const LAUNCHER_LABEL: &str = "launcher";
@@ -22,6 +26,7 @@ pub(crate) const LAUNCHER_ARMED_EVENT: &str = "launcher://armed";
 const LAUNCHER_WIDTH: f64 = 520.0;
 const LAUNCHER_HEIGHT: f64 = 326.0;
 const MODIFIER_POLL_INTERVAL: Duration = Duration::from_millis(15);
+const MODIFIER_RELEASE_FALLBACK: Duration = Duration::from_millis(500);
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 enum LauncherStatus {
@@ -91,6 +96,11 @@ impl LauncherManager {
             return Ok(());
         }
 
+        position_on_current_monitor(&window)?;
+        window.show()?;
+        window.set_focus()?;
+        let webview: &Webview = window.as_ref();
+        webview.set_focus()?;
         self.record_elapsed("Launcher WebView created");
         Ok(())
     }
@@ -137,17 +147,22 @@ impl LauncherManager {
         } else {
             let manager = Arc::downgrade(self);
             let app = app.clone();
-            thread::spawn(move || loop {
-                thread::sleep(MODIFIER_POLL_INTERVAL);
-                let Some(manager) = manager.upgrade() else {
-                    return;
-                };
-                if !manager.is_current(generation, LauncherStatus::WaitingForModifiers) {
-                    return;
-                }
-                if leader_modifiers_released() {
-                    let _ = manager.arm(&app, generation);
-                    return;
+            thread::spawn(move || {
+                let waiting_started = Instant::now();
+                loop {
+                    thread::sleep(MODIFIER_POLL_INTERVAL);
+                    let Some(manager) = manager.upgrade() else {
+                        return;
+                    };
+                    if !manager.is_current(generation, LauncherStatus::WaitingForModifiers) {
+                        return;
+                    }
+                    if leader_modifiers_released()
+                        || waiting_started.elapsed() >= MODIFIER_RELEASE_FALLBACK
+                    {
+                        let _ = manager.arm(&app, generation);
+                        return;
+                    }
                 }
             });
         }
@@ -169,7 +184,7 @@ impl LauncherManager {
         Ok(())
     }
 
-    fn arm(&self, app: &AppHandle, generation: u64) -> Result<(), LauncherError> {
+    fn arm(self: &Arc<Self>, app: &AppHandle, generation: u64) -> Result<(), LauncherError> {
         {
             let mut inner = self
                 .inner
@@ -187,8 +202,55 @@ impl LauncherManager {
             LAUNCHER_ARMED_EVENT,
             (),
         )?;
+        self.start_keyboard_monitor(app.clone(), generation);
         self.record_elapsed("Launcher ready for keyboard");
         Ok(())
+    }
+
+    fn start_keyboard_monitor(self: &Arc<Self>, app: AppHandle, generation: u64) {
+        let manager = Arc::clone(self);
+        thread::spawn(move || {
+            let mut previous = launcher_keys_down();
+            loop {
+                thread::sleep(MODIFIER_POLL_INTERVAL);
+                if !manager.is_current(generation, LauncherStatus::Armed) {
+                    return;
+                }
+
+                let Some(window) = app.get_webview_window(LAUNCHER_LABEL) else {
+                    return;
+                };
+                let current = launcher_keys_down();
+                if window.hwnd().map(window_is_foreground).unwrap_or(false) {
+                    let pressed = [
+                        current[0] && !previous[0],
+                        current[1] && !previous[1],
+                        current[2] && !previous[2],
+                        current[3] && !previous[3],
+                    ];
+                    let target = if pressed[0] || pressed[1] {
+                        Some(ActivationTarget::Json)
+                    } else if pressed[2] {
+                        Some(ActivationTarget::Settings)
+                    } else {
+                        None
+                    };
+
+                    if let Some(target) = target {
+                        if let Some(state) = app.try_state::<AppState>() {
+                            state.request_activation(&app, target);
+                        }
+                        let _ = manager.close(&app);
+                        return;
+                    }
+                    if pressed[3] {
+                        let _ = manager.close(&app);
+                        return;
+                    }
+                }
+                previous = current;
+            }
+        });
     }
 
     fn is_current(&self, generation: u64, expected_status: LauncherStatus) -> bool {

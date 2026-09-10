@@ -198,3 +198,13 @@ body {
   font-family: Consolas, monospace;
   font-size: 9px;
 }
+
+/* Windows light surface: the Launcher intentionally uses the same palette as tool windows. */
+.launcher-shell { border-color: #d1d1d1; color: #1f1f1f; background: #f7f7f7; box-shadow: 0 12px 32px rgb(0 0 0 / 18%); }
+.launcher-shell::before { display: none; }
+.launcher-glyph { color: #fff; background: #0067c0; box-shadow: none; }
+.launcher-brand p, .launcher-status, .launcher-footer { color: #616161; }
+.launcher-status > span { background: #767676; }
+.launcher-status.is-armed { color: #0067c0; }.launcher-status.is-armed > span { background: #0067c0; box-shadow: none; }
+.launcher-entry { border-color: #d1d1d1; background: #fff; }.launcher-entry:not(:disabled):hover, .launcher-entry:not(:disabled):focus-visible { border-color: #0067c0; background: #e8f2ff; }
+.launcher-entry:disabled { color: #777; }.launcher-entry kbd { border-color: #bdbdbd; color: #005a9e; background: #f3f3f3; }.launcher-entry-copy small, .launcher-arrow { color: #616161; }.launcher-footer kbd { border-color: #c8c8c8; color: #444; background: #fff; }

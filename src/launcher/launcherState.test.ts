@@ -21,6 +21,7 @@ describe("launcher keyboard state machine", () => {
 
   it.each([
     ["Digit1", "openJson"],
+    ["Numpad1", "openJson"],
     ["KeyS", "openSettings"],
     ["Escape", "close"],
   ] as const)("maps %s to %s", (code, action) => {

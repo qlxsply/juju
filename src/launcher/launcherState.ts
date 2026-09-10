@@ -38,6 +38,7 @@ export function transitionLauncher(
 
   switch (event.code) {
     case "Digit1":
+    case "Numpad1":
       return { state: "closed", action: "openJson" };
     case "KeyS":
       return { state: "closed", action: "openSettings" };

@@ -1,0 +1,64 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release-windows-x64:
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 12.3.4
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build Windows application
+        run: pnpm tauri build --target x86_64-pc-windows-msvc
+
+      - name: Package ZIP archive
+        id: package
+        shell: pwsh
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          if ($env:RELEASE_TAG -notmatch '^v(?<version>\d+\.\d+\.\d+)$') {
+            throw "Invalid release tag '$env:RELEASE_TAG'. Expected vA.B.C, for example v1.2.3."
+          }
+          $archive = Join-Path $env:GITHUB_WORKSPACE "juju_v$($Matches.version).win64.zip"
+          $executable = Join-Path $env:GITHUB_WORKSPACE "src-tauri\target\x86_64-pc-windows-msvc\release\juju.exe"
+          if (-not (Test-Path -LiteralPath $executable)) {
+            throw "Expected Windows executable was not produced: $executable"
+          }
+          Compress-Archive -LiteralPath $executable -DestinationPath $archive -Force
+          "asset=$archive" | Add-Content -Path $env:GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          generate_release_notes: true
+          files: ${{ steps.package.outputs.asset }}

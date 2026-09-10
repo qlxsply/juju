@@ -67,7 +67,6 @@ impl AppState {
                 let manager = Arc::clone(&self.launcher);
                 tauri::async_runtime::spawn(async move {
                     if let Err(error) = manager.toggle(&app) {
-                        #[cfg(debug_assertions)]
                         eprintln!("[launcher] failed to toggle launcher: {error}");
                     }
                 });
@@ -76,7 +75,6 @@ impl AppState {
                 let manager = Arc::clone(&self.tools);
                 tauri::async_runtime::spawn(async move {
                     if let Err(error) = manager.open(&app, ToolId::Json) {
-                        #[cfg(debug_assertions)]
                         eprintln!("[tool] failed to open JSON: {error}");
                     }
                 });
@@ -85,7 +83,6 @@ impl AppState {
                 let manager = Arc::clone(&self.windows);
                 tauri::async_runtime::spawn(async move {
                     if let Err(error) = manager.open_settings(&app) {
-                        #[cfg(debug_assertions)]
                         eprintln!("[settings] failed to open settings: {error}");
                     }
                 });

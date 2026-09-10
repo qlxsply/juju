@@ -4,12 +4,12 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, State, WebviewWindow};
 use tauri_plugin_autostart::ManagerExt;
 
+use crate::core::settings::AppSettings;
 use crate::{
     app::launcher::LAUNCHER_LABEL,
     core::{ActivationTarget, AppState},
     services::storage::{JsonDocument, JsonDocumentSummary, StorageError},
 };
-use crate::core::settings::AppSettings;
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -29,7 +29,10 @@ impl From<StorageError> for ApiError {
             StorageError::InvalidDataRoot(_) => "DATA_ROOT_INVALID",
             StorageError::Io { .. } | StorageError::Watcher(_) => "STORAGE_IO_ERROR",
         };
-        Self { code, message: error.to_string() }
+        Self {
+            code,
+            message: error.to_string(),
+        }
     }
 }
 
@@ -108,7 +111,9 @@ fn ensure_launcher(window: &WebviewWindow) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub(crate) fn json_list_documents(state: State<'_, AppState>) -> Result<Vec<JsonDocumentSummary>, ApiError> {
+pub(crate) fn json_list_documents(
+    state: State<'_, AppState>,
+) -> Result<Vec<JsonDocumentSummary>, ApiError> {
     state.storage.list_documents().map_err(ApiError::from)
 }
 
@@ -122,7 +127,10 @@ pub(crate) fn json_read_document(
     state: State<'_, AppState>,
     document_id: String,
 ) -> Result<JsonDocument, ApiError> {
-    state.storage.read_document(document_id).map_err(ApiError::from)
+    state
+        .storage
+        .read_document(document_id)
+        .map_err(ApiError::from)
 }
 
 #[tauri::command(rename_all = "camelCase")]
@@ -132,7 +140,10 @@ pub(crate) fn json_write_document(
     content: String,
     expected_revision: String,
 ) -> Result<JsonDocument, ApiError> {
-    state.storage.write_document(document_id, content, expected_revision).map_err(ApiError::from)
+    state
+        .storage
+        .write_document(document_id, content, expected_revision)
+        .map_err(ApiError::from)
 }
 
 #[tauri::command(rename_all = "camelCase")]
@@ -141,7 +152,10 @@ pub(crate) fn json_rename_document(
     document_id: String,
     new_name: String,
 ) -> Result<(), ApiError> {
-    state.storage.rename_document(document_id, new_name).map_err(ApiError::from)
+    state
+        .storage
+        .rename_document(document_id, new_name)
+        .map_err(ApiError::from)
 }
 
 #[tauri::command]
@@ -149,7 +163,10 @@ pub(crate) fn json_delete_document(
     state: State<'_, AppState>,
     document_id: String,
 ) -> Result<(), ApiError> {
-    state.storage.delete_document(document_id).map_err(ApiError::from)
+    state
+        .storage
+        .delete_document(document_id)
+        .map_err(ApiError::from)
 }
 
 #[tauri::command(rename_all = "camelCase")]
@@ -159,10 +176,16 @@ pub(crate) fn app_use_existing_data_root(
     data_root: PathBuf,
 ) -> Result<(), ApiError> {
     let previous_root = state.storage.root();
-    state.storage.use_existing_root(data_root.clone()).map_err(ApiError::from)?;
+    state
+        .storage
+        .use_existing_root(data_root.clone())
+        .map_err(ApiError::from)?;
     if let Err(error) = state.settings.update_data_root(data_root) {
         let _ = state.storage.use_existing_root(previous_root);
-        return Err(ApiError { code: "STORAGE_IO_ERROR", message: error.to_string() });
+        return Err(ApiError {
+            code: "STORAGE_IO_ERROR",
+            message: error.to_string(),
+        });
     }
     state.storage.start_watching(app).map_err(ApiError::from)
 }
@@ -174,10 +197,16 @@ pub(crate) fn app_migrate_data_root(
     data_root: PathBuf,
 ) -> Result<(), ApiError> {
     let previous_root = state.storage.root();
-    state.storage.migrate_to(data_root.clone()).map_err(ApiError::from)?;
+    state
+        .storage
+        .migrate_to(data_root.clone())
+        .map_err(ApiError::from)?;
     if let Err(error) = state.settings.update_data_root(data_root) {
         let _ = state.storage.use_existing_root(previous_root);
-        return Err(ApiError { code: "STORAGE_IO_ERROR", message: error.to_string() });
+        return Err(ApiError {
+            code: "STORAGE_IO_ERROR",
+            message: error.to_string(),
+        });
     }
     state.storage.start_watching(app).map_err(ApiError::from)
 }
@@ -194,14 +223,20 @@ pub(crate) fn app_update_launcher_settings(
     shortcut: String,
     timeout_ms: u64,
 ) -> Result<(), ApiError> {
-    state.global_shortcut.replace(&app, &shortcut).map_err(|error| ApiError {
-        code: "SHORTCUT_REGISTRATION_FAILED",
-        message: error.to_string(),
-    })?;
-    state.settings.update_launcher(shortcut, timeout_ms).map_err(|error| ApiError {
-        code: "STORAGE_IO_ERROR",
-        message: error.to_string(),
-    })
+    state
+        .global_shortcut
+        .replace(&app, &shortcut)
+        .map_err(|error| ApiError {
+            code: "SHORTCUT_REGISTRATION_FAILED",
+            message: error.to_string(),
+        })?;
+    state
+        .settings
+        .update_launcher(shortcut, timeout_ms)
+        .map_err(|error| ApiError {
+            code: "STORAGE_IO_ERROR",
+            message: error.to_string(),
+        })
 }
 
 #[tauri::command(rename_all = "camelCase")]
@@ -210,12 +245,20 @@ pub(crate) fn app_set_autostart(
     state: State<'_, AppState>,
     enabled: bool,
 ) -> Result<(), ApiError> {
-    if enabled { app.autolaunch().enable() } else { app.autolaunch().disable() }.map_err(|error| ApiError {
+    if enabled {
+        app.autolaunch().enable()
+    } else {
+        app.autolaunch().disable()
+    }
+    .map_err(|error| ApiError {
         code: "STORAGE_IO_ERROR",
         message: error.to_string(),
     })?;
-    state.settings.update_autostart(enabled).map_err(|error| ApiError {
-        code: "STORAGE_IO_ERROR",
-        message: error.to_string(),
-    })
+    state
+        .settings
+        .update_autostart(enabled)
+        .map_err(|error| ApiError {
+            code: "STORAGE_IO_ERROR",
+            message: error.to_string(),
+        })
 }

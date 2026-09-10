@@ -9,6 +9,7 @@ import {
 } from "./launcherState";
 
 const ARMED_EVENT = "launcher://armed";
+const ARM_FALLBACK_MS = 500;
 
 export function useLauncherKeyboard(
   onAction: (action: Exclude<LauncherAction, "none">) => void,
@@ -20,16 +21,21 @@ export function useLauncherKeyboard(
   useEffect(() => {
     let disposed = false;
     let unlisten: UnlistenFn | undefined;
+    let armFallback: number | undefined;
 
     async function initialize() {
-      unlisten = await listen(ARMED_EVENT, () => {
-        setState((current) =>
-          transitionLauncher(current, { type: "modifiersReleased" }).state,
-        );
-      });
-      if (disposed) {
-        unlisten();
-        return;
+      try {
+        unlisten = await listen(ARMED_EVENT, () => {
+          setState((current) =>
+            transitionLauncher(current, { type: "modifiersReleased" }).state,
+          );
+        });
+        if (disposed) {
+          unlisten();
+          return;
+        }
+      } catch {
+        // The ready handshake must not depend on optional event delivery.
       }
 
       performance.mark("launcher-react-mounted");
@@ -40,22 +46,58 @@ export function useLauncherKeyboard(
           setState((current) =>
             transitionLauncher(current, { type: "modifiersReleased" }).state,
           );
+        } else {
+          armFallback = window.setTimeout(() => {
+            setState((current) =>
+              transitionLauncher(current, { type: "modifiersReleased" }).state,
+            );
+          }, ARM_FALLBACK_MS);
         }
       }
     }
 
-    void initialize().catch(() => handleAction("close"));
+    void initialize().catch(() => {
+      if (!disposed) {
+        setState("armed");
+      }
+    });
     return () => {
       disposed = true;
+      if (armFallback !== undefined) window.clearTimeout(armFallback);
       unlisten?.();
     };
   }, []);
 
   useEffect(() => {
+    function handleKeyUp(event: KeyboardEvent) {
+      if (!event.ctrlKey && !event.shiftKey && !event.altKey) {
+        setState((current) =>
+          transitionLauncher(current, { type: "modifiersReleased" }).state,
+        );
+      }
+    }
+    document.addEventListener("keyup", handleKeyUp, true);
+    return () => document.removeEventListener("keyup", handleKeyUp, true);
+  }, []);
+
+  useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
-      const transition = transitionLauncher(state, {
+      const code = event.key === "1"
+        ? "Digit1"
+        : event.key.toLowerCase() === "s"
+          ? "KeyS"
+          : event.key === "Escape"
+            ? "Escape"
+            : event.code;
+      const effectiveState = state === "waitingForModifiers"
+        && !event.ctrlKey
+        && !event.shiftKey
+        && !event.altKey
+        ? transitionLauncher(state, { type: "modifiersReleased" }).state
+        : state;
+      const transition = transitionLauncher(effectiveState, {
         type: "keyDown",
-        code: event.code,
+        code,
         repeat: event.repeat,
       });
       if (transition.action === "none") {
@@ -67,8 +109,8 @@ export function useLauncherKeyboard(
       handleAction(transition.action);
     }
 
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+    document.addEventListener("keydown", handleKeyDown, true);
+    return () => document.removeEventListener("keydown", handleKeyDown, true);
   }, [state]);
 
   useEffect(() => {

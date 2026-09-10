@@ -3,6 +3,6 @@
   "identifier": "launcher",
   "description": "Minimal core permissions for the launcher window.",
   "windows": ["launcher"],
-  "permissions": ["core:default"],
+  "permissions": ["core:default", "core:event:allow-listen", "core:event:allow-unlisten"],
   "platforms": ["windows"]
 }

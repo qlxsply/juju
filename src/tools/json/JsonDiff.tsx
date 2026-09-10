@@ -27,6 +27,7 @@ export function JsonDiff({ original, modified }: { original: JsonDocument; modif
       if (disposed || !hostRef.current) return;
       originalModel = monaco.editor.createModel(left.content, "json");
       modifiedModel = monaco.editor.createModel(right.content, "json");
+      monaco.editor.setTheme("vs");
       editor = monaco.editor.createDiffEditor(hostRef.current, {
         automaticLayout: true,
         enableSplitViewResizing: true,

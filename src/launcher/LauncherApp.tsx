@@ -1,4 +1,4 @@
-import { useEffect, useEffectEvent } from "react";
+import { useEffectEvent, useState } from "react";
 
 import {
   closeLauncher,
@@ -33,36 +33,20 @@ const entries: Array<{
 ];
 
 export function LauncherApp() {
+  const [error, setError] = useState("");
   const runAction = useEffectEvent((action: Exclude<LauncherAction, "none">) => {
+    let operation: Promise<void>;
     if (action === "openJson") {
-      void openLauncherTarget("json");
+      operation = openLauncherTarget("json");
     } else if (action === "openSettings") {
-      void openLauncherTarget("settings");
+      operation = openLauncherTarget("settings");
     } else {
-      void closeLauncher();
+      operation = closeLauncher();
     }
+    void operation.catch((reason: unknown) => setError(String(reason)));
   });
   const state = useLauncherKeyboard(runAction);
   const armed = state === "armed";
-
-  useEffect(() => {
-    let closeTimer: number | undefined;
-    function handleBlur() {
-      closeTimer = window.setTimeout(() => {
-        if (!document.hasFocus()) {
-          void closeLauncher();
-        }
-      }, 100);
-    }
-
-    window.addEventListener("blur", handleBlur);
-    return () => {
-      window.removeEventListener("blur", handleBlur);
-      if (closeTimer !== undefined) {
-        window.clearTimeout(closeTimer);
-      }
-    };
-  }, []);
 
   return (
     <main className="launcher-shell" aria-label="juju 启动器">
@@ -85,9 +69,10 @@ export function LauncherApp() {
       <section className="launcher-entries" aria-label="工具列表">
         {entries.map((entry) => (
           <button
+            aria-disabled={!armed}
+            autoFocus={entry.code === "Digit1"}
             className="launcher-entry"
             data-code={entry.code}
-            disabled={!armed}
             key={entry.code}
             onClick={() => void openLauncherTarget(entry.target)}
             type="button"
@@ -105,7 +90,7 @@ export function LauncherApp() {
       </section>
 
       <footer className="launcher-footer">
-        <span>{armed ? "按下快捷键打开工具" : "松开 Ctrl / Shift / Alt 以继续"}</span>
+        <span>{error || (armed ? "按下快捷键打开工具" : "松开 Ctrl / Shift / Alt 以继续")}</span>
         <span>
           <kbd>ESC</kbd> 关闭
         </span>
