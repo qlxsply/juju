@@ -1,0 +1,33 @@
+
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 18
+VisualStudioVersion = 18.0.0.0
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Juju.Core", "src\Juju.Core\Juju.Core.csproj", "{8E17A8BA-1F8A-4243-8B3B-7BF956980123}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Juju.Tools.Json", "src\Juju.Tools.Json\Juju.Tools.Json.csproj", "{A34F3037-9DFB-45E0-81D0-1B5428E92097}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Juju.Platform.Windows", "src\Juju.Platform.Windows\Juju.Platform.Windows.csproj", "{A8AC9CA2-E5CA-493D-9F66-1B6543B68D31}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Juju.App", "src\Juju.App\Juju.App.csproj", "{F61830C0-6E09-4FC0-993E-26A97D3EA2A3}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Juju.Tools.Json.Tests", "tests\Juju.Tools.Json.Tests\Juju.Tools.Json.Tests.csproj", "{D8752F8F-D519-45CF-98C2-1B1E14EED575}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{8E17A8BA-1F8A-4243-8B3B-7BF956980123}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{8E17A8BA-1F8A-4243-8B3B-7BF956980123}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A34F3037-9DFB-45E0-81D0-1B5428E92097}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A34F3037-9DFB-45E0-81D0-1B5428E92097}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A8AC9CA2-E5CA-493D-9F66-1B6543B68D31}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A8AC9CA2-E5CA-493D-9F66-1B6543B68D31}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F61830C0-6E09-4FC0-993E-26A97D3EA2A3}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F61830C0-6E09-4FC0-993E-26A97D3EA2A3}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D8752F8F-D519-45CF-98C2-1B1E14EED575}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D8752F8F-D519-45CF-98C2-1B1E14EED575}.Debug|Any CPU.Build.0 = Debug|Any CPU
+	EndGlobalSection
+EndGlobal

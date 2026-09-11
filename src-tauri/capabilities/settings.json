@@ -1,8 +1,0 @@
-{
-  "$schema": "../gen/schemas/desktop-schema.json",
-  "identifier": "settings",
-  "description": "Minimal core permissions for the settings window.",
-  "windows": ["settings"],
-  "permissions": ["core:default"],
-  "platforms": ["windows"]
-}

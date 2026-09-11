@@ -1,47 +1,78 @@
-# juju 工具箱技术方案与开发规范
+# juju 技术方案与开发规范
 
 > 文档用途：作为 **juju** 项目的架构基线、开发计划和 AI 编码执行规范。  
-> 当前版本目标：**Windows x64，仅实现 JSON 工具**；框架必须保留后续增加 HTTP Request、网络诊断等内置工具的能力。  
-> 技术栈：**Rust + Tauri 2 + WebView2 + React + TypeScript + Monaco Editor**。  
-> 本文档是当前阶段的实现依据。除非需求明确变更，开发时不要自行替换技术栈、存储模型或生命周期模型。
+> 当前版本：v1。  
+> 当前目标平台：**Windows 11 / Windows x64**。  
+> 当前业务工具：**JSON Tool**。  
+> 技术栈：**C# + .NET 10 + WPF + WebView2 + Monaco Editor**。  
+> 核心原则：**Windows 原生优先、后台低资源、快捷呼出、工具模块化、数据可直接访问。**
 
 ---
 
-## 1. 项目概述
+# 1. 产品定位
 
-### 1.1 项目名称
+## 1.1 产品名称
 
 - 产品名：`juju`
-- 工程名建议：`juju`
-- Windows 可执行文件：`juju.exe`
-- 当前支持平台：**Windows 64 位**
-- 当前编译目标：`x86_64-pc-windows-msvc`
-- 架构上保留 `platform` 抽象层，以便未来增加其他桌面平台，但 **v1 不为 macOS/Linux 编写兼容代码，不为了跨平台牺牲 Windows 体验**。
+- 主程序：`juju.exe`
+- 当前平台：Windows x64
+- 优先支持：Windows 11
+- 不考虑 macOS / Linux
+- 不为了跨平台牺牲 Windows 原生体验
 
-### 1.2 产品定位
+juju 是一个长期运行于 Windows 后台的开发者工具箱。
 
-juju 是一个常驻 Windows 后台的开发者工具箱。
+应用的大部分生命周期处于：
 
-主要交互方式不是为每个工具注册大量全局快捷键，而是使用一个全局 Leader Shortcut：
+```text
+juju.exe
+├── WPF Dispatcher
+├── Tray
+├── Global Shortcut
+├── File Watcher
+└── 必要后台 Runtime
+```
+
+默认不存在：
+
+```text
+JSON Tool Window
+WebView2
+Monaco
+其他 Tool Window
+```
+
+只有真正使用 JSON Tool 时才加载 WebView2 和 Monaco。
+
+---
+
+# 2. 核心交互模型
+
+juju 不以传统 Main Window 为中心。
+
+主要入口：
 
 ```text
 Ctrl + Shift + Alt + Space
-             ↓
-        打开 Launcher
-             ↓
-      1 / 2 / 3 / A / S ...
-             ↓
-         打开对应工具
+            │
+            ▼
+      WPF Launcher
+            │
+      ┌─────┴─────┐
+      │           │
+      1           S
+      │           │
+     JSON       Settings
 ```
 
-当前只实现：
+当前：
 
 ```text
 1 -> JSON
-S -> 设置
+S -> Settings
 ```
 
-后续可扩展：
+未来：
 
 ```text
 2 -> HTTP Request
@@ -50,809 +81,892 @@ S -> 设置
 ...
 ```
 
-只有 Leader Shortcut 是全局快捷键。`1 / 2 / A / S` 等二级按键只在 Launcher 获得焦点后作为普通键盘事件处理，**不得注册为系统全局单键快捷键**。
+只有 Leader Shortcut 是 Windows 全局快捷键。
 
-### 1.3 当前阶段目标
+Launcher 激活之后的：
 
-v1 必须完成：
+```text
+1
+2
+3
+S
+...
+```
 
-1. juju 后台常驻框架。
-2. 单实例运行。
+均为 Launcher 内普通键盘输入，不注册系统全局单键快捷键。
+
+---
+
+# 3. v1 功能范围
+
+v1 必须实现：
+
+1. 后台常驻。
+2. 单实例。
 3. 系统托盘。
-4. 全局 Leader Shortcut。
-5. Launcher。
-6. Tool Registry / Tool Manager / Window Manager 基础框架。
-7. 设置系统。
-8. 可切换的数据目录。
-9. 文件型 Storage Manager。
-10. JSON 工具。
-11. JSON 文档自动保存、外部修改检测。
-12. JSON 格式化、复制、压缩复制、文件复制。
-13. JSON 展开、折叠、逐层展开。
-14. JSON Diff 对比。
-15. 每个工具窗口单实例。
-16. 后台运行能力模型保留，但 JSON 工具不支持后台运行。
-17. Notification、SecretStore、Privilege 等未来能力只保留接口边界，不在 v1 做完整实现。
+4. 开机启动。
+5. 全局 Leader Shortcut。
+6. 原生 WPF Launcher。
+7. Tool Registry。
+8. Tool Manager。
+9. Window Manager。
+10. Runtime Manager 基础模型。
+11. Settings。
+12. Light / Dark / System Theme。
+13. DataRoot。
+14. 文件型 Storage。
+15. JSON Tool。
+16. Monaco Editor。
+17. JSON 自动保存。
+18. JSON 手工保存。
+19. JSON 外部修改检测。
+20. JSON 文档元数据管理。
+21. JSON 新建、重命名、删除。
+22. Explorer `.json` 文件拖入导入。
+23. JSON 格式化。
+24. 文本复制。
+25. 压缩复制。
+26. 文件复制。
+27. 展开。
+28. 折叠。
+29. 逐层展开。
+30. JSON Diff。
+31. JSON Tool 窗口内快捷键。
+32. 每个 Tool Window 单实例。
+33. 后台 Runtime 能力模型。
+34. Notification / SecretStore / Privilege / Database 能力边界预留。
 
-### 1.4 明确不做
+---
+
+# 4. 明确不做
 
 v1 不实现：
 
-- HTTP Request 工具。
-- 网络诊断工具。
-- 第三方插件系统。
-- SQLite 或其他数据库。
+- HTTP Request Tool。
+- Network Tool。
+- 第三方插件。
+- 动态 DLL 插件。
+- 脚本扩展平台。
 - 云同步。
 - 用户账户。
+- SQLite 实际业务存储。
+- CLI。
+- Portable 版本。
+- 多个 JSON Tool Window。
 - 多端同步。
-- 脚本扩展系统。
-- Electron。
-- Vue。
-- 多个 JSON 工具窗口。
-- JSON Schema 管理器。
-- JSONPath/JMESPath 查询。
-- JSON 语义 Diff（忽略 key 顺序等）。
-- HTML 响应预览。
-- 管理员权限功能。
-- 自动更新，除非后续单独确定。
-- 自定义 Windows 标题栏，v1 优先使用稳定的标准工具窗口；Launcher 可使用无边框浮层。
+- JSON Schema Manager。
+- JSONPath/JMESPath。
+- JSON 语义 Diff。
+- 自动更新。
+- 主进程管理员运行。
 
 ---
 
-# 2. 技术选型
+# 5. 技术栈
 
-## 2.1 技术栈
-
-### Rust / Native
+## 5.1 Runtime
 
 ```text
-Rust stable
-Tauri 2.x
-WebView2
-Tokio
-serde
-serde_json
-toml
-thiserror
-notify
-windows-rs
+.NET 10 LTS
+C#
+TargetFramework: net10.0-windows
+RuntimeIdentifier: win-x64
 ```
 
-Tauri 插件：
+仅构建 Windows x64。
+
+---
+
+## 5.2 UI
 
 ```text
-tauri-plugin-single-instance
-tauri-plugin-global-shortcut
-tauri-plugin-autostart
+WPF
+XAML
+WPF Fluent Theme
 ```
 
-托盘、窗口、WebView 等优先使用 Tauri 2 Core API。
-
-对于 Windows 特有能力，例如：
-
-- 文件剪切板 `CF_HDROP`
-- 更精确的多显示器处理
-- Windows Credential Manager（未来）
-- 按需提权 helper（未来）
-
-统一封装在：
+主要界面全部使用 WPF：
 
 ```text
-src-tauri/src/platform/windows/
+Launcher
+Settings
+Tool Window Shell
+Toolbar
+Document Sidebar
+StatusBar
+Dialog
+Toast
+Context Menu
 ```
 
-不得让 Windows API 调用散落在具体工具业务代码中。
+禁止为了简单 UI 再引入 HTML。
 
-### Frontend
+---
+
+## 5.3 JSON 编辑器
+
+只有 JSON 编辑区域使用：
 
 ```text
-React
+Microsoft Edge WebView2
+        │
+        ▼
+Monaco Editor
+Monaco DiffEditor
+```
+
+Monaco Host 使用：
+
+```text
 TypeScript
 Vite
 Monaco Editor
-CSS Modules / 普通 CSS + CSS Variables
-@tauri-apps/api
 ```
 
-v1 不引入大型 UI 框架，不引入 Redux/Zustand 等全局状态库。
+不使用：
+
+```text
+React
+Vue
+Angular
+Redux
+```
+
+Monaco Host 应保持为极薄的一层 Editor Adapter。
+
+---
+
+# 6. 总体架构
+
+```text
+┌─────────────────────────────────────────────────┐
+│                 juju.exe                        │
+│               .NET 10 / C#                      │
+│                                                 │
+│ AppLifecycle                                    │
+│ ToolRegistry                                    │
+│ ToolManager                                     │
+│ RuntimeManager                                  │
+│ WindowManager                                   │
+│ LauncherManager                                 │
+│ ShortcutManager                                 │
+│ SettingsService                                 │
+│ ThemeService                                    │
+│ StorageManager                                  │
+│ ClipboardService                                │
+│ TrayService                                     │
+│                                                 │
+│ platform/windows                                │
+│ ├── HotKey                                      │
+│ ├── Monitor                                     │
+│ ├── Clipboard                                   │
+│ ├── Startup                                     │
+│ ├── Credential        future                    │
+│ └── Privilege         future                    │
+└─────────────────────┬───────────────────────────┘
+                      │
+       ┌──────────────┼──────────────┐
+       ▼              ▼              ▼
+   Launcher        Settings      JSON Tool
+     WPF              WPF            WPF
+                                      │
+                        ┌─────────────┼────────────┐
+                        │             │            │
+                    Sidebar        Toolbar       StatusBar
+                      WPF             WPF           WPF
+                                      │
+                                      ▼
+                                   WebView2
+                                      │
+                                      ▼
+                                    Monaco
+```
 
 原则：
 
-- 单窗口内部状态：React hooks/context。
-- 跨窗口、跨工具、持久化状态：Rust Core 是事实来源。
-- Monaco 仅在 JSON Tool 动态加载。
-- Launcher 和 Settings 不得因为工程中存在 Monaco 而加载 Monaco bundle。
-
-### 包管理
-
-前端建议统一使用：
-
-```text
-pnpm
-```
-
-Rust 使用：
-
-```text
-cargo
-```
-
-版本策略：
-
-- Tauri 必须为 `2.x`。
-- 初始化项目时使用当前稳定版本。
-- 提交 `Cargo.lock` 和 `pnpm-lock.yaml`。
-- 不使用浮动 major 版本升级。
-- 如果 AI 对具体 Tauri/Monaco API 名称不确定，必须先查当前官方文档，不得虚构 API。
+> WebView2 是编辑器控件，不是 juju 应用框架。
 
 ---
 
-# 3. 总体架构
+# 7. 工程结构
 
-## 3.1 逻辑架构
-
-```text
-                         Windows
-                            │
-             Ctrl + Shift + Alt + Space
-                            │
-                            ▼
-┌──────────────────────────────────────────────────────┐
-│                    juju Core                         │
-│                       Rust                           │
-│                                                      │
-│  AppLifecycle                                        │
-│  GlobalShortcutManager                              │
-│  LauncherManager                                    │
-│  ToolRegistry                                       │
-│  ToolManager                                        │
-│  RuntimeManager                                     │
-│  SettingsService                                    │
-│  StorageManager                                     │
-│  WindowManager                                      │
-│  TrayManager                                        │
-│  NotificationService                                │
-│                                                      │
-│  platform/windows                                   │
-│    ├── clipboard                                    │
-│    ├── monitor                                      │
-│    ├── credentials (future)                         │
-│    └── privilege   (future)                         │
-└──────────────┬───────────────────────────────────────┘
-               │
-               │ Tauri Commands / Events
-               │
-       ┌───────┼─────────────┐
-       ▼       ▼             ▼
-   Launcher   Settings     JSON Tool
-   WebView2   WebView2     WebView2
-                              │
-                              ▼
-                         Monaco Editor
-                         Monaco DiffEditor
-```
-
-## 3.2 进程模型
-
-juju v1 为：
+建议：
 
 ```text
-一个 juju.exe Rust 主进程
-    ├── 0/1 Launcher WebView Window
-    ├── 0/1 Settings WebView Window
-    └── 0/1 JSON WebView Window
+juju/
+│
+├── Juju.sln
+│
+├── src/
+│   │
+│   ├── Juju.App/
+│   │   ├── App.xaml
+│   │   ├── App.xaml.cs
+│   │   │
+│   │   ├── Bootstrap/
+│   │   ├── Views/
+│   │   │   ├── LauncherWindow.xaml
+│   │   │   ├── SettingsWindow.xaml
+│   │   │   └── JsonToolWindow.xaml
+│   │   │
+│   │   ├── ViewModels/
+│   │   ├── Controls/
+│   │   ├── Themes/
+│   │   └── Resources/
+│   │
+│   ├── Juju.Core/
+│   │   ├── App/
+│   │   ├── Tools/
+│   │   ├── Runtime/
+│   │   ├── Windows/
+│   │   ├── Settings/
+│   │   └── Storage/
+│   │
+│   ├── Juju.Platform.Windows/
+│   │   ├── HotKey/
+│   │   ├── Clipboard/
+│   │   ├── Monitor/
+│   │   ├── Startup/
+│   │   ├── Credential/
+│   │   └── Privilege/
+│   │
+│   └── Juju.Tools.Json/
+│       ├── Documents/
+│       ├── Metadata/
+│       ├── Storage/
+│       ├── Import/
+│       ├── Minify/
+│       ├── Diff/
+│       └── Editor/
+│
+├── editor/
+│   ├── src/
+│   │   ├── main.ts
+│   │   ├── editor.ts
+│   │   ├── diff.ts
+│   │   ├── bridge.ts
+│   │   └── protocol.ts
+│   ├── package.json
+│   └── vite.config.ts
+│
+└── tests/
+    ├── Juju.Core.Tests/
+    └── Juju.Tools.Json.Tests/
 ```
 
-“工具独立”定义为：
+虽然拆分为几个项目，但仍然是：
 
-- UI Window 生命周期独立。
-- Tool Runtime 状态独立。
-- Tool 数据目录独立。
-- Tool 配置独立。
-- Tool 只能存在一个窗口实例。
+> Modular Monolith。
 
-但不是：
-
-- 每个 Tool 一个 OS 进程。
-
-未来如果出现不可信插件或需要强隔离的 native 工作负载，再单独设计 child process。v1 不做。
+不得把 v1 设计成微服务或插件平台。
 
 ---
 
-# 4. 核心架构原则
+# 8. Dependency Injection
 
-## 4.1 Modular Monolith
+使用 `Microsoft.Extensions.DependencyInjection`。
 
-juju 是模块化单体，不是动态插件平台。
+核心 service 建议：
 
-新增工具采用：
-
-```text
-编写 Tool Module
-+
-注册 ToolDescriptor
-```
-
-不要设计：
-
-- 动态加载 DLL。
-- Rust ABI 插件。
-- Web 插件市场。
-- 第三方权限模型。
-
-## 4.2 Tool Window 与 Tool Runtime 分离
-
-必须区分：
-
-```text
-UI State
-Runtime State
-```
-
-建议状态：
-
-```rust
-enum UiState {
-    Closed,
-    Opening,
-    Visible,
-    Minimized,
-}
-
-enum RuntimeState {
-    Stopped,
-    Starting,
-    Running,
-    Stopping,
-    Failed,
-}
-```
-
-后台能力：
-
-```rust
-enum BackgroundCapability {
-    Unsupported,
-    Optional,
-    Required,
-}
+```csharp
+IAppLifecycle
+IToolRegistry
+IToolManager
+IRuntimeManager
+IWindowManager
+ILauncherManager
+IGlobalShortcutService
+ISettingsService
+IThemeService
+IStorageManager
+IClipboardService
+IStartupService
+ITrayService
 ```
 
 JSON：
 
-```text
-BackgroundCapability::Unsupported
+```csharp
+IJsonDocumentStore
+IJsonMetadataStore
+IJsonDocumentService
+IJsonImportService
+IJsonEditorBridge
 ```
 
-未来可能：
+原则：
 
-```text
-HTTP Download -> Optional
-Ping Monitor  -> Optional
-Clipboard Monitor -> Optional/Required
-```
-
-关闭窗口不等同于退出 juju。
-
-## 4.3 后台允许与后台自启动分离
-
-对于支持后台的未来工具，必须拆成两个配置：
-
-```text
-close_to_background
-auto_start_runtime
-```
-
-含义分别为：
-
-- `close_to_background`：关闭 UI 后 Runtime 是否继续。
-- `auto_start_runtime`：juju 启动时是否自动启动 Runtime。
-
-两者不能混成一个“允许后台运行”。
-
-JSON 工具不展示这两个设置，因为其后台能力为 Unsupported。
+- View 不直接访问文件系统。
+- ViewModel 不直接调用 Win32。
+- Tool 不直接操作全局 Service Locator。
+- Windows API 集中封装。
 
 ---
 
-# 5. Tool Registry 设计
+# 9. 单实例模型
 
-## 5.1 ToolId
-
-当前：
-
-```rust
-enum ToolId {
-    Json,
-}
-```
-
-Settings 不一定视为业务 Tool，可以由 `WindowManager` 单独管理；如果为了统一 Launcher，也可以注册为 SystemEntry，但不要把 Settings 的数据目录与普通 Tool 混在一起。
-
-未来：
-
-```rust
-enum ToolId {
-    Json,
-    Http,
-    Network,
-    Encode,
-}
-```
-
-## 5.2 ToolDescriptor
-
-建议结构：
-
-```rust
-struct ToolDescriptor {
-    id: ToolId,
-    name: &'static str,
-    launcher_key: LauncherKey,
-    aliases: &'static [&'static str],
-    route: &'static str,
-    background: BackgroundCapability,
-    window: WindowSpec,
-}
-```
-
-`LauncherKey` 不建议直接存任意字符串，应定义成可验证类型，例如：
-
-```rust
-enum LauncherKey {
-    Digit(u8),
-    Letter(char),
-}
-```
-
-发送给前端时转换为浏览器 `KeyboardEvent.code` 对应的逻辑值：
+使用：
 
 ```text
-Digit1
-KeyS
+Named Mutex
++
+Named Pipe
 ```
 
-避免 IME、Caps Lock、键盘布局造成不必要的字符语义影响。
-
-JSON Descriptor：
+第一个进程：
 
 ```text
-id: Json
-name: JSON
-launcher_key: Digit1
-aliases: ["json", "格式化", "diff", "对比"]
-background: Unsupported
-default window: 1400 x 900
-minimum: 900 x 600
+获取 Mutex
+→ 初始化 juju
+→ 创建 Named Pipe Server
+→ 后台驻留
 ```
 
-ToolRegistry 必须是以下模块的唯一工具元数据来源：
+第二个进程：
 
-- Launcher
-- ToolManager
-- Settings
-- Tray
-- 搜索功能（future）
+```text
+发现 Mutex 已存在
+→ 连接 Named Pipe
+→ 发送 ActivateLauncher
+→ 退出
+```
 
-不得分别维护工具列表。
+已有实例：
+
+```text
+收到 ActivateLauncher
+→ LauncherManager.Toggle()
+```
+
+不使用第二个 Core。
 
 ---
 
-# 6. 应用生命周期
-
-## 6.1 启动流程
+# 10. 启动流程
 
 ```text
 juju.exe
-  │
-  ▼
+   │
+   ▼
 Single Instance
-  │
-  ▼
-加载 %LOCALAPPDATA%\juju\config.toml
-  │
-  ▼
-配置迁移 / 校验
-  │
-  ▼
-计算并校验 DataRoot
-  │
-  ▼
+   │
+   ▼
+加载 Local Settings
+   │
+   ▼
+初始化日志
+   │
+   ▼
+验证 DataRoot
+   │
+   ▼
 初始化 StorageManager
-  │
-  ▼
+   │
+   ▼
 初始化 ToolRegistry
-  │
-  ▼
-初始化 ToolManager / RuntimeManager
-  │
-  ▼
+   │
+   ▼
+初始化 RuntimeManager
+   │
+   ▼
 初始化 Tray
-  │
-  ▼
+   │
+   ▼
 注册 Global Shortcut
-  │
-  ▼
-启动 auto_start_runtime 的未来工具
-  │
-  ▼
+   │
+   ▼
+创建隐藏 Launcher Window
+   │
+   ▼
+启动 auto-start Runtime
+   │
+   ▼
 后台驻留
 ```
 
-默认启动后：
-
-```text
-无 Launcher
-无 JSON WebView
-无 Settings WebView
-```
-
-即没有窗口时，只保留 Rust Core + Tray + Global Shortcut。
-
-## 6.2 单实例
-
-必须启用 Tauri 2 single-instance 插件。
-
-行为：
-
-```text
-第一个 juju.exe -> 正常运行
-第二次启动 juju.exe -> 不创建第二个 Core
-                      -> 通知已有实例
-                      -> 已有实例打开 Launcher
-```
-
-未来可扩展命令行：
-
-```text
-juju.exe json
-```
-
-使已有实例直接打开 JSON Tool，但 v1 可以不提供 CLI。
-
-## 6.3 开机启动
-
-设置：
-
-```text
-开机自动启动 juju
-默认：关闭
-```
-
-开启后使用 Tauri 2 autostart 插件。
-
-开机自启场景：
-
-```text
-启动 Core
-注册 Tray
-注册 Leader Shortcut
-不要自动弹 Launcher
-不要自动打开 JSON
-```
+正常启动不得弹出任何窗口。
 
 ---
 
-# 7. Leader Shortcut 与 Launcher
+# 11. Launcher
 
-## 7.1 默认快捷键
+Launcher 使用纯 WPF。
 
-语义：
+生命周期：
+
+```text
+程序启动
+→ 创建 LauncherWindow
+→ 创建 HWND
+→ Hide
+```
+
+此后始终复用。
+
+Leader Shortcut：
+
+```text
+WM_HOTKEY
+→ 获取鼠标位置
+→ 获取鼠标所在 Monitor
+→ 计算 WorkArea
+→ 移动 Launcher
+→ Show
+→ Activate
+→ Focus
+```
+
+关闭 Launcher：
+
+```text
+Hide
+```
+
+而不是：
+
+```text
+Close
+Destroy
+Recreate
+```
+
+Launcher 本身不包含 WebView2。
+
+---
+
+# 12. Launcher 状态机
+
+```text
+Hidden
+ │
+ │ Leader
+ ▼
+Showing
+ │
+ ▼
+WaitModifiersReleased
+ │
+ ▼
+Armed
+ ├── 1 -> Open JSON
+ ├── S -> Settings
+ ├── Escape -> Hide
+ ├── Leader -> Hide
+ └── Timeout -> Hide
+```
+
+在：
+
+```text
+Ctrl
+Shift
+Alt
+```
+
+全部释放前，不处理二级快捷键。
+
+过滤 keyboard repeat。
+
+默认 timeout：
+
+```text
+2000 ms
+```
+
+允许用户修改。
+
+---
+
+# 13. 全局快捷键
+
+默认：
 
 ```text
 Ctrl + Shift + Alt + Space
 ```
 
-实现使用 Tauri 2 `global-shortcut` 插件。
-
-注意：具体快捷键字符串语法以当前插件版本解析器为准。AI 实现时必须根据当前官方文档/类型定义确认，不得仅凭记忆硬编码不存在的语法。
-
-设置中必须：
-
-- 显示当前快捷键。
-- 支持修改。
-- 修改时先验证。
-- 新快捷键注册成功后再解除旧快捷键。
-- 注册失败则保留旧快捷键。
-- 明确显示“快捷键被其他程序占用/注册失败”。
-
-## 7.2 Launcher 窗口
-
-v1 设计：
-
-- 小尺寸浮层。
-- 无边框。
-- 不显示在任务栏。
-- 置顶。
-- 显示在鼠标当前所在显示器。
-- 1该显示器工作区居中。
-- 获得键盘焦点。
-- 默认超时 2000ms。
-- `Esc` 关闭。
-- 再次 Leader 关闭。
-- 点击外部/失去焦点关闭（可做短延迟，避免刚 show 就收到 focus 变化）。
-- 选择 Tool 后立即关闭 Launcher。
-
-示意：
+使用 Win32：
 
 ```text
-┌─────────────────────────────────────┐
-│                juju                 │
-│                                     │
-│      1    JSON                      │
-│                                     │
-│      S    Settings                  │
-│                                     │
-│        输入名称搜索（future）        │
-└─────────────────────────────────────┘
+RegisterHotKey
+UnregisterHotKey
+WM_HOTKEY
 ```
 
-第一版只展示单键入口，但 ToolDescriptor 必须提供 aliases，为未来搜索保留能力。
+ShortcutManager 管理注册。
 
-## 7.3 Launcher 状态机
+修改快捷键：
 
 ```text
-Idle
- │
- │ Leader
- ▼
-Creating / Activating
- │
- │ Window ready + focus
- ▼
-WaitModifiersReleased
- │
- │ Ctrl/Shift/Alt 全部释放
- ▼
-Armed
- ├── Digit1 -> Open JSON -> Close
- ├── KeyS   -> Open Settings -> Close
- ├── Escape -> Close
- ├── Leader -> Close
- ├── Timeout -> Close
- └── Invalid Key -> 可忽略，不立即关闭
+用户录制新快捷键
+→ 校验
+→ 尝试注册新快捷键
+→ 成功
+→ 注销旧快捷键
+→ 保存配置
 ```
 
-必须忽略：
-
-```javascript
-event.repeat === true
-```
-
-在 `WaitModifiersReleased` 之前不要处理单键命令。
-
-第一版第二阶段按键使用：
-
-```javascript
-KeyboardEvent.code
-```
-
-而不是依赖字符 `event.key`。
-
-搜索模式未来启用后，再切换成正常文本输入和 IME 模式。
-
-## 7.4 Lazy Launcher
-
-默认采用 Lazy WebView：
+失败：
 
 ```text
-平时无 Launcher WebView
-Leader -> create -> ready -> show/focus
-操作结束 -> destroy
+保留旧快捷键
+显示 SHORTCUT_REGISTRATION_FAILED
 ```
-
-原因：减少长期 WebView2 内存占用。
-
-必须做性能埋点：
-
-```text
-Leader triggered
-Launcher WebView created
-React mounted
-Launcher ready for keyboard
-```
-
-如果实测冷启动体验明显不可接受，可在后续切换为 Warm Launcher（隐藏常驻），但 `LauncherManager` 接口必须让两种策略可替换。
 
 ---
 
-# 8. 多显示器与窗口管理
+# 14. Tray
 
-## 8.1 WindowManager
+juju 无传统 Main Window。
 
-所有动态窗口由 Rust `WindowManager` 统一创建和恢复。
-
-不要在前端自行创建 Tool Window。
-
-窗口 label 建议：
+Tray：
 
 ```text
-launcher
-settings
-tool-json
-```
-
-未来：
-
-```text
-tool-http
-tool-network
-```
-
-## 8.2 Tool 窗口单实例
-
-统一调用：
-
-```text
-ToolManager.open(Json)
-```
-
-逻辑：
-
-```text
-不存在
- -> 创建
- -> 恢复合法窗口位置
- -> 等前端 ready
- -> show + focus
-
-已存在且隐藏
- -> show + focus
-
-已最小化
- -> restore + focus
-
-已可见
- -> focus
-```
-
-严禁创建第二个 `tool-json`。
-
-## 8.3 窗口位置恢复
-
-每个窗口单独保存：
-
-```text
-x
-y
-width
-height
-maximized
-monitor information（必要时）
-```
-
-窗口状态属于本机 UI 状态，保存于：
-
-```text
-%LOCALAPPDATA%\juju\window-state.toml
-```
-
-不放入 DataRoot。
-
-恢复时必须验证：
-
-- 历史矩形是否仍与任意显示器工作区相交。
-- 显示器是否已经移除。
-- DPI/缩放变化后窗口是否仍可见。
-- 无效时回退到鼠标当前显示器居中。
-
-新建窗口：
-
-```text
-历史状态合法 -> 恢复
-否则 -> 鼠标当前所在显示器工作区居中
-```
-
-再次唤醒已经存在的 Tool Window：
-
-```text
-只 restore/show/focus
-不要擅自移动到当前鼠标显示器
-```
-
-## 8.4 Launcher 显示器
-
-优先使用 Windows API 封装：
-
-```text
-GetCursorPos
-MonitorFromPoint
-GetMonitorInfoW
-```
-
-在 `platform/windows/monitor.rs` 内实现。
-
-注意逻辑坐标与物理像素的 DPI 转换，不要在业务层混用。
-
----
-
-# 9. Tray 设计
-
-juju 没有传统 Main Window，Tray 是常驻入口之一。
-
-Tray 菜单：
-
-```text
-打开启动器
+打开 Launcher
 JSON
 设置
 ----------------
 退出 juju
 ```
 
-未来可增加：
+关闭普通窗口不得退出程序。
+
+真正退出：
 
 ```text
-后台任务
-暂停全局快捷键
+Tray
+→ 退出 juju
 ```
-
-点击 Tray 图标的默认行为可设为打开 Launcher。
-
-`X` 关闭 Tool Window 不退出 juju。
-
-只有：
-
-```text
-Tray -> 退出 juju
-```
-
-才真正结束进程。
 
 ---
 
-# 10. 退出流程
+# 15. Tool Registry
 
-退出必须由 AppLifecycle 统一控制：
-
-```text
-is_exiting = true
-  ↓
-停止接受 Launcher 请求
-  ↓
-取消全局快捷键
-  ↓
-flush 所有待保存数据
-  ↓
-请求 RuntimeManager 停止后台任务
-  ↓
-等待 graceful shutdown timeout
-  ↓
-销毁 WebViews / Windows
-  ↓
-退出进程
+```csharp
+enum ToolId
+{
+    Json
+}
 ```
 
-JSON v1 没有后台 Runtime，但仍必须遵守此流程。
+未来：
 
-未来如果有不能立即中断的重要任务，可在退出时提示，但 v1 不需要做复杂后台任务确认。
+```csharp
+Json
+Http
+Network
+Encode
+```
+
+Descriptor：
+
+```csharp
+sealed record ToolDescriptor(
+    ToolId Id,
+    string Name,
+    string LauncherKey,
+    BackgroundCapability Background,
+    WindowSpec Window,
+    StorageCapability Storage);
+```
+
+StorageCapability：
+
+```csharp
+enum StorageCapability
+{
+    None,
+    File,
+    Database
+}
+```
+
+当前：
+
+```text
+JSON
+Background = Unsupported
+Storage = File
+```
+
+未来：
+
+```text
+HTTP
+Storage = File / Database
+
+Network History
+Storage = Database
+```
 
 ---
 
-# 11. 配置与数据存储
+# 16. SQLite 扩展边界
 
-## 11.1 固定应用配置目录
+v1 **不引入 SQLite**。
 
-应用级、本机级配置固定放：
+但是不能假设所有未来 Tool 都必须使用普通文件。
+
+Storage 架构：
+
+```text
+StorageManager
+│
+├── File Storage
+│   └── JSON v1
+│
+└── Database Storage
+    └── future SQLite
+```
+
+业务 Tool 通过自己的 Repository / Store 接口访问数据。
+
+禁止设计：
+
+```text
+一个全局数据库保存所有 Tool 数据
+```
+
+未来建议：
+
+```text
+<DataRoot>\
+└── <tool>\
+    └── data.db
+```
+
+每个 Tool 自己负责自己的 storage schema。
+
+Database 能力以后可以实现：
+
+```text
+Microsoft.Data.Sqlite
+```
+
+但 v1 不引用、不初始化、不创建数据库。
+
+---
+
+# 17. Tool Window 与 Runtime 分离
+
+```csharp
+enum UiState
+{
+    Closed,
+    Opening,
+    Visible,
+    Minimized
+}
+
+enum RuntimeState
+{
+    Stopped,
+    Starting,
+    Running,
+    Stopping,
+    Failed
+}
+
+enum BackgroundCapability
+{
+    Unsupported,
+    Optional,
+    Required
+}
+```
+
+JSON：
+
+```text
+BackgroundCapability.Unsupported
+```
+
+未来：
+
+```text
+Download       Optional
+Ping Monitor   Optional
+Clipboard      Optional / Required
+```
+
+必须区分：
+
+```text
+CloseToBackground
+AutoStartRuntime
+```
+
+前者表示：
+
+> UI 关闭后 Runtime 是否继续。
+
+后者表示：
+
+> juju 启动时 Runtime 是否自动启动。
+
+---
+
+# 18. WindowManager
+
+所有顶层窗口由 WindowManager 管理。
+
+```text
+Launcher
+Settings
+JSON
+```
+
+每种窗口最多一个实例。
+
+调用：
+
+```csharp
+ToolManager.Open(ToolId.Json);
+```
+
+行为：
+
+```text
+不存在
+→ Create
+→ Restore Window State
+→ Show
+→ Focus
+
+已最小化
+→ Restore
+→ Focus
+
+已隐藏
+→ Show
+→ Focus
+
+已显示
+→ Focus
+```
+
+禁止创建第二个 JSON Window。
+
+---
+
+# 19. 窗口位置管理
+
+保存：
+
+```text
+X
+Y
+Width
+Height
+Maximized
+Monitor
+```
+
+存储：
+
+```text
+%LOCALAPPDATA%\juju\window-state.json
+```
+
+恢复时检查：
+
+- Monitor 是否仍存在。
+- Window Rect 是否与任意 WorkArea 相交。
+- DPI 是否变化。
+- 窗口是否仍能看到。
+- 最小尺寸是否满足。
+
+无效：
+
+```text
+鼠标当前 Monitor
+→ WorkArea Center
+```
+
+已经打开的窗口再次激活时：
+
+> 不自动移动到当前鼠标显示器。
+
+---
+
+# 20. Theme
+
+v1 支持：
+
+```text
+System
+Light
+Dark
+```
+
+默认：
+
+```text
+System
+```
+
+统一由：
+
+```csharp
+ThemeService
+```
+
+管理。
+
+WPF 使用 Fluent Theme。
+
+Monaco Theme 与应用主题同步：
+
+```text
+WPF Light
+→ Monaco vs
+
+WPF Dark
+→ Monaco vs-dark
+
+WPF System
+→ 根据当前系统实际主题同步 Monaco
+```
+
+主题变化时：
+
+```text
+ThemeService
+├── 更新 WPF Theme
+└── 通知 JsonEditorBridge
+     └── Monaco setTheme
+```
+
+禁止各窗口自行判断主题。
+
+---
+
+# 21. 配置目录
+
+应用本机配置：
 
 ```text
 %LOCALAPPDATA%\juju\
 ```
 
-建议结构：
+建议：
 
 ```text
 %LOCALAPPDATA%\juju\
-├── config.toml
-├── window-state.toml
+├── config.json
+├── window-state.json
 ├── logs\
 ├── cache\
 │   └── clipboard\
+├── webview2\
 └── runtime\
 ```
 
-这里不是用户工具数据目录。
+这里不存放用户 JSON 正文。
 
-## 11.2 默认 DataRoot
+---
+
+# 22. DataRoot
 
 默认：
 
@@ -860,492 +974,336 @@ JSON v1 没有后台 Runtime，但仍必须遵守此流程。
 %USERPROFILE%\.juju
 ```
 
-即：
+必须通过 Windows/.NET API 获取用户目录。
+
+不要手工拼：
 
 ```text
-C:\Users\<user>\.juju
+C:\Users\xxx
 ```
 
-注意：
+用户可以修改 DataRoot。
 
-- 必须通过系统 API/Tauri path resolver 获取用户目录。
-- 不要通过字符串猜测 `C:\Users\...`。
-- 用户可以在 Settings 中修改 DataRoot。
+---
 
-## 11.3 config.toml
-
-建议：
-
-```toml
-schema_version = 1
-
-data_root = "C:\\Users\\example\\.juju"
-
-[app]
-autostart = false
-
-[launcher]
-timeout_ms = 2000
-shortcut = "<canonical shortcut representation>"
-
-[storage]
-watch_external_changes = true
-autosave_debounce_ms = 800
-```
-
-快捷键的实际序列化格式由实现层定义，只需保证：
-
-- 可读。
-- 可验证。
-- 可迁移。
-- UI 可以显示为 `Ctrl + Shift + Alt + Space`。
-
-所有配置更新使用原子写。
-
-## 11.4 DataRoot 结构
+# 23. DataRoot 结构
 
 ```text
 ~\.juju\
 │
-├── juju.toml
+├── juju.json
 │
 └── json\
-    ├── documents\
-    │   ├── 未命名-1.json
-    │   ├── 支付请求.json
-    │   └── 测试数据.json
     │
-    ├── state.toml
+    ├── metadata.json
+    │
+    ├── documents\
+    │   ├── 20260911001.json
+    │   ├── 20260911002.json
+    │   └── request.json
     │
     └── .trash\
 ```
 
-`juju.toml`：
+`juju.json`：
 
-```toml
-data_schema_version = 1
+```json
+{
+  "schemaVersion": 1
+}
 ```
 
-用于识别这是一个 juju DataRoot，并为未来数据迁移提供版本。
-
-当前不使用数据库。
-
-原则：
-
-> 用户文档是事实数据源。任何索引都只能是可删除、可重建 Cache。
-
-## 11.5 JSON 文档存储原则
-
-每一条 JSON 记录就是一个普通 `.json` 文件：
+用于：
 
 ```text
-json/documents/<name>.json
+识别合法 DataRoot
+数据结构版本
+未来 Migration
 ```
-
-不把文档内容嵌入：
-
-```text
-state.toml
-SQLite
-二进制索引
-```
-
-用户应可以：
-
-- 直接打开。
-- 直接复制。
-- 用 VS Code 编辑。
-- 用 Git 备份。
-- 用任意文件同步软件同步。
-
-`state.toml` 只保存 UI/工具状态，例如：
-
-```toml
-last_opened = "支付请求.json"
-sort = "modified_desc"
-```
-
-不要把用户 JSON 内容写入 state。
 
 ---
 
-# 12. DataRoot 切换与迁移
+# 24. JSON Metadata
 
-Settings 中提供：
-
-```text
-数据目录
-C:\Users\xxx\.juju
-
-[打开目录]
-[使用已有目录]
-[迁移到新目录]
-```
-
-必须区分两个操作。
-
-## 12.1 使用已有目录
+JSON Tool 必须维护：
 
 ```text
-用户选择目录
-  ↓
-检查 juju.toml
-  ↓
-检查数据 schema
-  ↓
-flush 当前工具
-  ↓
-切换 StorageManager root
-  ↓
-更新 config.toml
-  ↓
-刷新 Tool 数据
+<DataRoot>\json\metadata.json
 ```
 
-如果目录为空，可询问/允许初始化为新的 DataRoot。
+它是 JSON Tool 的业务元数据。
 
-如果目录含有普通文件但不是 juju root，不要静默覆盖。
+不保存 JSON 正文。
 
-## 12.2 迁移到新目录
+示例：
 
-```text
-flush 所有工具
-  ↓
-暂停 watcher
-  ↓
-创建目标目录
-  ↓
-复制 DataRoot
-  ↓
-校验关键文件
-  ↓
-写目标 juju.toml
-  ↓
-切换 config
-  ↓
-重新初始化 watcher
+```json
+{
+  "schemaVersion": 1,
+  "sequence": {
+    "date": "20260911",
+    "last": 3
+  },
+  "documents": [
+    {
+      "id": "d6a74cf8-6dda-4f26-b96b-7beee3a6740d",
+      "fileName": "20260911001.json",
+      "order": 0,
+      "createdAtUtc": "2026-09-11T08:00:00Z",
+      "updatedAtUtc": "2026-09-11T08:12:00Z",
+      "source": {
+        "kind": "created"
+      }
+    },
+    {
+      "id": "...",
+      "fileName": "request.json",
+      "order": 1,
+      "createdAtUtc": "...",
+      "updatedAtUtc": "...",
+      "source": {
+        "kind": "imported",
+        "originalFileName": "request.json"
+      }
+    }
+  ]
+}
 ```
-
-迁移成功前不得删除源目录。
-
-v1 可以采用：
-
-```text
-复制成功 -> 切换
-源目录保留
-```
-
-并提示用户自行删除旧目录，降低迁移导致的数据丢失风险。
-
-## 12.3 DataRoot 不可用
-
-例如：
-
-- 移动硬盘未连接。
-- 权限丢失。
-- 路径被删除。
-
-不得静默回落到默认 `~/.juju`，否则会形成两份数据。
-
-应显示：
-
-```text
-数据目录不可用
-
-[重试]
-[重新选择]
-[打开设置]
-```
-
-Core、Tray、Launcher 可以继续工作。
 
 ---
 
-# 13. StorageManager
+# 25. DocumentId
 
-## 13.1 职责
+不能再直接把文件名当成唯一业务 ID。
 
-所有持久化写操作必须通过 Rust StorageManager。
+定义：
 
-Tool 不允许直接散落：
-
-```rust
-std::fs::write(...)
+```csharp
+readonly record struct JsonDocumentId(Guid Value);
 ```
 
-StorageManager 负责：
-
-- DataRoot。
-- 路径安全。
-- 原子写。
-- 文档枚举。
-- 文档读写。
-- revision。
-- external file watcher。
-- 数据 schema。
-- 数据迁移。
-- self-write 去重。
-- 冲突检测。
-
-## 13.2 路径安全
-
-前端不得传入任意绝对路径访问磁盘。
-
-JSON API 的 DocumentId 可以直接映射为“受验证的文件名”，但必须满足：
-
-- 仅允许文件名，不允许目录分隔符。
-- 不允许 `..`。
-- 必须 `.json`。
-- 拒绝 Windows reserved device names。
-- 最终 canonical/safe parent 必须是当前 `json/documents`。
-- 所有 rename/create 统一做文件名校验。
-
-建议 Rust 定义：
-
-```rust
-struct JsonDocumentId(String);
-```
-
-构造函数负责校验。
-
-## 13.3 新建文件命名
-
-默认：
+原因：
 
 ```text
-未命名-1.json
-未命名-2.json
-未命名-3.json
+文档允许 Rename
+        │
+        ▼
+文件名会变化
+        │
+        ▼
+业务 ID 不应该变化
 ```
 
-生成时扫描冲突。
-
-重命名冲突默认返回：
+Metadata：
 
 ```text
-DOCUMENT_ALREADY_EXISTS
+DocumentId
+     │
+     └── FileName
 ```
 
-不要自动覆盖已有文档。
-
-## 13.4 原子写
-
-禁止直接 truncate + write 最终文件。
-
-要求：
+Rename 只改变：
 
 ```text
-目标同目录创建临时文件
-  ↓
-写完整内容
-  ↓
-flush
-  ↓
-使用 Windows 安全替换策略替换目标
+FileName
 ```
 
-实现时优先使用可靠的 Windows 原子/近原子替换方式；如果使用 crate，必须确认 Windows 覆盖已有文件的语义。
-
-目标：
-
-- 应用崩溃不留下半个 JSON 文件。
-- 临时文件留存可在下次启动清理。
-- 写失败时保留旧文件。
-
-## 13.5 自动保存
-
-默认：
+不改变：
 
 ```text
-800ms debounce
+DocumentId
+CreatedAt
+Order
 ```
 
-流程：
+---
+
+# 26. Metadata 的事实源规则
+
+JSON 正文：
 
 ```text
-Monaco content changed
-  ↓
-React dirty state
-  ↓
-800ms 无新输入
-  ↓
-json_write_document
-  ↓
-atomic write
+documents/*.json
 ```
 
-窗口关闭/切换 DataRoot/退出进程前必须：
+仍然是内容事实数据源。
+
+Metadata 是：
 
 ```text
-flush pending autosave
+Document ID
+文档顺序
+序号
+创建时间
+来源
+其他 UI/业务元数据
 ```
 
-JSON 可以处于暂时非法状态，仍然允许自动保存当前文本，因为该工具同时承担 JSON 文本草稿功能。
+的事实来源。
+
+但 Metadata 必须具备恢复能力。
+
+启动时执行：
+
+```text
+Read metadata
++
+Scan documents directory
++
+Reconcile
+```
+
+例如发现：
+
+```text
+磁盘有文件
+metadata 没记录
+```
+
+则创建 Metadata Entry。
+
+发现：
+
+```text
+metadata 有记录
+文件不存在
+```
+
+则移除或标记 Missing，并记录日志。
 
 因此：
 
-- “保存当前文本”和“JSON 是否合法”是两个概念。
-- 不因非法 JSON 阻止自动保存。
-- 格式化/压缩需要合法 JSON。
-- 文件复制允许非法 JSON。
+> Metadata 损坏不能导致 JSON 正文丢失。
 
 ---
 
-# 14. 外部文件修改
+# 27. Metadata 写入
 
-用户明确可以直接在 VS Code 等应用中编辑 DataRoot 文档，因此 external change 是正常场景。
-
-使用 Rust `notify` crate 监听：
+必须原子写。
 
 ```text
-<DataRoot>\json\documents
+metadata.json.tmp
+→ 完整写入
+→ Flush
+→ Replace metadata.json
 ```
 
-## 14.1 Revision
-
-读取文档时返回：
+写失败：
 
 ```text
-content
-revision
+保留旧 metadata
 ```
 
-revision 可由：
+Metadata 更新必须序列化执行。
 
-```text
-mtime + size + hash（按实现需要）
+禁止多个 Task 同时修改 metadata.json。
+
+使用：
+
+```csharp
+SemaphoreSlim
 ```
 
-组成。
-
-写入请求：
-
-```text
-document_id
-content
-expected_revision
-```
-
-如果磁盘 revision 已变化：
-
-```text
-返回 EXTERNAL_MODIFICATION_CONFLICT
-```
-
-不要直接覆盖。
-
-## 14.2 UI 冲突处理
-
-Monaco 当前无未保存变化：
-
-```text
-外部修改
- -> 自动重新加载
- -> toast: 文件已在外部更新
-```
-
-Monaco 当前有 dirty 内容：
-
-```text
-外部修改
- -> 不覆盖编辑器
- -> 显示冲突提示
-```
-
-提供：
-
-```text
-[重新加载磁盘版本]
-[覆盖磁盘版本]
-[复制当前内容后重新加载]
-```
-
-v1 至少实现前两个。
-
-## 14.3 Watcher 去重
-
-juju 自己 atomic write 也会触发 watcher。
-
-StorageManager 需要维护短期 self-write revision/operation token，避免自己的保存被误报成“外部冲突”。
-
-Watcher 事件需要 debounce，因为 Windows 文件更新可能产生多次 create/rename/write 事件。
+或等价串行机制。
 
 ---
 
-# 15. JSON Tool 产品设计
+# 28. JSON 新建命名规则
 
-## 15.1 窗口布局
-
-```text
-┌──────────────────────────────────────────────────────────────┐
-│ 新建 | 格式化 | 复制 | 压缩复制 | 文件复制 | 展开 | 折叠 ... │
-├──────────────┬───────────────────────────────────────────────┤
-│ 文档         │                                               │
-│              │                                               │
-│ 支付请求     │               Monaco Editor                   │
-│ 测试数据     │                                               │
-│ 未命名-1     │                                               │
-│              │                                               │
-├──────────────┴───────────────────────────────────────────────┤
-│ JSON 状态 / 行列 / 自动保存状态                               │
-└──────────────────────────────────────────────────────────────┘
-```
-
-左侧：
-
-- 文档列表。
-- 当前选中状态。
-- 文件名。
-- 可选搜索框（v1 可实现，成本很低）。
-- Context Menu：
-  - 重命名。
-  - 删除。
-
-工具栏：
+新建默认文档：
 
 ```text
-新建
-格式化
-复制
-压缩复制
-文件复制
-展开
-折叠
-逐层展开
-对比
+yyyyMMdd{sequence}
 ```
 
-不提供“保存”和“下载”。
+磁盘：
 
-## 15.2 Monaco 基础配置
+```text
+yyyyMMdd{sequence}.json
+```
 
-要求：
+例如当天第三个：
 
-- language: `json`
-- 行号开启。
-- folding 开启。
-- minimap 默认关闭。
-- automatic layout。
-- 支持 Ctrl+F。
-- 支持编辑器 Undo/Redo。
-- 支持 JSON syntax diagnostics。
-- 默认 2 空格缩进。
-- `scrollBeyondLastLine` 关闭。
-- 大文档时避免不必要 decorations。
-- Monaco 只在 JSON Tool 模块加载时 dynamic import。
+```text
+20260911003.json
+```
 
-必须在 React unmount 时：
+UI：
 
-- dispose editor。
-- dispose model。
-- Diff Editor 同样 dispose。
-- 避免反复打开 JSON 工具导致 model 泄漏。
+```text
+20260911003
+```
+
+Sequence：
+
+```text
+001
+002
+003
+...
+999
+1000
+```
+
+采用：
+
+```csharp
+sequence.ToString("D3")
+```
+
+即最少 3 位，不限制最多 3 位。
+
+每天独立序号：
+
+```text
+20260911 -> 001...
+20260912 -> 001...
+```
 
 ---
 
-# 16. JSON 功能语义
+# 29. Sequence 生成规则
 
-## 16.1 新建
+Metadata：
+
+```json
+"sequence": {
+  "date": "20260911",
+  "last": 3
+}
+```
+
+新建：
+
+```text
+CurrentDate == metadata.sequence.date
+→ last + 1
+
+CurrentDate != metadata.sequence.date
+→ sequence = 1
+```
+
+仍必须扫描目标文件冲突。
+
+即：
+
+```text
+Metadata Sequence
++
+Existing File Check
+```
+
+双重保证。
+
+删除文档之后不得复用旧 Sequence。
+
+Rename 不影响 Sequence。
+
+Import 不消耗日期 Sequence。
+
+---
+
+# 30. 新建 JSON
 
 点击：
 
@@ -1353,50 +1311,744 @@ Watcher 事件需要 debounce，因为 Windows 文件更新可能产生多次 cr
 新建
 ```
 
-Rust 创建：
+流程：
 
 ```text
-未命名-N.json
+Generate sequence
+→ Generate file name
+→ Create {}
+→ Atomic write
+→ Add metadata
+→ Save metadata
+→ Add to document list
+→ Select
+→ Open Monaco
+→ Focus Monaco
 ```
 
-默认内容：
+---
 
-```json
-{}
+# 31. 手工保存 + 自动保存
+
+两者同时存在。
+
+## 自动保存
+
+默认：
+
+```text
+800 ms debounce
 ```
 
-创建后：
+流程：
 
-- 添加到列表。
-- 选中。
-- 打开 Monaco。
-- 聚焦编辑器。
+```text
+Monaco content changed
+→ DocumentSession.Dirty = true
+→ 800 ms
+→ Save
+```
 
-## 16.2 普通复制
+## 手工保存
+
+按钮：
+
+```text
+保存
+```
 
 语义：
 
-```text
-复制当前编辑器原始文本
-```
+> 立即保存当前 Monaco 内容，不等待 Autosave Debounce。
 
-不要求 JSON 合法。
-
-通过 Rust `ClipboardService.copy_text()` 实现，避免不同 WebView clipboard 权限差异。
-
-成功显示短暂 toast：
+流程：
 
 ```text
-已复制
+取消 pending debounce
+→ 获取 Monaco Current Text
+→ SaveImmediately
+→ 更新 Revision
+→ Dirty = false
 ```
 
-## 16.3 压缩复制
+即使当前没有 Dirty：
+
+```text
+Save
+→ no-op
+→ 状态显示 已保存
+```
+
+---
+
+# 32. 保存状态
+
+DocumentSession：
+
+```csharp
+enum SaveState
+{
+    Clean,
+    Dirty,
+    Saving,
+    SaveFailed,
+    Conflict
+}
+```
+
+StatusBar 显示：
+
+```text
+已保存
+正在保存…
+未保存
+保存失败
+外部修改冲突
+```
+
+窗口关闭之前：
+
+```text
+Dirty
+→ Flush
+
+Saving
+→ Await
+
+SaveFailed
+→ 提示用户
+```
+
+---
+
+# 33. 非法 JSON 保存
+
+仍然允许保存：
+
+```json
+{
+  "name":
+```
+
+保存是：
+
+> 文本持久化。
+
+不是：
+
+> JSON Validation。
+
+因此非法 JSON：
+
+允许：
+
+```text
+Save
+Auto Save
+Copy
+File Copy
+Rename
+```
+
+禁止：
+
+```text
+Format
+Minified Copy
+```
+
+Diff 可以回退为 Raw Text Diff。
+
+---
+
+# 34. Storage Revision
+
+读取：
+
+```csharp
+JsonDocumentSnapshot
+{
+    DocumentId
+    Content
+    Revision
+}
+```
+
+Revision 可以使用：
+
+```text
+Length
+LastWriteTimeUtc
+Hash
+```
+
+具体实现封装在：
+
+```text
+DocumentRevisionService
+```
+
+写入前：
+
+```text
+ExpectedRevision
+vs
+DiskRevision
+```
+
+不同：
+
+```text
+ExternalModificationConflict
+```
+
+不得静默覆盖。
+
+---
+
+# 35. 外部文件修改
+
+使用：
+
+```text
+FileSystemWatcher
+```
+
+监听：
+
+```text
+<DataRoot>\json\documents
+```
+
+事件必须 debounce。
+
+应用自己的保存同样会触发 watcher，因此必须维护：
+
+```text
+SelfWrite Token / Revision
+```
+
+过滤自身事件。
+
+---
+
+# 36. 外部修改冲突
+
+编辑器没有 Dirty：
+
+```text
+External Change
+→ Reload
+→ 更新 Monaco
+→ Toast "文件已在外部更新"
+```
+
+编辑器 Dirty：
+
+```text
+External Change
+→ 不覆盖 Monaco
+→ SaveState = Conflict
+```
+
+显示：
+
+```text
+文件已被外部程序修改
+
+[重新加载磁盘版本]
+[覆盖磁盘版本]
+[复制当前内容后重新加载]
+```
+
+v1 至少完成前三种操作的完整处理。
+
+---
+
+# 37. Explorer 拖入 JSON
+
+JsonToolWindow：
+
+```text
+AllowDrop = true
+```
+
+只接受：
+
+```text
+*.json
+```
+
+拖入语义不是打开原文件，而是：
+
+> Import / Copy Into juju。
+
+例如：
+
+```text
+D:\temp\request.json
+```
+
+拖入后：
+
+```text
+读取 request.json
+      │
+      ▼
+<DataRoot>\json\documents\request.json
+```
+
+原始文件保持不变。
+
+以后修改 DataRoot 中的文件不会修改导入源文件。
+
+---
+
+# 38. Import 文件名
+
+源：
+
+```text
+request.json
+```
+
+磁盘文档：
+
+```text
+request.json
+```
+
+UI 显示：
+
+```text
+request
+```
+
+即 UI 不显示 `.json`。
+
+如果文件已经存在：
+
+```text
+request.json
+```
+
+自动寻找：
+
+```text
+request-2.json
+request-3.json
+...
+```
+
+严禁覆盖已有文档。
+
+Metadata 记录：
+
+```json
+{
+  "source": {
+    "kind": "imported",
+    "originalFileName": "request.json"
+  }
+}
+```
+
+允许一次拖入多个 `.json` 文件，按拖入顺序依次导入。
+
+非 JSON 文件：
+
+```text
+忽略
++
+明确提示
+```
+
+拖入不要求 JSON 内容合法。
+
+---
+
+# 39. WebView2 Drop
+
+不让 WebView2 自己接管文件导入业务。
+
+整个 Import 必须经过 C#：
+
+```text
+Explorer
+→ JsonToolWindow
+→ JsonImportService
+→ Storage
+```
+
+不能：
+
+```text
+Explorer
+→ HTML / JS File API
+→ Monaco
+```
+
+必要时关闭 WebView2 默认 External Drop，由 WPF Host 统一管理。
+
+---
+
+# 40. JSON Tool UI
+
+```text
+┌───────────────────────────────────────────────────────────────┐
+│ 新建 保存 格式化 复制 压缩复制 文件复制 展开 折叠 逐层 对比 │
+├────────────────┬──────────────────────────────────────────────┤
+│ 文档           │                                              │
+│                │                                              │
+│ 20260911003    │              Monaco Editor                   │
+│ request        │                                              │
+│ payment        │                                              │
+│                │                                              │
+├────────────────┴──────────────────────────────────────────────┤
+│ JSON ✓     Ln 12, Col 8                    已保存             │
+└───────────────────────────────────────────────────────────────┘
+```
+
+---
+
+# 41. 文档列表
+
+显示：
+
+```text
+FileName without .json
+```
+
+支持：
+
+```text
+选择
+Rename
+Delete
+拖动调整顺序
+```
+
+拖动排序后：
+
+```text
+更新 documents[].order
+→ Save metadata
+```
+
+Explorer 中的文件排序不影响 juju UI 排序。
+
+---
+
+# 42. Rename
+
+例如：
+
+```text
+20260911003
+→ payment-request
+```
+
+磁盘：
+
+```text
+20260911003.json
+→ payment-request.json
+```
+
+Metadata：
+
+```text
+DocumentId 不变
+FileName 更新
+Order 不变
+```
+
+禁止：
+
+```text
+\
+/
+:
+*
+?
+"
+<
+>
+|
+..
+Windows Reserved Name
+```
+
+冲突：
+
+```text
+DOCUMENT_ALREADY_EXISTS
+```
+
+不得自动覆盖。
+
+---
+
+# 43. Delete
+
+删除不立即永久删除。
+
+移动到：
+
+```text
+<DataRoot>\json\.trash\
+```
+
+例如：
+
+```text
+20260911-180702__payment-request.json
+```
+
+Metadata 中移除。
+
+如果删除当前文档：
+
+```text
+选择下一文档
+```
+
+如果列表为空：
+
+```text
+自动创建一个新的 yyyyMMdd001 风格文档
+```
+
+实际 Sequence 根据当天 metadata 决定，不复用旧号。
+
+---
+
+# 44. Monaco Host
+
+Monaco Host 只负责：
+
+```text
+Editor
+DiffEditor
+JSON Language Support
+Folding
+Formatting
+Diagnostics
+Search
+Undo / Redo
+```
+
+不得负责：
+
+```text
+磁盘
+DataRoot
+Metadata
+Windows Clipboard
+File Clipboard
+Settings Persistence
+FileSystemWatcher
+```
+
+---
+
+# 45. WebView2 通信
+
+统一：
+
+```text
+C# -> JS
+CoreWebView2.PostWebMessageAsJson
+
+JS -> C#
+window.chrome.webview.postMessage
+```
+
+禁止大量使用：
+
+```text
+ExecuteScriptAsync($"editor.setValue('{content}')")
+```
+
+传递用户正文。
+
+---
+
+# 46. Editor Protocol
+
+C# -> Monaco：
+
+```text
+initialize
+openDocument
+replaceContent
+setTheme
+format
+foldAll
+unfoldAll
+foldLevel
+enterDiff
+exitDiff
+focus
+getContent
+```
+
+Monaco -> C#：
+
+```text
+ready
+contentChanged
+saveRequested
+cursorChanged
+validationChanged
+editorFocused
+commandResult
+```
+
+所有消息必须包含：
+
+```text
+version
+type
+requestId
+payload
+```
+
+需要返回值的操作通过 `requestId` 配对。
+
+---
+
+# 47. Monaco 生命周期
+
+打开 JSON Window：
+
+```text
+Create WPF Window
+→ Initialize WebView2
+→ Load local editor assets
+→ Initialize Monaco
+→ Ready
+```
+
+关闭：
+
+```text
+Flush pending save
+→ Dispose Monaco models
+→ Dispose Diff models
+→ Dispose Editor
+→ Dispose WebView2
+→ Close WPF Window
+```
+
+JSON Window 关闭之后：
+
+> 不保留隐藏 WebView2。
+
+---
+
+# 48. Monaco 本地资源
+
+Monaco JS/CSS 必须随应用安装。
+
+禁止运行时从：
+
+```text
+CDN
+Internet
+```
+
+加载。
+
+必须允许：
+
+```text
+完全离线使用
+```
+
+WebView2 只加载 juju 自己的静态资源。
+
+---
+
+# 49. JSON 格式化
+
+只有合法 JSON 才允许。
+
+优先调用 Monaco JSON Formatter。
+
+成功：
+
+```text
+Monaco Model Updated
+→ Dirty
+→ Autosave
+```
+
+格式化按钮本身不直接写文件。
+
+非法：
+
+```text
+不改变文本
+→ 显示 JSON 格式错误
+→ 能定位时跳到错误位置
+```
+
+---
+
+# 50. 普通复制
+
+按钮：
+
+```text
+复制
+```
+
+定义：
+
+> 复制当前文档完整原始文本。
+
+不是 Monaco selection copy。
+
+流程：
+
+```text
+Monaco getValue
+→ C#
+→ ClipboardService.CopyText
+```
+
+非法 JSON 同样允许。
+
+---
+
+# 51. 压缩复制
 
 要求：
 
-1. 先验证 JSON 合法。
-2. **不允许通过 parse -> Value -> serialize 的方式改变数字字面量或重复 key。**
-3. 对原始文本执行 lexical minify：仅删除字符串字面量外允许忽略的 JSON whitespace。
+```text
+Validate JSON
+→ Lexical Minify
+→ Clipboard
+```
+
+禁止通过：
+
+```text
+Deserialize
+→ Serialize
+```
+
+实现压缩复制。
+
+必须尽量保持：
+
+```text
+数字 token
+Key 顺序
+重复 Key
+字符串内容
+```
 
 例如：
 
@@ -1407,1770 +2059,1334 @@ Rust 创建：
 }
 ```
 
-结果必须保持 token：
+得到：
 
 ```json
 {"value":1e10,"text":"a b"}
 ```
 
-不能把 `1e10` 重新序列化为其他数字表示。
+而不是重新编码数字。
 
-建议算法：
+---
 
-```text
-先使用 serde_json 仅做语法验证
-再扫描原始 UTF-8 文本
-state:
-  Normal
-  InString
-  Escape
-Normal 下删除 space/tab/CR/LF
-String 内原样保留
-```
-
-如果 JSON 非法：
-
-- 不改变剪切板。
-- 显示错误。
-- 尽量定位 Monaco 中的错误位置。
-
-## 16.4 文件复制
+# 52. 文件复制
 
 语义：
 
-> 将当前 JSON 文档以 `.json` 文件对象放入 Windows 剪切板，用户在 Explorer / Desktop 中 `Ctrl+V` 可得到文件。
+> 将当前编辑器内容作为一个 `.json` 文件复制到 Windows Clipboard。
 
-要求：
+流程：
 
-1. 先 flush 当前 autosave。
-2. 如果当前 document 已有实体文件且内容与编辑器一致，可直接使用其路径。
-3. 为避免用户后续修改源文档导致“复制内容”变化，**推荐生成 clipboard snapshot**。
-4. snapshot 放：
+```text
+Flush Current Editor
+→ 创建 Clipboard Snapshot
+→ Windows File Clipboard
+```
+
+Snapshot：
 
 ```text
 %LOCALAPPDATA%\juju\cache\clipboard\
 ```
 
+文件名使用当前文档名。
+
 例如：
 
 ```text
-%LOCALAPPDATA%\juju\cache\clipboard\支付请求.json
+payment.json
 ```
 
-5. 使用 Windows `CF_HDROP` / `DROPFILES` 把 snapshot 路径放入 Clipboard。
-6. 设置 Copy 语义，不是 Move。
-7. snapshot 不得复制到 DataRoot。
-
-缓存清理：
-
-- juju 启动时清理 3 天以上的 clipboard snapshot。
-- 不得复制后立即删除，因为 Explorer 的剪切板数据依赖路径存在。
-
-非法 JSON 也允许文件复制，因为它复制的是当前文本快照。
-
-Windows 实现位置：
+用户：
 
 ```text
-platform/windows/clipboard.rs
+Desktop
+Ctrl+V
 ```
 
-不要在 JSON Tool 直接调用 Win32。
-
-## 16.5 格式化
-
-要求：
-
-- 只在合法 JSON 上执行。
-- 默认缩进 2 空格。
-- 尽量保持 JSON token/value 语义与原始 key 顺序。
-- 优先使用 Monaco JSON formatter 的公开能力。
-- 不使用 Monaco internal/private folding/parser API。
-- 格式化完成后，普通 autosave 流程负责持久化。
-
-非法 JSON：
+得到：
 
 ```text
-不修改文档
-显示“JSON 格式错误”
-聚焦/定位第一处错误（能获取位置时）
+payment.json
 ```
 
-## 16.6 折叠
-
-执行 Monaco 支持的公开 Fold All action：
-
-```text
-折叠所有可折叠 JSON 节点
-```
-
-## 16.7 展开
-
-执行 Monaco 支持的公开 Unfold All action：
-
-```text
-展开所有节点
-```
-
-## 16.8 逐层展开
-
-产品语义固定为：
-
-> 从较浅 JSON 层级开始，每点击一次增加一层可见深度。
-
-建议状态：
-
-```text
-foldDepth = 1, 2, 3 ...
-```
-
-实现策略优先使用 Monaco/VS Code 公开可触发的 folding actions，例如 fold level 系列；不要访问 Monaco 内部 folding model 私有字段。
-
-如果当前 Monaco 稳定版本仅提供有限 fold level action：
-
-- 支持公开提供的最大层级。
-- 超过最大层级后执行全部展开。
-- 每次用户手工改变 folding 后，可以重置 step-expand 状态。
-
-该功能需要单独写集成测试验证实际层级行为，不要假设 action 语义。
+非法 JSON 允许文件复制。
 
 ---
 
-# 17. JSON Diff
+# 53. Clipboard Snapshot 生命周期
 
-## 17.1 进入方式
+Snapshot 不能复制后立即删除。
 
-正常模式点击：
+启动 juju 时：
 
 ```text
-对比
+删除超过 3 天的 clipboard snapshot
 ```
 
-进入“选择对比文档”状态。
+清理失败：
 
-当前文档固定为：
+```text
+记录日志
+不阻塞应用启动
+```
+
+---
+
+# 54. 展开 / 折叠
+
+按钮：
+
+```text
+展开
+折叠
+逐层展开
+```
+
+分别映射 Monaco 官方公开 action。
+
+不得访问 Monaco 私有 Folding Model。
+
+逐层展开维护：
+
+```text
+foldDepth
+```
+
+例如：
+
+```text
+1
+2
+3
+4
+...
+```
+
+用户手工折叠后允许 reset `foldDepth`。
+
+---
+
+# 55. JSON Diff
+
+进入：
+
+```text
+当前文档
+→ 对比
+→ 选择目标文档
+```
+
+当前：
 
 ```text
 Original / Left
 ```
 
-用户在左侧选择另一个文档：
+选择：
 
 ```text
 Modified / Right
 ```
 
-然后切换到 Monaco DiffEditor。
-
-禁止选择当前文档自身。
-
-## 17.2 Diff UI
-
-```text
-┌──────────────┬──────────────────────┬──────────────────────┐
-│ 文档列表      │ Original             │ Modified             │
-│              │ 当前文档              │ 对比文档              │
-│              │                      │                      │
-│              │      Monaco DiffEditor                      │
-│              │                      │                      │
-└──────────────┴──────────────────────┴──────────────────────┘
-```
-
-Diff 默认：
-
-- side-by-side。
-- 两边只读。
-- 显示行级、字符级变化。
-- 支持同步滚动。
-- 支持折叠未变化区域（如果当前 Monaco 公开配置支持且体验稳定，可开启；否则 v1 不强求）。
-
-工具栏：
-
-```text
-退出对比
-交换左右
-```
-
-## 17.3 Diff 输入规范
-
-优先可读性：
-
-- 如果两份文档都是合法 JSON：
-  - 为 Diff 创建**临时格式化 projection**。
-  - 不修改磁盘原文件。
-  - 不修改普通编辑器内容。
-- 如果任意一份非法：
-  - 回退为原始文本 Diff。
-  - 显示“存在非法 JSON，当前按原文比较”。
-
-v1 是文本 Diff，不做：
-
-```text
-忽略属性顺序
-JSON Pointer 语义 Diff
-array key match
-JSON Patch
-```
-
-这些以后可单独增加“语义对比模式”。
+进入 Monaco DiffEditor。
 
 ---
 
-# 18. JSON 文档删除与重命名
+# 56. Diff 内容
 
-虽然不是最核心按钮，但文档列表需要基本管理能力。
-
-## 18.1 重命名
-
-- 保留 `.json` 扩展。
-- UI 输入只编辑主文件名。
-- Rust 校验 Windows 文件名。
-- 冲突返回明确错误。
-- 成功后更新当前 DocumentId。
-- 如果当前正在 Diff，重命名不能破坏已打开模型。
-
-## 18.2 删除
-
-为降低误删风险，v1 不建议永久删除。
-
-移动到：
+两边合法 JSON：
 
 ```text
-<DataRoot>\json\.trash\
+原始文档
+→ Temporary Formatted Projection
+→ Monaco Diff
 ```
 
-建议文件名：
+Projection 不修改磁盘文件。
+
+任意一边非法：
 
 ```text
-20260910-113000__支付请求.json
+Raw Text Diff
 ```
 
-同名冲突追加序号。
-
-v1 UI：
+并显示：
 
 ```text
-删除确认
+存在非法 JSON，当前按原文比较
 ```
 
-删除后：
+Diff：
 
-- 关闭该文档。
-- 选中列表中的下一条。
-- 列表为空时自动创建 `未命名-1.json` 或显示空状态；推荐自动创建一条，保证编辑器始终可用。
+```text
+Side-by-side
+Read-only
+Line Diff
+Character Diff
+Synchronized Scrolling
+```
 
-恢复回收站功能可以以后增加。
+v1 不做语义 JSON Diff。
 
 ---
 
-# 19. React 前端架构
+# 57. JSON Tool 快捷键
 
-## 19.1 不使用大型 SPA 路由作为核心状态
-
-可以只保留一个 Vite build，通过 window URL/query 决定入口。
-
-概念：
+所有 Toolbar Command 必须具有对应：
 
 ```text
-/index.html?view=launcher
-/index.html?view=settings
-/index.html?view=tool&tool=json
+Alt + 单键
 ```
 
-`main.tsx`：
+并优先使用左手区域。
+
+推荐最终映射：
+
+| 功能 | 默认快捷键 | 设计含义 |
+|---|---|---|
+| 新建 | `Alt + A` | Add |
+| 保存 | `Alt + S` | Save |
+| 格式化 | `Alt + F` | Format |
+| 复制全文 | `Alt + C` | Copy |
+| 压缩复制 | `Alt + X` | 紧邻 C，适合左手 |
+| 文件复制 | `Alt + V` | 紧邻 C/X |
+| 展开全部 | `Alt + E` | Expand |
+| 折叠全部 | `Alt + R` | Reduce |
+| 逐层展开 | `Alt + D` | Depth |
+| 对比 | `Alt + Q` | 左上位置，避免与其他功能冲突 |
+
+推荐手位：
 
 ```text
-resolve current view
-  ├── launcher -> dynamic import LauncherApp
-  ├── settings -> dynamic import SettingsApp
-  └── tool=json -> dynamic import JsonToolApp
+Q W E R
+ A S D F
+  Z X C V
 ```
 
-JSON module 再：
+所有主要操作均能左手完成。
 
-```text
-dynamic import monaco-editor
-```
+实现层面：
 
-这样 Launcher 不会加载 Monaco。
+> 默认识别 Left Alt + Key。
 
-如果实际 Tauri asset routing 对 query 有不便，可改为 Vite multi-page：
-
-```text
-launcher.html
-settings.html
-tool.html
-```
-
-两种方式均可，但必须保持 lazy loading。优先选实现最简单且在 Tauri 2 中稳定的方式。
-
-## 19.2 推荐目录
-
-```text
-src/
-├── main.tsx
-├── app/
-│   ├── ipc.ts
-│   ├── errors.ts
-│   ├── types.ts
-│   └── theme.ts
-│
-├── launcher/
-│   ├── LauncherApp.tsx
-│   ├── launcher.module.css
-│   └── useLauncherKeyboard.ts
-│
-├── settings/
-│   ├── SettingsApp.tsx
-│   ├── GeneralSettings.tsx
-│   ├── StorageSettings.tsx
-│   └── settings.module.css
-│
-├── tools/
-│   └── json/
-│       ├── JsonToolApp.tsx
-│       ├── JsonToolbar.tsx
-│       ├── DocumentSidebar.tsx
-│       ├── JsonEditor.tsx
-│       ├── JsonDiff.tsx
-│       ├── JsonStatusBar.tsx
-│       ├── hooks/
-│       │   ├── useDocuments.ts
-│       │   ├── useAutosave.ts
-│       │   ├── useExternalChanges.ts
-│       │   └── useMonaco.ts
-│       └── json.module.css
-│
-└── shared/
-    ├── Button.tsx
-    ├── Dialog.tsx
-    ├── Toast.tsx
-    ├── EmptyState.tsx
-    └── styles/
-        ├── tokens.css
-        └── global.css
-```
-
-## 19.3 React 状态原则
-
-不要在 WebView 中保存跨启动的事实状态。
-
-React state 只承担：
-
-- 当前 UI selection。
-- dialog 开关。
-- editor dirty。
-- compare mode。
-- 临时 toast。
-- Monaco instance references。
-
-Rust/Core/文件系统承担：
-
-- 文档数据。
-- settings。
-- window state。
-- data root。
-- tool registry。
-- runtime state。
+避免把 `Right Alt / AltGr` 当作业务快捷键，以免影响特殊键盘布局输入。
 
 ---
 
-# 20. Rust 工程结构
+# 58. 标准编辑快捷键不能破坏
 
-建议：
-
-```text
-src-tauri/
-├── Cargo.toml
-├── tauri.conf.json
-├── capabilities/
-│   ├── launcher.json
-│   ├── settings.json
-│   └── json.json
-│
-└── src/
-    ├── main.rs
-    ├── lib.rs
-    │
-    ├── app/
-    │   ├── mod.rs
-    │   ├── lifecycle.rs
-    │   ├── launcher.rs
-    │   ├── tray.rs
-    │   └── commands.rs
-    │
-    ├── core/
-    │   ├── mod.rs
-    │   ├── registry.rs
-    │   ├── tool_manager.rs
-    │   ├── runtime_manager.rs
-    │   ├── window_manager.rs
-    │   ├── settings.rs
-    │   └── app_state.rs
-    │
-    ├── services/
-    │   ├── mod.rs
-    │   ├── storage/
-    │   │   ├── mod.rs
-    │   │   ├── atomic_write.rs
-    │   │   ├── watcher.rs
-    │   │   └── revision.rs
-    │   ├── notification.rs
-    │   ├── secret_store.rs
-    │   └── logging.rs
-    │
-    ├── platform/
-    │   ├── mod.rs
-    │   └── windows/
-    │       ├── mod.rs
-    │       ├── clipboard.rs
-    │       ├── monitor.rs
-    │       ├── credentials.rs   # future stub
-    │       └── privilege.rs     # future stub
-    │
-    └── tools/
-        ├── mod.rs
-        └── json/
-            ├── mod.rs
-            ├── commands.rs
-            ├── documents.rs
-            ├── minify.rs
-            └── types.rs
-```
-
-v1 不拆 Cargo workspace。
-
-等工具数量明显增长，再考虑：
+Monaco 中必须继续支持：
 
 ```text
-juju-core
-juju-platform-windows
-juju-http-engine
-...
+Ctrl + C     Selection Copy
+Ctrl + X
+Ctrl + V
+Ctrl + Z
+Ctrl + Y
+Ctrl + F
+Ctrl + A
 ```
 
-现在不要提前拆 crate。
+另外允许：
+
+```text
+Ctrl + S
+```
+
+作为“立即保存”的辅助传统快捷键。
+
+但 Toolbar 显示的正式 juju Shortcut：
+
+```text
+Alt + S
+```
 
 ---
 
-# 21. AppState
+# 59. 为什么复制使用 Alt+C
 
-Tauri Managed State 建议集中：
+需要明确区分：
 
-```rust
-struct AppState {
-    settings: Arc<SettingsService>,
-    storage: Arc<StorageManager>,
-    registry: Arc<ToolRegistry>,
-    tools: Arc<ToolManager>,
-    runtimes: Arc<RuntimeManager>,
-    windows: Arc<WindowManager>,
-    launcher: Arc<LauncherManager>,
-    notifications: Arc<dyn NotificationService>,
-}
+```text
+Ctrl+C
 ```
 
-具体实现需考虑 Tauri Send/Sync 要求。
+含义：
 
-避免：
+> Monaco 当前 Selection Copy。
 
-- 大量全局 `static mut`。
-- 每个 command 自己构造 service。
-- 业务模块直接持有 AppHandle 作为万能依赖。
+而：
 
-AppHandle 只在确实需要窗口/event/plugin 的 service 中持有或按调用传入。
+```text
+Alt+C
+```
+
+含义：
+
+> juju 的“复制完整 JSON 文本”。
+
+两者不得混淆。
 
 ---
 
-# 22. RuntimeManager
+# 60. Shortcut Router
 
-虽然 JSON v1 不需要后台任务，但需要保留统一模型。
-
-接口概念：
-
-```rust
-trait ToolRuntime {
-    fn tool_id(&self) -> ToolId;
-    async fn start(&self) -> Result<()>;
-    async fn stop(&self) -> Result<()>;
-    fn state(&self) -> RuntimeState;
-}
-```
-
-JSON 不实现实际 Runtime，ToolManager 根据：
+JsonToolWindow 必须有：
 
 ```text
-BackgroundCapability::Unsupported
+JsonCommandRouter
 ```
 
-直接管理 UI 生命周期。
-
-未来后台 task 需要：
-
-- CancellationToken 或等价取消机制。
-- TaskId/SessionId。
-- graceful stop。
-- runtime event。
-- UI destroy 后 Rust task 可继续。
-- UI 重新打开后可查询 snapshot。
-
-注意：
-
-> Tool Singleton != Operation Singleton。
-
-未来 HTTP 工具窗口只有一个，但内部可以存在多个请求/tab/task。
-
----
-
-# 23. Notification / Secret / Privilege 预留
-
-## 23.1 NotificationService
-
-v1：
-
-```rust
-trait NotificationService {
-    fn send(&self, notification: Notification) -> Result<()>;
-}
-```
-
-可提供：
+所有：
 
 ```text
-NoopNotificationService
+Toolbar Button
+Alt Shortcut
+其他入口
 ```
 
-后续替换成 Tauri/Windows Notification。
-
-业务工具不得直接依赖某个 notification plugin。
-
-## 23.2 SecretStore
-
-v1 JSON 不使用，只定义边界或留 TODO 模块。
-
-未来 HTTP：
-
-```text
-Authorization token
-Cookie
-API key
-```
-
-不能被迫明文写入可 Git 的请求文档。
-
-未来 Windows 实现：
-
-```text
-Windows Credential Manager
-```
-
-HTTP 文档可引用：
-
-```text
-${secret:name}
-```
-
-## 23.3 PrivilegeService
-
-主 `juju.exe` 默认永不以管理员运行。
-
-未来网络工具需要管理员权限时，使用：
-
-```text
-juju-helper.exe
-```
-
-按需提权。
-
-v1 不实现 helper，只保留平台边界。
-
----
-
-# 24. IPC 设计
-
-## 24.1 原则
-
-- 前端不能获得任意文件系统能力。
-- 所有 Tool 操作使用窄 API。
-- Command 名称表达业务语义，不暴露通用 `read_any_file(path)`。
-- Rust command 返回统一错误结构。
-- serde 字段统一 `camelCase` 或统一 snake_case；建议 IPC 使用 `camelCase`。
-
-## 24.2 建议 Commands
-
-App：
-
-```text
-app_get_settings
-app_update_settings
-app_get_tool_manifest
-app_change_shortcut
-app_set_autostart
-app_get_data_root
-app_use_existing_data_root
-app_migrate_data_root
-app_open_data_root
-app_exit
-```
-
-Tool：
-
-```text
-tool_open
-tool_close
-```
-
-Window ready：
-
-```text
-window_ready
-```
-
-用于 React mount 完成后通知 Rust，再 show 窗口，减少白屏闪烁。
-
-JSON：
-
-```text
-json_list_documents
-json_create_document
-json_read_document
-json_write_document
-json_rename_document
-json_delete_document
-json_copy_text
-json_copy_minified
-json_copy_file
-```
-
-格式化、fold/unfold、Diff UI 优先在 Monaco/前端完成，不需要每次 IPC。
-
-## 24.3 统一错误
-
-建议：
-
-```rust
-struct ApiError {
-    code: String,
-    message: String,
-    details: Option<serde_json::Value>,
-}
-```
-
-稳定错误码示例：
-
-```text
-INVALID_JSON
-DOCUMENT_NOT_FOUND
-DOCUMENT_ALREADY_EXISTS
-INVALID_DOCUMENT_NAME
-EXTERNAL_MODIFICATION_CONFLICT
-DATA_ROOT_UNAVAILABLE
-DATA_ROOT_INVALID
-CLIPBOARD_FAILED
-SHORTCUT_REGISTRATION_FAILED
-STORAGE_IO_ERROR
-```
-
-前端判断 `code`，不要解析错误字符串。
-
-Rust 内部使用 typed error，例如 `thiserror`，边界统一转换为 ApiError。
-
----
-
-# 25. Events
-
-需要主动通知前端的场景使用事件。
-
-建议：
-
-```text
-app://settings-changed
-app://data-root-changed
-
-json://external-change
-json://document-list-changed
-
-tool://runtime-state
-```
-
-Payload 必须结构化。
+最终调用同一个 Command。
 
 例如：
 
-```json
-{
-  "documentId": "支付请求.json",
-  "revision": "...",
-  "kind": "modified"
-}
+```text
+Alt+F
+   │
+   ├──────────────┐
+Toolbar Format    │
+   │              │
+   ▼              ▼
+     FormatJsonCommand
 ```
 
-不要通过事件发送大型 JSON 文档全文；收到事件后前端再显式读取。
+禁止 Toolbar 与 Shortcut 分别实现业务逻辑。
 
 ---
 
-# 26. Tauri Capability / Permission
+# 61. WebView2 焦点下的 Shortcut
 
-必须使用 Tauri 2 capability 做最小权限。
+WebView2 是 Native HWND Host。
 
-建议：
+Monaco 获得焦点后，普通 WPF Window Keyboard Event 不能作为唯一快捷键来源。
 
-```text
-capabilities/launcher.json
-capabilities/settings.json
-capabilities/json.json
-```
-
-Launcher 只需要：
+因此 Shortcut Router 必须同时接入：
 
 ```text
-读取 Tool Manifest
-打开 Tool
-关闭 Launcher / ready
+WPF PreviewKeyDown
++
+WebView2 AcceleratorKeyPressed
 ```
 
-Settings：
+例如 Monaco 中按：
 
 ```text
-读取/更新 settings
-修改 data root
-autostart
-shortcut
-打开 data root
+Alt + F
 ```
 
-JSON：
+流程：
 
 ```text
-JSON 文档 commands
-clipboard commands
-自身 window 基础操作
+WebView2 AcceleratorKeyPressed
+→ JsonCommandRouter
+→ FormatJsonCommand
+→ Handled = true
 ```
 
-不要给任何 WebView：
+否则快捷键体验会因为焦点位于 Monaco 而失效。
 
-```text
-任意 fs
-任意 shell
-任意 command
-```
-
-如果 `app_open_data_root` 需要调用 Explorer，应由 Rust command 做固定、安全行为，而不是让前端拥有任意 shell execute。
+必须为这一行为写 Integration Test。
 
 ---
 
-# 27. ClipboardService
+# 62. Shortcut Repeat
 
-统一接口：
-
-```rust
-trait ClipboardService {
-    fn copy_text(&self, text: &str) -> Result<()>;
-    fn copy_file(&self, path: &Path) -> Result<()>;
-}
-```
-
-Windows 实现：
+以下操作禁止长按重复触发：
 
 ```text
-platform/windows/clipboard.rs
+New
+Save
+Format
+Copy
+Minify Copy
+File Copy
+Diff
 ```
 
-`copy_file` 使用：
+需要过滤：
 
 ```text
-CF_HDROP
-DROPFILES
-HGLOBAL
+key repeat
 ```
 
-并明确是 Copy。
-
-实现必须处理：
-
-- `OpenClipboard` 失败。
-- Clipboard 被其他程序暂时占用。
-- Unicode 路径。
-- `CloseClipboard`。
-- Global memory ownership 转移。
-- 失败路径释放资源。
-
-可以对 Clipboard busy 做非常有限的短重试，但不要无限阻塞 UI。
+Fold/Expand 同样默认过滤 repeat。
 
 ---
 
-# 28. 设置 UI
+# 63. Settings
 
-v1 Settings 页面至少包含：
-
-## 常规
+v1：
 
 ```text
-开机自动启动                 [off]
-全局唤醒快捷键               [Ctrl + Shift + Alt + Space]
-Launcher 自动关闭时间         [2000 ms]
+常规
+├── 开机自动启动
+├── Global Shortcut
+├── Launcher Timeout
+└── Theme
+     ├── 跟随系统
+     ├── 浅色
+     └── 深色
+
+数据
+├── DataRoot
+├── 打开目录
+├── 使用已有目录
+├── 迁移到新目录
+└── DataRoot 状态
+
+JSON
+├── Autosave Delay
+└── Indent Size
 ```
 
-快捷键修改流程必须有录制/确认状态。
-
-## 数据
+默认：
 
 ```text
-数据目录
-C:\Users\xxx\.juju
-
-[打开目录]
-[使用已有目录]
-[迁移到新目录]
+Autostart       true/false 根据首次安装产品决定
+Theme           System
+Launcher        2000 ms
+Autosave        800 ms
+Indent          2
 ```
+
+建议首次安装：
+
+```text
+Autostart = false
+```
+
+由用户主动开启。
+
+---
+
+# 64. 开机启动
+
+使用：
+
+```text
+StartupService
+```
+
+采用当前用户级启动注册。
+
+不要求管理员权限。
+
+设置：
+
+```text
+开启
+→ 注册 juju.exe
+
+关闭
+→ 删除注册
+```
+
+开机启动：
+
+```text
+启动 Core
+创建 Tray
+注册 Shortcut
+创建隐藏 Launcher
+```
+
+不得自动显示 Launcher 或 JSON。
+
+---
+
+# 65. DataRoot 切换
+
+提供两个不同操作：
+
+```text
+使用已有目录
+迁移到新目录
+```
+
+不可合并。
+
+---
+
+# 66. 使用已有目录
+
+```text
+选择目录
+→ 验证 juju.json
+→ 检查 schema
+→ Flush 所有 Tool
+→ 停止旧 watcher
+→ 切换 root
+→ 创建新 watcher
+→ 更新 config
+→ Tool Reload
+```
+
+如果空目录：
+
+```text
+允许初始化为新 juju DataRoot
+```
+
+普通非空目录：
+
+> 不得静默初始化。
+
+---
+
+# 67. DataRoot 迁移
+
+```text
+Flush
+→ Pause Watchers
+→ 创建目标
+→ Copy
+→ Validate
+→ Switch Config
+→ Start Watchers
+```
+
+成功之前：
+
+> 不删除源目录。
+
+v1：
+
+```text
+复制
+→ 校验
+→ 切换
+→ 原目录保留
+```
+
+---
+
+# 68. DataRoot 不可用
+
+例如：
+
+```text
+移动硬盘断开
+权限变化
+目录被删除
+```
+
+严禁：
+
+```text
+自动回到 ~/.juju
+```
+
+否则会产生两套数据。
 
 显示：
 
 ```text
-数据目录状态：正常 / 不可用 / 需要迁移
+数据目录不可用
+
+[重试]
+[重新选择]
+[打开设置]
 ```
 
-## JSON
-
-可选 v1 配置：
-
-```text
-缩进宽度：2
-自动保存延迟：800 ms
-```
-
-如果不希望第一版暴露过多设置，可固定这些默认值，仅保留内部配置能力。
+Core、Tray 和 Launcher 继续运行。
 
 ---
 
-# 29. 日志
+# 69. 文件写入
 
-建议 Rust 使用结构化日志：
+禁止：
 
-```text
-tracing
-tracing-subscriber
+```csharp
+File.WriteAllText(finalPath, ...)
 ```
 
-输出：
+直接 truncate 最终文件。
+
+统一：
+
+```text
+temp
+→ write
+→ flush
+→ replace
+```
+
+目标：
+
+```text
+崩溃不留下半个文件
+写失败保留旧文件
+```
+
+JSON 文档和 Metadata 均采用相同原则。
+
+---
+
+# 70. StorageManager
+
+StorageManager 负责：
+
+```text
+DataRoot
+Path Safety
+Atomic Write
+Schema
+Migration
+File Watcher
+Revision
+Self-write Filtering
+```
+
+Tool 不允许散落：
+
+```csharp
+File.WriteAllText(...)
+```
+
+---
+
+# 71. JSON 文件安全
+
+任何文件名必须满足：
+
+- 仅文件名。
+- 无 path separator。
+- 无 `..`。
+- `.json`。
+- 非 Windows Reserved Device Name。
+- canonical parent 必须是 `json/documents`。
+- Unicode 文件名允许。
+
+---
+
+# 72. 日志
+
+使用：
+
+```text
+Microsoft.Extensions.Logging abstraction
+```
+
+落盘实现采用稳定的 rolling-file logging provider。
+
+位置：
 
 ```text
 %LOCALAPPDATA%\juju\logs\
 ```
 
-日志内容可包含：
+记录：
 
-- app lifecycle。
-- window create/destroy。
-- global shortcut registration。
-- data root switch。
-- storage error。
-- watcher event summary。
-- clipboard error。
-- panic summary。
+```text
+Application Lifecycle
+Window Lifecycle
+Shortcut
+Storage Error
+Watcher
+WebView2 Lifecycle
+Monaco Ready
+Import
+Clipboard Error
+Unhandled Exception
+```
 
 禁止记录：
 
-- 完整 JSON 文档正文。
-- 未来 HTTP Authorization。
-- Cookie。
-- Secret。
-- 用户剪切板正文。
-
-Release 默认日志级别：
-
 ```text
-INFO
+JSON 正文
+Clipboard 正文
+Secret
+Authorization
+Cookie
+API Key
 ```
-
-可通过开发配置提升 DEBUG。
 
 ---
 
-# 30. 性能原则
+# 73. Error Model
 
-## 30.1 最重要的资源优化
+核心业务使用 typed exception/result。
 
-当所有工具窗口关闭时：
+建议统一：
 
-```text
-不要保留隐藏 JSON WebView
-不要保留隐藏 Monaco
-默认不要保留 Launcher WebView
+```csharp
+enum ErrorCode
+{
+    InvalidJson,
+    DocumentNotFound,
+    DocumentAlreadyExists,
+    InvalidDocumentName,
+    ExternalModificationConflict,
+    DataRootUnavailable,
+    DataRootInvalid,
+    ClipboardFailed,
+    ShortcutRegistrationFailed,
+    StorageIoError,
+    MetadataCorrupted,
+    ImportFailed,
+    WebViewInitializationFailed
+}
 ```
 
-Core 继续驻留：
+UI 判断：
 
 ```text
-Rust + Tray + Shortcut + Watcher
+ErrorCode
 ```
 
-JSON 关闭时：
-
-```text
-flush
-dispose Monaco
-destroy WebView Window
-```
-
-## 30.2 Monaco
-
-必须：
-
-- dynamic import。
-- dispose models。
-- 不对整个文档每次键入重新构造 decorations。
-- autosave debounce。
-- Diff 退出时 dispose diff models。
-- 大 JSON 不做同步深度昂贵操作。
-
-## 30.3 性能指标
-
-第一阶段记录而不是盲目优化：
-
-```text
-process working set
-Launcher cold activation latency
-Launcher warm activation latency
-JSON window cold open
-Monaco ready
-10MB JSON load
-10MB JSON format
-Diff 5MB + 5MB
-```
-
-建议体验目标：
-
-- Leader 热路径应尽可能接近即时。
-- JSON 1MB 文档编辑不得明显卡顿。
-- 大文件超过安全阈值时允许提示关闭部分增强能力。
-
-不要在没有 profile 的情况下为了“Rust 更快”做复杂 premature optimization。
+不得解析错误 Message。
 
 ---
 
-# 31. 大文件策略
+# 74. Metadata Recovery
 
-Monaco 可以处理较大文本，但 JSON 格式化和 Diff 成本可能显著增长。
-
-v1 建议定义软阈值，例如：
+Metadata 无法读取：
 
 ```text
-10 MB：提示“大文件模式”
+尝试 Backup
 ```
 
-阈值做配置常量，不一定暴露设置。
+仍失败：
 
-大文件模式可：
+```text
+扫描 documents/
+→ Rebuild Metadata
+```
 
-- 保留编辑。
-- 保留复制/文件复制。
-- 格式化前二次确认。
-- Diff 前提示。
-- 禁止不必要的实时全文操作。
+恢复：
 
-不要因为文件大直接拒绝打开。
+```text
+DocumentId 重新生成
+Order 按稳定规则恢复
+Sequence 根据 yyyyMMddNNN 最大值恢复
+```
 
-后续根据实测再调整阈值。
+正文不得删除。
+
+恢复后明确记录：
+
+```text
+metadata-recovered
+```
+
+必要时通知用户：
+
+```text
+JSON 文档索引已恢复
+```
 
 ---
 
-# 32. 错误与恢复
+# 75. 顺序恢复规则
 
-## 32.1 Rust panic
+Metadata 丢失时：
 
-关键原则：
-
-- 普通业务错误必须返回 `Result`，不 panic。
-- `.unwrap()` / `.expect()` 只允许在“绝不可能失败且有清晰 invariant”的初始化点使用。
-- 文件 IO、clipboard、window、shortcut、watcher 都必须处理错误。
-
-## 32.2 WebView 崩溃
-
-某个 Tool WebView 失效时：
-
-- Core 仍驻留。
-- ToolManager 应允许 destroy 后重新创建。
-- 不让 stale window handle 阻止重新打开。
-
-## 32.3 未完成临时文件
-
-juju 启动时清理：
+优先：
 
 ```text
-%LOCALAPPDATA%\juju\cache\clipboard\ 中过期文件
-Storage atomic write 遗留 temp 文件
+CreationTime
 ```
 
-清理失败只记录日志，不阻止启动。
+无法可靠获取时：
+
+```text
+FileName ordinal
+```
+
+恢复后重新写：
+
+```text
+order = 0..N
+```
+
+正常运行过程中始终以 Metadata order 为准。
 
 ---
 
-# 33. Security 基线
+# 76. 删除与 Rename 的一致性
 
-即使这是个人本地工具，也执行以下约束：
+由于：
 
-1. WebView 不获得通用磁盘读写。
-2. Tool command 最小权限。
-3. DataRoot path canonicalization。
-4. 禁止 path traversal。
-5. 未来 HTTP 响应 HTML 不直接注入带 Tauri IPC 权限的 DOM。
-6. 未来 Secret 不明文混入可同步 DataRoot。
-7. 主进程不默认管理员运行。
-8. 前端输入均视为不可信，Rust command 重新校验。
-9. 不记录用户 JSON 正文到 log。
-10. Tauri capability 按窗口拆分。
+```text
+JSON 文件
++
+metadata.json
+```
+
+无法组成真正数据库 Transaction，因此操作必须具备补偿逻辑。
+
+Rename：
+
+```text
+Validate
+→ Rename File
+→ Save Metadata
+```
+
+Metadata 保存失败：
+
+```text
+尝试 Rollback File Rename
+```
+
+仍失败：
+
+```text
+记录 Critical
+→ 下次启动 Reconcile
+```
+
+不因此引入 SQLite。
 
 ---
 
-# 34. Build / Release
+# 77. Future Database Architecture
 
-## 34.1 开发环境
-
-Windows x64：
+未来 Tool 需要 SQLite 时：
 
 ```text
-Rust stable + MSVC target
-Node.js 当前 LTS
-pnpm
-Visual Studio Build Tools / Windows SDK
-WebView2 Runtime
+Tool
+→ Repository
+→ SQLite Store
 ```
 
-具体最低 Rust 版本以所使用的当前 Tauri 2 及插件要求为准。不要为了追求最低版本固定到过旧 toolchain。
-
-## 34.2 Debug
+不能让：
 
 ```text
-pnpm install
-pnpm tauri dev
+View
+ViewModel
+WindowManager
 ```
 
-具体脚本以初始化项目为准。
+直接依赖 SQLite。
 
-## 34.3 Release
+数据库生命周期属于 Tool Storage。
+
+这样未来：
 
 ```text
-pnpm tauri build
+JSON → File
+HTTP → SQLite
+Network → SQLite
+Encode → None
+```
+
+可以并存。
+
+---
+
+# 78. Notification / Secret / Privilege
+
+预留：
+
+```csharp
+INotificationService
+ISecretStore
+IPrivilegeService
+```
+
+v1 可以实现：
+
+```text
+Notification -> Noop / basic
+SecretStore   -> Stub
+Privilege     -> Stub
+```
+
+未来 Secret：
+
+```text
+Windows Credential Manager
+```
+
+未来管理员任务：
+
+```text
+juju.exe
+    │
+    └── juju-helper.exe
+             UAC
+```
+
+主 juju.exe：
+
+> 默认永不管理员启动。
+
+---
+
+# 79. 安装模式
+
+只提供正常安装版本。
+
+不提供：
+
+```text
+Portable ZIP
 ```
 
 发布目标：
 
 ```text
-Windows x64 installer
+Windows x64
+Self-contained .NET deployment
+Installer
 ```
 
-安装包策略优先选择 Tauri 官方稳定支持的一种 Windows bundle（如 NSIS）；具体配置使用当前 Tauri 2 schema。
+即用户不必预先安装正确版本的 .NET Desktop Runtime。
 
-必须在“干净 Windows VM”测试：
+安装程序负责：
 
-- WebView2 Runtime 缺失/存在。
-- 安装。
-- 首次启动。
-- Tray。
-- Shortcut。
-- Autostart。
-- 卸载。
+```text
+安装文件
+Start Menu
+卸载信息
+必要运行依赖检查
+```
 
-不要假设所有 Windows 环境都天然具备正确 WebView2 Runtime。
+WebView2 Runtime 应优先使用 Windows 11 已安装的 Evergreen Runtime，并对缺失场景提供清晰安装错误。
 
 ---
 
-# 35. 测试策略
+# 80. 性能策略
 
-## 35.1 Rust 单元测试
+最重要：
 
-必须覆盖：
+> 后台低资源不能通过保留隐藏 WebView2 实现。
 
-- JsonDocumentId 文件名校验。
-- Windows reserved name。
-- path traversal 拒绝。
-- minify 保留字符串 whitespace。
-- minify 保留数字 token。
-- invalid JSON 拒绝 minify。
-- unique untitled name。
-- config migration。
-- data root validation。
-- revision conflict。
-- atomic write error path。
-- ToolRegistry key 冲突检测。
-
-## 35.2 Storage 集成测试
-
-使用临时目录：
+后台：
 
 ```text
-create
-read
-write
-rename
-delete -> .trash
-external modify
-conflict
-switch data root
+WPF Core
+Tray
+Shortcut
+Watchers
+Runtime
 ```
 
-测试不能污染真实：
+JSON 关闭：
 
 ```text
-~\.juju
+No WebView2
+No Monaco
 ```
 
-## 35.3 Frontend 测试
-
-建议使用：
+Launcher：
 
 ```text
-Vitest
-React Testing Library
+常驻隐藏 WPF Window
 ```
 
-覆盖：
+由于非常轻，不为了节省极少资源反复销毁。
 
-- Launcher keyboard state machine。
-- modifier release。
-- repeat key。
-- timeout。
-- JSON compare selection state。
-- autosave debounce。
-- external conflict UI。
-- toolbar enable/disable。
+---
 
-## 35.4 手工 Windows 验收
+# 81. 性能埋点
+
+至少记录：
+
+```text
+Process Working Set
+Private Memory
+App Startup
+Leader Trigger
+Launcher Visible
+JSON Window Created
+WebView2 Initialized
+Monaco Ready
+Document Loaded
+```
+
+大文件：
+
+```text
+1 MB edit
+10 MB load
+10 MB format
+5 MB + 5 MB diff
+```
+
+不设硬性的 idle memory 验收数字。
+
+先 Profile，再优化。
+
+---
+
+# 82. 大文件模式
+
+建议软阈值：
+
+```text
+10 MB
+```
+
+超过后：
+
+```text
+显示大文件提示
+```
+
+仍允许：
+
+```text
+打开
+编辑
+保存
+复制
+文件复制
+```
+
+Format：
+
+```text
+允许，但提示
+```
+
+Diff：
+
+```text
+允许，但提示
+```
+
+禁止对每次输入执行昂贵全文解析。
+
+---
+
+# 83. WebView2 Crash
+
+WebView2 / Monaco 异常退出：
+
+```text
+WPF Core 继续存在
+```
+
+JsonToolWindow 应可以：
+
+```text
+Destroy WebView2
+→ Reinitialize
+→ Reload Current Document
+```
+
+Storage 不依赖 WebView 生命周期。
+
+---
+
+# 84. Shutdown
+
+Tray Exit：
+
+```text
+isExiting = true
+       │
+       ▼
+停止 Launcher
+       │
+       ▼
+Unregister Global Shortcut
+       │
+       ▼
+Flush Dirty Documents
+       │
+       ▼
+Save Metadata
+       │
+       ▼
+Stop Runtime
+       │
+       ▼
+Stop Watchers
+       │
+       ▼
+Dispose WebView2
+       │
+       ▼
+Dispose Tray
+       │
+       ▼
+Exit
+```
+
+普通关闭 Tool Window：
+
+```text
+不退出 juju
+```
+
+---
+
+# 85. Security 基线
+
+即使本地个人工具仍必须：
+
+1. WebView2 不获得任意文件系统权限。
+2. Monaco 只加载本地可信代码。
+3. WebView2 不导航互联网。
+4. C# 端重新验证来自 JS 的所有 Message。
+5. DocumentId 不等于外部任意路径。
+6. 防止 Path Traversal。
+7. DataRoot canonicalization。
+8. 不记录 JSON 正文。
+9. 主程序不以 Administrator 启动。
+10. Future Secret 不存储在普通 DataRoot。
+11. 外部拖入文件只能做受控 Copy。
+12. 不允许 HTML/JS 直接执行 Shell Command。
+
+---
+
+# 86. 测试
+
+## Core Unit Tests
+
+至少：
+
+```text
+JSON File Name Validation
+Sequence Generation
+Date Sequence Reset
+Metadata Serialization
+Metadata Recovery
+Metadata Reconcile
+Rename Conflict
+Import Conflict
+Atomic Write
+Revision Conflict
+Lexical Minify
+DataRoot Validation
+```
+
+## Integration Tests
+
+至少：
+
+```text
+Create Document
+Manual Save
+Autosave
+Close Flush
+Rename
+Delete
+Import
+External Modification
+Self-write Watcher Dedup
+DataRoot Switch
+Clipboard File
+```
+
+## UI Tests / Manual Verification
 
 重点：
 
-- 多显示器。
-- 100% / 125% / 150% DPI。
-- 快捷键被其他程序占用。
-- Clipboard 被占用。
-- Explorer 文件粘贴。
-- VS Code 外部编辑。
-- DataRoot 移动硬盘断开。
-- 第二次启动 juju.exe。
-- 开机启动。
-- 从 Tray 退出。
-- JSON 窗口反复开关 50 次观察内存。
+```text
+Global Shortcut
+Multi-monitor
+Different DPI
+Launcher Focus
+Alt shortcuts
+Alt shortcut while Monaco focused
+Theme Switching
+Monaco Theme Sync
+WebView2 Dispose/Reopen
+Explorer Drag & Drop
+```
 
 ---
 
-# 36. v1 验收标准
+# 87. v1 推荐开发顺序
 
-## juju Core
-
-- [ ] juju 同一时间只有一个进程实例。
-- [ ] 没有 Tool Window 时 juju 仍在 Tray 运行。
-- [ ] 第二次启动 juju 会唤起 Launcher。
-- [ ] Tray 可以打开 JSON、Settings、Launcher。
-- [ ] Tray 退出可以彻底结束 juju。
-
-## Leader / Launcher
-
-- [ ] 默认 Leader 为 Ctrl + Shift + Alt + Space。
-- [ ] Leader 可以从其他普通应用中唤起 Launcher。
-- [ ] Launcher 位于鼠标所在显示器。
-- [ ] Launcher 获得焦点。
-- [ ] `1` 打开 JSON。
-- [ ] `S` 打开 Settings。
-- [ ] `Esc` 关闭。
-- [ ] 2 秒超时关闭。
-- [ ] 不因 modifier key release 误触发命令。
-- [ ] 长按按键不重复创建工具窗口。
-- [ ] 快捷键冲突能提示。
-
-## Window
-
-- [ ] JSON 只有一个窗口实例。
-- [ ] 已存在时 Leader+1 只 focus/restore。
-- [ ] 记录每个 Tool Window 位置和大小。
-- [ ] 显示器拔除后窗口不会恢复到屏幕外。
-- [ ] JSON `X` 关闭 WebView，不退出 juju。
-
-## Storage
-
-- [ ] 默认 DataRoot 是 `%USERPROFILE%\.juju`。
-- [ ] DataRoot 中 JSON 是普通 `.json` 文件。
-- [ ] 不使用数据库。
-- [ ] Settings 可打开 DataRoot。
-- [ ] 可切换已有 DataRoot。
-- [ ] 可迁移 DataRoot。
-- [ ] DataRoot 不可用时不静默创建第二份默认数据。
-- [ ] 保存使用安全 atomic write。
-- [ ] 外部修改可检测。
-- [ ] 编辑冲突不会静默覆盖外部版本。
-
-## JSON Tool
-
-- [ ] 新建 JSON。
-- [ ] 文档列表。
-- [ ] 自动保存。
-- [ ] Monaco JSON 高亮。
-- [ ] Monaco syntax diagnostics。
-- [ ] 格式化。
-- [ ] 普通复制。
-- [ ] 压缩复制。
-- [ ] 文件复制后可在 Explorer `Ctrl+V` 得到 `.json`。
-- [ ] 非法 JSON 可普通复制和文件复制。
-- [ ] 非法 JSON 不允许格式化/压缩复制。
-- [ ] 全部展开。
-- [ ] 全部折叠。
-- [ ] 逐层展开。
-- [ ] Monaco DiffEditor 左右对比。
-- [ ] Diff 模式可退出。
-- [ ] JSON Tool 关闭后 Monaco/WebView 被销毁。
-
----
-
-# 37. 开发阶段划分
-
-## Phase 0：工程初始化
-
-完成：
+Phase 1：
 
 ```text
-Tauri 2
-React
-TypeScript
-Vite
-pnpm
-Rust module skeleton
-Capabilities skeleton
-```
-
-要求：
-
-- 可编译。
-- Windows x64 可运行。
-- 不先写 JSON 业务。
-
-## Phase 1：Core Residency
-
-完成：
-
-- single-instance。
-- Tray。
-- AppLifecycle。
-- config.toml。
-- 无窗口后台驻留。
-- 正确退出。
-
-验收：
-
-```text
-启动后只有 Tray
-关闭所有窗口进程不退出
-Tray 退出才退出
-```
-
-## Phase 2：Launcher
-
-完成：
-
-- global shortcut。
-- Lazy Launcher。
-- 多显示器位置。
-- keyboard state machine。
-- `1 / S`。
-- timeout。
-- launcher ready handshake。
-
-验收：
-
-```text
-任意应用中 Leader -> Launcher -> 1
-```
-
-## Phase 3：Tool Framework
-
-完成：
-
-- ToolId。
-- ToolDescriptor。
-- ToolRegistry。
-- ToolManager。
-- WindowManager。
-- window state persistence。
-- JSON mock window。
-
-验收：
-
-```text
-重复 Leader+1 永远只有一个 JSON Window
-```
-
-## Phase 4：Storage
-
-完成：
-
-- default DataRoot `~/.juju`。
-- config。
-- data manifest。
-- atomic write。
-- JSON documents CRUD。
-- watcher。
-- revision conflict。
-- data root switch/migrate。
-
-验收：
-
-```text
-用 VS Code 修改 documents 中的 JSON，juju 能正确感知
-```
-
-## Phase 5：JSON Editor
-
-完成：
-
-- React JSON UI。
-- document sidebar。
-- Monaco lazy loading。
-- autosave。
-- format。
-- syntax diagnostics。
-- copy。
-- minify copy。
-- file copy。
-- folding。
-
-## Phase 6：JSON Diff
-
-完成：
-
-- compare selection。
-- temporary formatted projection。
-- Monaco DiffEditor。
-- exit/swap。
-- model disposal。
-
-## Phase 7：Settings / Hardening
-
-完成：
-
-- autostart。
-- shortcut settings。
-- data root UI。
-- logging。
-- error UX。
-- cleanup。
-- tests。
-- release bundle。
-
----
-
-# 38. AI 开发执行规范
-
-后续如果使用 AI 根据本文档开发，必须遵守：
-
-## 38.1 每次只做一个 Phase 或一个明确子任务
-
-不要一次生成整个项目的大量未经编译代码。
-
-推荐循环：
-
-```text
-读取现有工程
- -> 确认当前 Phase
- -> 实现最小变更
- -> cargo check
- -> frontend typecheck
- -> tests
- -> 修复
- -> 再进入下一步
-```
-
-## 38.2 必须实际编译验证
-
-每个 Rust 变更至少运行：
-
-```text
-cargo check
-```
-
-涉及测试：
-
-```text
-cargo test
-```
-
-前端：
-
-```text
-pnpm typecheck
-pnpm test
-pnpm build
-```
-
-具体 script 如果工程中名称不同，以 `package.json` 为准。
-
-不得给出“理论上可以编译”的代码后直接继续。
-
-## 38.3 禁止虚构 API
-
-尤其：
-
-- Tauri 2。
-- Monaco。
-- windows-rs。
-- Tauri Plugin。
-- WebView2。
-- `notify`。
-
-如果不确定函数名、feature flag、Capability identifier：
-
-> 查当前依赖版本的官方文档或源码，再实现。
-
-不要根据旧 Tauri v1 API 猜测。
-
-## 38.4 不擅自改变架构
-
-未经明确需求变更，不允许：
-
-- React 换 Vue。
-- Tauri 换 Electron。
-- 文件存储换 SQLite。
-- `~/.juju` 改成数据库。
-- 一个 Tool 创建多个窗口实例。
-- 把工具后台等同于隐藏 WebView。
-- 把所有 WebView 权限开到最大。
-- 引入第三方动态插件机制。
-- 让前端直接读写任意磁盘路径。
-
-## 38.5 优先减少依赖
-
-新增 crate/npm package 前问：
-
-```text
-标准库/Tauri/当前依赖是否已经能可靠实现？
-```
-
-只有明显降低复杂度或提高正确性时才增加依赖。
-
-## 38.6 Windows first
-
-如果某功能 Windows 原生实现更可靠：
-
-```text
-platform/windows/*
-```
-
-中实现。
-
-同时通过 trait/module 边界避免 Tool 直接依赖 Windows API，以保留未来平台扩展能力。
-
----
-
-# 39. 建议依赖清单
-
-以下是“类别级”依赖建议，不在本文锁定具体 patch 版本。
-
-## Rust
-
-```toml
-tauri = "2"
-tauri-plugin-single-instance = "2"
-tauri-plugin-global-shortcut = "2"
-tauri-plugin-autostart = "2"
-
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-toml = "..."
-thiserror = "..."
-tokio = "..."
-notify = "..."
-windows = "..."
-tracing = "..."
-tracing-subscriber = "..."
-```
-
-`windows` crate 只启用真正需要的 Win32 feature，避免全量 feature。
-
-是否增加：
-
-```text
-tempfile
-tracing-appender
-```
-
-应在实现 atomic write/log rotation 时根据实际需要决定。
-
-## Frontend
-
-```json
-{
-  "dependencies": {
-    "@tauri-apps/api": "2.x",
-    "monaco-editor": "...",
-    "react": "...",
-    "react-dom": "..."
-  }
-}
-```
-
-开发依赖：
-
-```text
-typescript
-vite
-@vitejs/plugin-react
-vitest
-@testing-library/react
-```
-
-版本初始化时取稳定版本并由 lockfile 固定。
-
----
-
-# 40. 未来工具接入规范
-
-虽然 v1 只实现 JSON，新工具必须遵循统一过程。
-
-例如未来增加 HTTP：
-
-```text
-1. 增加 ToolId::Http
-2. 注册 ToolDescriptor
-3. 添加前端 tools/http/
-4. 添加 Rust tools/http/
-5. 定义 capability
-6. 定义 command/event
-7. 如有后台任务，实现 ToolRuntime
-8. 数据放 <DataRoot>/http/
-9. 不影响 JSON module
-```
-
-网络工具同理。
-
-ToolRegistry 使：
-
-```text
-Launcher
+.NET/WPF Skeleton
+DI
+Logging
+Single Instance
 Tray
+Global Shortcut
+Launcher
+WindowManager
 Settings
-ToolManager
+Theme
 ```
 
-自动识别新 Tool，而不是到四处增加 `if tool == ...`。
+Phase 2：
+
+```text
+DataRoot
+Atomic File Storage
+Metadata
+Sequence
+Document CRUD
+FileSystemWatcher
+Revision
+```
+
+Phase 3：
+
+```text
+JsonToolWindow
+Sidebar
+Toolbar
+StatusBar
+WebView2
+Monaco Bridge
+```
+
+Phase 4：
+
+```text
+Autosave
+Manual Save
+Formatting
+Clipboard
+File Clipboard
+Fold
+Diff
+```
+
+Phase 5：
+
+```text
+Import
+Drag reorder
+External conflict
+Theme sync
+Shortcut Router
+WebView shortcut integration
+```
+
+Phase 6：
+
+```text
+Installer
+Autostart
+Performance Profile
+Crash Recovery
+Integration Tests
+```
 
 ---
 
-# 41. 关键架构决策记录（ADR 摘要）
+# 88. AI 编码约束
 
-## ADR-001：Tauri 2 而不是 WPF/Electron
+任何 AI 执行开发时必须遵守：
 
-决定：
-
-```text
-Rust + Tauri 2 + WebView2
-```
-
-原因：
-
-- Windows 系统 WebView2。
-- Rust 适合系统能力与后台 task。
-- 不需要 Electron 自带 Chromium。
-- UI 用 Web 技术更适合 Monaco 和后续复杂工具。
-
-## ADR-002：React + TypeScript
-
-决定：
-
-```text
-React + TypeScript
-```
-
-原因：
-
-- 后续 Tool UI 会变复杂。
-- 组件化足够成熟。
-- Monaco integration 成熟。
-- 不引入额外大型状态库。
-
-## ADR-003：文件系统作为事实数据源
-
-决定：
-
-```text
-不使用数据库
-```
-
-原因：
-
-- JSON/HTTP Request 天然是文档。
-- 用户希望直接查看、编辑、备份。
-- 不需要数据库事务/查询特征。
-
-## ADR-004：默认 DataRoot
-
-决定：
-
-```text
-%USERPROFILE%\.juju
-```
-
-原因：
-
-- 稳定。
-- 明确。
-- 易备份。
-- 用户可自行查看。
-- 支持设置中迁移。
-
-## ADR-005：单 Leader Shortcut
-
-决定：
-
-```text
-Ctrl + Shift + Alt + Space
-```
-
-后接 Launcher 单键。
-
-原因：
-
-- 不占用大量系统全局快捷键。
-- 工具数量增长后仍可扩展。
-- 可加入搜索模式。
-
-## ADR-006：Tool Window 单实例
-
-决定：
-
-```text
-每个 Tool 0/1 Window
-```
-
-内部业务 tab/task 可多实例。
-
-## ADR-007：关闭 Tool 不退出 juju
-
-决定：
-
-```text
-Core 常驻 Tray
-```
-
-只有 Tray/明确 Exit 结束进程。
-
-## ADR-008：后台 Runtime 与 WebView 解耦
-
-决定：
-
-```text
-后台运行 ≠ 隐藏 WebView
-```
-
-未来 Tool 关闭 UI 时可以销毁 WebView，只保留 Rust Runtime。
-
-## ADR-009：JSON 使用 Monaco
-
-决定：
-
-```text
-Monaco Editor + Monaco DiffEditor
-```
-
-原因：
-
-- JSON 高亮。
-- diagnostics。
-- folding。
-- search。
-- Diff UI。
-- 成熟度高。
-
-## ADR-010：JSON 文件复制使用 Windows File Clipboard
-
-决定：
-
-```text
-snapshot file + CF_HDROP
-```
-
-而不是虚拟文件 COM streaming。
-
-原因：
-
-- 更简单。
-- Explorer 兼容好。
-- 符合本地工具需求。
+1. 不自行改技术栈。
+2. 不把整个 UI 改为 Web。
+3. 不加入 React。
+4. 不引入 Electron。
+5. 不加入 SQLite 到 JSON Tool。
+6. 不把 JSON 正文写进 Metadata。
+7. 不绕过 StorageManager 写 DataRoot。
+8. 不让 WebView2直接访问用户磁盘。
+9. 不把文件名当永久 DocumentId。
+10. 不隐藏 WebView2 长期常驻。
+11. 不通过反序列化再序列化实现压缩复制。
+12. 不覆盖外部修改冲突。
+13. 不删除用户导入源文件。
+14. 不因为 JSON 非法拒绝保存文本。
+15. 不在 Rename / Import 冲突时静默覆盖。
+16. 不假设 WPF Keyboard Event 能覆盖 Monaco 焦点。
+17. 不使用 Monaco 私有 API。
+18. 对具体 WebView2 / Monaco API 不确定时检查当前锁定版本官方 API。
+19. 所有 IO 都必须处理异常。
+20. 所有异步后台任务必须支持 CancellationToken。
 
 ---
 
-# 42. 参考资料
-
-开发实现时优先查当前官方文档：
-
-- Tauri 2 Documentation: https://v2.tauri.app/
-- Tauri Global Shortcut Plugin: https://v2.tauri.app/plugin/global-shortcut/
-- Tauri Single Instance Plugin: https://v2.tauri.app/plugin/single-instance/
-- Tauri Autostart Plugin: https://v2.tauri.app/plugin/autostart/
-- Tauri Permissions: https://v2.tauri.app/security/permissions/
-- Monaco Editor: https://github.com/microsoft/monaco-editor
-- Monaco API: https://microsoft.github.io/monaco-editor/typedoc/
-
-说明：具体函数签名、Capability identifier、Cargo feature、前端 package API 随版本可能变化；实现时以项目 lockfile 对应版本的官方类型/源码为准。
-
----
-
-# 43. 最终实现基线
-
-当前 juju 的最终 v1 基线可概括为：
+# 89. 最终 v1 架构基线
 
 ```text
-Windows x64
+Windows 11 x64
 │
 └── juju.exe
     │
-    ├── Rust / Tauri 2 Core
-    │   ├── Single Instance
+    ├── .NET 10 / C#
+    │
+    ├── WPF Core
+    │   ├── AppLifecycle
+    │   ├── SingleInstance
     │   ├── Tray
-    │   ├── Global Shortcut
+    │   ├── GlobalShortcut
     │   ├── LauncherManager
     │   ├── ToolRegistry
     │   ├── ToolManager
     │   ├── RuntimeManager
     │   ├── WindowManager
     │   ├── SettingsService
+    │   ├── ThemeService
     │   └── StorageManager
     │
-    ├── Launcher WebView2
-    │   ├── React
-    │   └── Leader second-key handling
+    ├── Launcher
+    │   └── Pure WPF / persistent hidden window
     │
-    ├── Settings WebView2
-    │   └── React
+    ├── Settings
+    │   └── Pure WPF
     │
-    └── JSON Tool WebView2
-        ├── React
-        ├── TypeScript
-        └── Monaco
-            ├── Editor
-            └── DiffEditor
+    └── JSON Tool
+        │
+        ├── WPF Toolbar
+        ├── WPF Document Sidebar
+        ├── WPF StatusBar
+        │
+        └── WebView2
+            └── Monaco
+                ├── Editor
+                └── DiffEditor
+```
 
-App config:
+Storage：
+
+```text
 %LOCALAPPDATA%\juju\
+├── config.json
+├── window-state.json
+├── logs\
+├── cache\
+└── webview2\
+```
 
-Default user data:
+用户数据：
+
+```text
 %USERPROFILE%\.juju\
+│
+├── juju.json
+│
 └── json\
+    ├── metadata.json
     ├── documents\
-    ├── state.toml
+    │   ├── 20260911001.json
+    │   ├── 20260911002.json
+    │   └── request.json
     └── .trash\
 ```
 
-最核心的工程约束：
+最终原则：
 
 ```text
-一个 Core
-一个 Leader Shortcut
-每个 Tool 一个 Window
-Tool UI 与 Runtime 分离
-工具数据全部普通文件
-默认 DataRoot = ~/.juju
-数据库 = 无
-第三方插件 = 无
-JSON Editor = Monaco
-系统集成 = Rust / Windows
-UI = React + TypeScript
+Windows 原生 Shell
++
+轻量后台 Core
++
+按需创建 WebView2
++
+Monaco 只负责编辑能力
++
+普通文件保存用户 JSON
++
+Metadata 管理 JSON 文档状态
++
+Repository/Storage 边界预留未来 SQLite
 ```
 
-在此基线上，v1 只实现 JSON Tool；未来 HTTP、Network 等工具按同一 Tool Registry/ToolManager/Storage/Runtime 规范继续增加，不需要重构主框架。
+这作为 juju v1 的技术实现基线。

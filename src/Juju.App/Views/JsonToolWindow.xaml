@@ -1,0 +1,7 @@
+<Window x:Class="Juju.App.JsonToolWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:wv="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf" Title="juju JSON" Width="1200" Height="760" MinWidth="900" MinHeight="600" AllowDrop="True">
+  <DockPanel>
+    <ToolBar DockPanel.Dock="Top"><Button Click="New_Click" Content="新建 (Alt+A)"/><Button Click="Save_Click" Content="保存 (Alt+S)"/><Button Click="Format_Click" Content="格式化 (Alt+F)"/><Button Click="Copy_Click" Content="复制 (Alt+C)"/><Button Click="Minify_Click" Content="压缩复制 (Alt+X)"/><Button Click="Fold_Click" Content="展开/折叠"/></ToolBar>
+    <StatusBar DockPanel.Dock="Bottom"><TextBlock x:Name="Status" Text="正在加载编辑器..."/></StatusBar>
+    <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="220"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions><DockPanel Grid.Column="0" Background="#F5F5F5"><Button DockPanel.Dock="Bottom" Click="Delete_Click" Content="删除"/><ListBox x:Name="Documents" DisplayMemberPath="FileName" SelectionChanged="Documents_SelectionChanged"/></DockPanel><wv:WebView2 x:Name="Editor" Grid.Column="1"/></Grid>
+  </DockPanel>
+</Window>
