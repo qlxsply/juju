@@ -44,6 +44,7 @@ export type HostCommand =
   | "format"
   | "foldAll"
   | "unfoldAll"
+  | "unfoldLevel"
   | "foldLevel"
   | "enterDiff"
   | "exitDiff"
@@ -51,6 +52,10 @@ export type HostCommand =
   | "getContent";
 
 export type HostMessage = EditorMessage<HostCommand, unknown>;
+
+export type CommandResultPayload =
+  | { ok: true; result: unknown }
+  | { ok: false; error: string };
 
 export interface ValidationPayload {
   hasErrors: boolean;
@@ -74,3 +79,22 @@ export type EditorEvent =
   | "commandResult";
 
 export type EditorEventMessage = EditorMessage<EditorEvent, unknown>;
+
+const hostCommands: ReadonlySet<string> = new Set([
+  "initialize", "openDocument", "replaceContent", "setTheme", "format", "foldAll",
+  "unfoldAll", "unfoldLevel", "foldLevel", "enterDiff", "exitDiff", "focus", "getContent",
+]);
+
+export function isHostMessage(value: unknown): value is HostMessage {
+  if (!isEnvelope(value)) return false;
+  return hostCommands.has(value.type);
+}
+
+export function isEnvelope(value: unknown): value is EditorMessage {
+  if (typeof value !== "object" || value === null) return false;
+  const message = value as Partial<EditorMessage>;
+  return message.version === PROTOCOL_VERSION
+    && typeof message.type === "string"
+    && (typeof message.requestId === "string" || message.requestId === null)
+    && Object.prototype.hasOwnProperty.call(message, "payload");
+}

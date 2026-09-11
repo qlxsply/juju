@@ -57,6 +57,7 @@ export class EditorAdapter {
   }
 
   async format(): Promise<void> {
+    JSON.parse(this.requireModel().getValue());
     await this.getEditor().getAction("editor.action.formatDocument")?.run();
   }
 
@@ -68,7 +69,16 @@ export class EditorAdapter {
     await this.runAction("editor.unfoldAll");
   }
 
+  async unfoldLevel(): Promise<void> {
+    const editor = this.getEditor();
+    editor.setPosition({ lineNumber: 1, column: 1 });
+    const action = editor.getAction("editor.unfold");
+    if (!action) throw new Error("Monaco action 'editor.unfold' is unavailable.");
+    await action.run({ levels: 1, direction: "down", selectionLines: [0] });
+  }
+
   async foldLevel(payload: FoldLevelPayload): Promise<void> {
+    if (!Number.isInteger(payload.level)) throw new Error("Fold level must be an integer.");
     const level = Math.max(1, Math.min(7, Math.trunc(payload.level)));
     await this.runAction(`editor.foldLevel${level}`);
   }

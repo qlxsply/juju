@@ -1,131 +1,577 @@
-using System.Text.Json;
+using System.ComponentModel;
 using System.IO;
+using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Threading;
-using Microsoft.Web.WebView2.Core;
 using Juju.Core.Errors;
+using Juju.App.Bootstrap;
 using Juju.Tools.Json.Documents;
 using Juju.Tools.Json.Minify;
+using Microsoft.Web.WebView2.Core;
+using Microsoft.Web.WebView2.Wpf;
+using WpfApplication = System.Windows.Application;
+using WpfButton = System.Windows.Controls.Button;
+using WpfClipboard = System.Windows.Clipboard;
+using WpfDataFormats = System.Windows.DataFormats;
+using WpfMessageBox = System.Windows.MessageBox;
+using WpfTextBox = System.Windows.Controls.TextBox;
 
 namespace Juju.App;
 
+// Storage and Windows clipboard ownership belong outside the view. The host can provide this adapter later.
+public interface IJsonFileClipboard
+{
+    Task CopySnapshotAsync(JsonDocumentSnapshot snapshot, string fileName, CancellationToken cancellationToken = default);
+    Task CleanExpiredSnapshotsAsync(TimeSpan maximumAge, CancellationToken cancellationToken = default);
+}
+
 public partial class JsonToolWindow : Window
 {
-    private static JsonToolWindow? _instance;
+    private const int ProtocolVersion = 1;
     private readonly JsonDocumentService _documents;
-    private JsonDocumentSnapshot? _current;
-    private bool _editorReady;
-    private int _request;
-    private readonly Dictionary<string, Action<string>> _contentRequests = [];
     private readonly DispatcherTimer _autosave = new() { Interval = TimeSpan.FromMilliseconds(800) };
+    private readonly SemaphoreSlim _documentGate = new(1, 1);
+    private readonly SemaphoreSlim _saveGate = new(1, 1);
+    private readonly Dictionary<string, TaskCompletionSource<BridgeMessage>> _requests = [];
+    private readonly Dictionary<JsonCommand, Func<Task>> _commands;
+    private readonly CancellationTokenSource _lifetime = new();
+    private WebView2? _editor;
+    private JsonDocumentSnapshot? _current;
+    private IReadOnlyList<DocumentListItem> _items = [];
     private string _editorContent = string.Empty;
+    private SaveState _saveState = SaveState.Clean;
+    private bool _jsonValid = true;
+    private bool _editorReady;
+    private EffectiveTheme _theme = EffectiveTheme.Light;
+    private bool _initializing;
+    private bool _selecting;
+    private bool _closing;
+    private bool _inDiffMode;
+    private int _foldDepth;
+    private int _generation;
+    private int _request;
 
-    private JsonToolWindow(JsonDocumentService documents)
+    public JsonToolWindow(JsonDocumentService documents)
     {
         _documents = documents;
+        _commands = new()
+        {
+            [JsonCommand.New] = NewAsync,
+            [JsonCommand.Save] = SaveFromEditorAsync,
+            [JsonCommand.Format] = FormatAsync,
+            [JsonCommand.CopyText] = CopyTextAsync,
+            [JsonCommand.CopyMinified] = CopyMinifiedAsync,
+            [JsonCommand.CopyFile] = CopyFileAsync,
+            [JsonCommand.FoldAll] = FoldAllAsync,
+            [JsonCommand.UnfoldAll] = UnfoldAllAsync,
+            [JsonCommand.UnfoldLevel] = UnfoldLevelAsync,
+            [JsonCommand.EnterDiff] = EnterDiffAsync,
+            [JsonCommand.ExitDiff] = ExitDiffAsync,
+            [JsonCommand.Rename] = RenameAsync,
+            [JsonCommand.Delete] = DeleteAsync,
+        };
         InitializeComponent();
-        Loaded += async (_, _) => await InitializeAsync();
-        Closed += (_, _) => _instance = null;
+        Loaded += async (_, _) => await EnsureEditorAsync();
+        IsVisibleChanged += async (_, _) => { if (IsVisible && !_closing) await EnsureEditorAsync(); };
         Drop += async (_, eventArgs) => await ImportDropAsync(eventArgs);
         PreviewKeyDown += OnShortcut;
-        _autosave.Tick += async (_, _) => { _autosave.Stop(); await SaveEditorContentAsync(); };
+        _autosave.Tick += async (_, _) => { _autosave.Stop(); await SaveCurrentAsync(_editorContent); };
+        _documents.ExternalChanged += OnExternalDocumentChanged;
     }
 
-    public static void ShowOrActivate(JsonDocumentService documents)
+    // This remains optional until a Core-owned snapshot implementation is registered with the window manager.
+    public IJsonFileClipboard? FileClipboard { get; set; }
+
+    public void ApplyTheme(EffectiveTheme theme)
     {
-        _instance ??= new JsonToolWindow(documents);
-        if (!_instance.IsVisible) _instance.Show();
-        if (_instance.WindowState == WindowState.Minimized) _instance.WindowState = WindowState.Normal;
-        _instance.Activate();
+        _theme = theme;
+        if (_editorReady && !_closing) _ = ApplyThemeAsync(theme);
     }
 
-    private async Task InitializeAsync()
+    public async Task ShutdownAsync()
     {
+        _closing = true;
+        try { await FlushCurrentAsync(); DestroyEditor(); Close(); }
+        finally { _documents.ExternalChanged -= OnExternalDocumentChanged; _closing = false; _lifetime.Cancel(); }
+    }
+
+    private async Task ApplyThemeAsync(EffectiveTheme theme)
+    {
+        try { await SendEditorCommandAsync("setTheme", new { theme = theme == EffectiveTheme.Dark ? "vs-dark" : "vs" }); }
+        catch (Exception) { }
+    }
+
+    private async Task EnsureEditorAsync()
+    {
+        if (_editor is not null || _initializing || _closing || !IsVisible) return;
+        _initializing = true;
         try
         {
-            var userData = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "juju", "webview2");
-            await Editor.EnsureCoreWebView2Async(await CoreWebView2Environment.CreateAsync(userDataFolder: userData));
-            var assets = Path.Combine(AppContext.BaseDirectory, "Editor");
-            Editor.CoreWebView2.SetVirtualHostNameToFolderMapping("juju.local", assets, CoreWebView2HostResourceAccessKind.DenyCors);
-            Editor.CoreWebView2.WebMessageReceived += OnWebMessage;
-            Editor.Source = new Uri("https://juju.local/index.html");
+            var editor = new WebView2();
+            _editor = editor;
+            EditorHost.Children.Add(editor);
+            await editor.EnsureCoreWebView2Async(await CoreWebView2Environment.CreateAsync());
+            if (!ReferenceEquals(editor, _editor)) return;
+            editor.CoreWebView2.SetVirtualHostNameToFolderMapping("juju.local", Path.Combine(AppContext.BaseDirectory, "Editor"), CoreWebView2HostResourceAccessKind.DenyCors);
+            editor.CoreWebView2.WebMessageReceived += OnWebMessage;
+            editor.CoreWebView2.ProcessFailed += OnProcessFailed;
+            editor.Source = new Uri("https://juju.local/index.html");
             await RefreshDocumentsAsync();
+            if (FileClipboard is not null)
+            {
+                try { await FileClipboard.CleanExpiredSnapshotsAsync(TimeSpan.FromDays(3), _lifetime.Token); }
+                catch { /* Snapshot cleanup must not prevent opening the editor. */ }
+            }
         }
-        catch (Exception ex) { Status.Text = "编辑器初始化失败: " + ex.Message; }
+        catch (Exception ex)
+        {
+            SaveStateStatus.Text = "编辑器初始化失败: " + ex.Message;
+            DestroyEditor();
+        }
+        finally { _initializing = false; }
     }
 
     private async Task RefreshDocumentsAsync()
     {
-        var list = await _documents.ListAsync();
-        if (list.Count == 0) list = [await _documents.CreateAsync()];
-        Documents.ItemsSource = list;
-        if (_current is null || !list.Any(item => item.Id == _current.DocumentId)) Documents.SelectedItem = list[0];
+        var list = await _documents.ListAsync(_lifetime.Token);
+        if (list.Count == 0) list = [await _documents.CreateAsync(_lifetime.Token)];
+        _items = list.Select(item => new DocumentListItem(item.Id, item.FileName, Path.GetFileNameWithoutExtension(item.FileName))).ToArray();
+        Documents.ItemsSource = _items;
+        DiffDocuments.ItemsSource = _items;
+        var selected = _current is { } current ? _items.SingleOrDefault(item => item.Id == current.DocumentId) : _items[0];
+        _selecting = true;
+        Documents.SelectedItem = selected ?? _items[0];
+        _selecting = false;
+        if (_current is null) await OpenSelectedAsync((DocumentListItem)Documents.SelectedItem);
     }
 
     private async void Documents_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (Documents.SelectedItem is not JsonDocumentMetadata document) return;
-        _current = await _documents.OpenAsync(document.Id);
-        if (_editorReady) OpenCurrent();
+        if (!_selecting && Documents.SelectedItem is DocumentListItem document) await OpenSelectedAsync(document);
+    }
+
+    private async Task OpenSelectedAsync(DocumentListItem document)
+    {
+        await _documentGate.WaitAsync(_lifetime.Token);
+        try
+        {
+            if (_current?.DocumentId == document.Id) return;
+            if (!await FlushCurrentAsync())
+            {
+                RestoreCurrentSelection();
+                return;
+            }
+            _inDiffMode = false;
+            _current = await _documents.OpenAsync(document.Id, _lifetime.Token);
+            _editorContent = _current.Content;
+            _saveState = SaveState.Clean;
+            _jsonValid = IsJson(_editorContent);
+            _foldDepth = 0;
+            UpdateStatus();
+            if (_editorReady) await SendEditorCommandAsync("openDocument", new { documentId = _current.DocumentId.ToString(), content = _current.Content, language = "json" });
+        }
+        catch (Exception ex) { SaveStateStatus.Text = "打开失败: " + ex.Message; }
+        finally { _documentGate.Release(); }
+    }
+
+    private async Task<bool> FlushCurrentAsync()
+    {
+        _autosave.Stop();
+        if (_current is null || _saveState == SaveState.Clean) return true;
+        try
+        {
+            if (_editorReady && !_inDiffMode) _editorContent = await GetEditorContentAsync();
+            await SaveCurrentAsync(_editorContent);
+            return _saveState == SaveState.Clean;
+        }
+        catch { return false; }
+    }
+
+    private void RestoreCurrentSelection()
+    {
+        if (_current is null) return;
+        _selecting = true;
+        Documents.SelectedItem = _items.SingleOrDefault(item => item.Id == _current.DocumentId);
+        _selecting = false;
     }
 
     private void OnWebMessage(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
     {
         try
         {
-            using var message = JsonDocument.Parse(e.WebMessageAsJson);
-            var type = message.RootElement.GetProperty("type").GetString();
-            if (type == "ready") { _editorReady = true; Send("initialize", new { theme = "vs", indentSize = 2 }); if (_current is not null) OpenCurrent(); Status.Text = "已保存"; }
-            else if (type == "contentChanged")
+            using var document = JsonDocument.Parse(e.WebMessageAsJson);
+            if (!BridgeMessage.TryParse(document.RootElement, out var message)) throw new InvalidDataException();
+            switch (message.Type)
             {
-                _editorContent = message.RootElement.GetProperty("payload").GetProperty("content").GetString() ?? string.Empty;
-                Status.Text = "未保存";
-                _autosave.Stop(); _autosave.Start();
-            }
-            else if (type == "saveRequested") _ = SaveContentAsync(message.RootElement.GetProperty("payload").GetProperty("content").GetString() ?? string.Empty);
-            else if (type == "commandResult" && message.RootElement.GetProperty("payload").GetProperty("ok").GetBoolean() && message.RootElement.GetProperty("payload").TryGetProperty("result", out var result) && result.TryGetProperty("content", out var content))
-            {
-                var requestId = message.RootElement.GetProperty("requestId").GetString();
-                if (requestId is not null && _contentRequests.Remove(requestId, out var action)) action(content.GetString() ?? string.Empty);
+                case "ready":
+                    _editorReady = true;
+                    _ = InitializeBridgeAsync();
+                    break;
+                case "contentChanged":
+                    if (TryGetContent(message.Payload, out var content) && !_inDiffMode)
+                    {
+                        _editorContent = content;
+                        _saveState = SaveState.Dirty;
+                        _foldDepth = 0;
+                        UpdateStatus();
+                        _autosave.Stop();
+                        _autosave.Start();
+                    }
+                    break;
+                case "cursorChanged":
+                    if (TryGetPosition(message.Payload, out var line, out var column)) CursorStatus.Text = $"Ln {line}, Col {column}";
+                    break;
+                case "validationChanged":
+                    if (TryGetValidation(message.Payload, out var valid)) { _jsonValid = valid; UpdateStatus(); }
+                    break;
+                case "saveRequested":
+                    if (TryGetContent(message.Payload, out var requestedContent)) _ = SaveCurrentAsync(requestedContent);
+                    break;
+                case "commandResult":
+                    if (message.RequestId is not null && _requests.Remove(message.RequestId, out var request)) request.TrySetResult(message);
+                    break;
             }
         }
-        catch { Status.Text = "编辑器消息无效"; }
+        catch { SaveStateStatus.Text = "编辑器消息无效"; }
     }
 
-    private void OpenCurrent() => Send("openDocument", new { documentId = _current!.DocumentId.ToString(), content = _current.Content, language = "json" });
-    private string Send(string type, object payload)
+    private async Task InitializeBridgeAsync()
     {
-        var requestId = (++_request).ToString();
-        Editor.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(new { version = 1, type, requestId, payload }));
-        return requestId;
+        try
+        {
+            await SendEditorCommandAsync("initialize", new { theme = _theme == EffectiveTheme.Dark ? "vs-dark" : "vs", indentSize = 2 });
+            if (_current is not null) await SendEditorCommandAsync("openDocument", new { documentId = _current.DocumentId.ToString(), content = _current.Content, language = "json" });
+            UpdateStatus();
+        }
+        catch (Exception ex) { SaveStateStatus.Text = "编辑器连接失败: " + ex.Message; }
     }
-    private void New_Click(object sender, RoutedEventArgs e) => _ = NewAsync();
-    private async Task NewAsync() { var created = await _documents.CreateAsync(); await RefreshDocumentsAsync(); Documents.SelectedItem = (Documents.ItemsSource as IReadOnlyList<JsonDocumentMetadata>)?.Single(item => item.Id == created.Id); }
-    private void Save_Click(object sender, RoutedEventArgs e) { _autosave.Stop(); RequestContent(content => _ = SaveContentAsync(content)); }
-    private void RequestContent(Action<string> action) => _contentRequests[Send("getContent", new { })] = action;
-    private async Task SaveEditorContentAsync() => await SaveContentAsync(_editorContent);
-    private async Task SaveContentAsync(string content)
+
+    private async Task SendEditorCommandAsync(string type, object payload)
+    {
+        if (!_editorReady || _editor?.CoreWebView2 is null) throw new InvalidOperationException("编辑器尚未就绪。");
+        var requestId = $"{_generation}:{Interlocked.Increment(ref _request)}";
+        var request = new TaskCompletionSource<BridgeMessage>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _requests.Add(requestId, request);
+        try
+        {
+            _editor.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(new { version = ProtocolVersion, type, requestId, payload }));
+            var response = await request.Task.WaitAsync(TimeSpan.FromSeconds(10), _lifetime.Token);
+            if (!TryGetCommandResult(response.Payload, out var error) && error is not null) throw new InvalidOperationException(error);
+        }
+        finally { _requests.Remove(requestId); }
+    }
+
+    private async Task<string> GetEditorContentAsync()
+    {
+        if (!_editorReady || _editor?.CoreWebView2 is null) return _editorContent;
+        var requestId = $"{_generation}:{Interlocked.Increment(ref _request)}";
+        var request = new TaskCompletionSource<BridgeMessage>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _requests.Add(requestId, request);
+        try
+        {
+            _editor.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(new { version = ProtocolVersion, type = "getContent", requestId, payload = new { } }));
+            var response = await request.Task.WaitAsync(TimeSpan.FromSeconds(10), _lifetime.Token);
+            if (!TryGetCommandResult(response.Payload, out var error)) throw new InvalidOperationException(error ?? "编辑器未返回文本。");
+            return TryGetContent(response.Payload.GetProperty("result"), out var content) ? content : throw new InvalidOperationException("编辑器返回了无效文本。");
+        }
+        finally { _requests.Remove(requestId); }
+    }
+
+    private async Task SaveFromEditorAsync()
+    {
+        _autosave.Stop();
+        await SaveCurrentAsync(await GetEditorContentAsync());
+    }
+
+    private async Task SaveCurrentAsync(string content)
+    {
+        var session = _current;
+        if (session is null || _inDiffMode) return;
+        await _saveGate.WaitAsync(_lifetime.Token);
+        try
+        {
+            _editorContent = content;
+            _saveState = SaveState.Saving;
+            UpdateStatus();
+            await _documents.SaveAsync(session.DocumentId, content, session.Revision, _lifetime.Token);
+            var refreshed = await _documents.OpenAsync(session.DocumentId, _lifetime.Token);
+            if (_current?.DocumentId == session.DocumentId)
+            {
+                _current = refreshed;
+                _editorContent = refreshed.Content;
+                _saveState = SaveState.Clean;
+                UpdateStatus();
+            }
+        }
+        catch (JujuException ex) when (ex.Code == ErrorCode.ExternalModificationConflict)
+        {
+            _saveState = SaveState.Conflict;
+            UpdateStatus();
+        }
+        catch (Exception ex)
+        {
+            _saveState = SaveState.SaveFailed;
+            SaveStateStatus.Text = "保存失败: " + ex.Message;
+        }
+        finally { _saveGate.Release(); }
+    }
+
+    private async Task NewAsync()
+    {
+        if (!await FlushCurrentAsync()) return;
+        var created = await _documents.CreateAsync(_lifetime.Token);
+        await RefreshDocumentsAsync();
+        Documents.SelectedItem = _items.Single(item => item.Id == created.Id);
+    }
+
+    private async Task FormatAsync()
+    {
+        if (_inDiffMode) return;
+        if (!_jsonValid) { SaveStateStatus.Text = "JSON 格式错误，无法格式化"; return; }
+        await SendEditorCommandAsync("format", new { });
+    }
+
+    private async Task CopyTextAsync() => WpfClipboard.SetText(await GetEditorContentAsync());
+
+    private async Task CopyMinifiedAsync()
+    {
+        try { WpfClipboard.SetText(new JsonLexicalMinifier().Minify(await GetEditorContentAsync())); }
+        catch (JujuException) { SaveStateStatus.Text = "JSON 格式错误，无法压缩复制"; }
+    }
+
+    private async Task CopyFileAsync()
+    {
+        if (FileClipboard is null || _current is null) { SaveStateStatus.Text = "文件剪贴板需要宿主快照适配器"; return; }
+        if (!await FlushCurrentAsync()) return;
+        await FileClipboard.CopySnapshotAsync(_current, _items.Single(item => item.Id == _current.DocumentId).FileName, _lifetime.Token);
+        SaveStateStatus.Text = "已复制 JSON 文件";
+    }
+
+    private async Task UnfoldAllAsync()
+    {
+        _foldDepth = 0;
+        await SendEditorCommandAsync("unfoldAll", new { });
+    }
+
+    private async Task FoldAllAsync()
+    {
+        _foldDepth = 0;
+        await SendEditorCommandAsync("foldAll", new { });
+    }
+
+    private async Task UnfoldLevelAsync()
+    {
+        _foldDepth = _foldDepth == 7 ? 1 : _foldDepth + 1;
+        await SendEditorCommandAsync("unfoldLevel", new { });
+        SaveStateStatus.Text = $"已展开至第 {_foldDepth} 层";
+    }
+
+    private async Task EnterDiffAsync()
+    {
+        if (DiffDocuments.SelectedItem is not DocumentListItem other || _current is null || other.Id == _current.DocumentId) { SaveStateStatus.Text = "请选择另一份文档进行对比"; return; }
+        var currentContent = await GetEditorContentAsync();
+        var comparison = await _documents.OpenAsync(other.Id, _lifetime.Token);
+        await SendEditorCommandAsync("enterDiff", new { original = new { documentId = _current.DocumentId.ToString(), content = currentContent }, modified = new { documentId = other.Id.ToString(), content = comparison.Content } });
+        _inDiffMode = true;
+        _autosave.Stop();
+        SaveStateStatus.Text = IsJson(currentContent) && IsJson(comparison.Content) ? "只读对比" : "存在非法 JSON，当前按原文比较";
+    }
+
+    private async Task ExitDiffAsync()
+    {
+        if (!_inDiffMode) return;
+        await SendEditorCommandAsync("exitDiff", new { });
+        _inDiffMode = false;
+        if (_current is not null) await SendEditorCommandAsync("openDocument", new { documentId = _current.DocumentId.ToString(), content = _editorContent, language = "json" });
+        UpdateStatus();
+    }
+
+    private async Task RenameAsync()
     {
         if (_current is null) return;
-        try { await _documents.SaveAsync(_current.DocumentId, content, _current.Revision); _current = await _documents.OpenAsync(_current.DocumentId); Status.Text = "已保存"; }
-        catch (JujuException ex) when (ex.Code == ErrorCode.ExternalModificationConflict) { Status.Text = "外部修改冲突"; }
-        catch (Exception ex) { Status.Text = "保存失败: " + ex.Message; }
+        var name = PromptForName(Path.GetFileNameWithoutExtension(_items.Single(item => item.Id == _current.DocumentId).FileName));
+        if (name is null) return;
+        try { await _documents.RenameAsync(_current.DocumentId, name, _lifetime.Token); await RefreshDocumentsAsync(); }
+        catch (JujuException ex) { SaveStateStatus.Text = "重命名失败: " + ex.Message; }
     }
-    private void Format_Click(object sender, RoutedEventArgs e) => Send("format", new { });
-    private void Copy_Click(object sender, RoutedEventArgs e) => RequestContent(content => { System.Windows.Clipboard.SetText(content); Status.Text = "已复制全文"; });
-    private void Minify_Click(object sender, RoutedEventArgs e) => RequestContent(content =>
+
+    private async Task DeleteAsync()
     {
-        try { System.Windows.Clipboard.SetText(new JsonLexicalMinifier().Minify(content)); Status.Text = "已复制压缩文本"; }
-        catch (JujuException) { Status.Text = "JSON 格式错误，无法压缩复制"; }
-    });
-    private void Fold_Click(object sender, RoutedEventArgs e) => Send("foldAll", new { });
-    private async void Delete_Click(object sender, RoutedEventArgs e) { if (_current is null) return; await _documents.DeleteAsync(_current.DocumentId); _current = null; await RefreshDocumentsAsync(); }
-    private async Task ImportDropAsync(System.Windows.DragEventArgs eventArgs) { if (eventArgs.Data.GetData(System.Windows.DataFormats.FileDrop) is not string[] paths) return; await _documents.ImportAsync(paths); await RefreshDocumentsAsync(); Status.Text = "导入完成"; }
+        if (_current is null || WpfMessageBox.Show("删除当前文档？", "juju JSON", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
+        await _documents.DeleteAsync(_current.DocumentId, _lifetime.Token);
+        _current = null;
+        await RefreshDocumentsAsync();
+    }
+
+    private async Task ImportDropAsync(System.Windows.DragEventArgs eventArgs)
+    {
+        if (eventArgs.Data.GetData(WpfDataFormats.FileDrop) is not string[] paths) return;
+        await _documents.ImportAsync(paths.Where(path => string.Equals(Path.GetExtension(path), ".json", StringComparison.OrdinalIgnoreCase)), _lifetime.Token);
+        await RefreshDocumentsAsync();
+        SaveStateStatus.Text = "导入完成";
+    }
+
+    private void OnExternalDocumentChanged(object? sender, JsonDocumentExternalChange change)
+    {
+        if (_current?.DocumentId != change.DocumentId) return;
+        _ = Dispatcher.InvokeAsync(async () =>
+        {
+            if (_saveState == SaveState.Clean)
+            {
+                await ReloadDiskVersionAsync();
+                SaveStateStatus.Text = "文件已在外部更新";
+                return;
+            }
+            _saveState = SaveState.Conflict;
+            UpdateStatus();
+            var action = WpfMessageBox.Show("文件已被外部程序修改。是：重新加载磁盘版本；否：覆盖磁盘版本；取消：复制当前内容后重新加载。", "juju JSON", MessageBoxButton.YesNoCancel, MessageBoxImage.Warning);
+            if (action == MessageBoxResult.Yes) await ReloadDiskVersionAsync();
+            else if (action == MessageBoxResult.No)
+            {
+                await _documents.OverwriteAsync(_current.DocumentId, await GetEditorContentAsync(), _lifetime.Token);
+                _current = await _documents.OpenAsync(_current.DocumentId, _lifetime.Token);
+                _saveState = SaveState.Clean;
+                UpdateStatus();
+            }
+            else if (action == MessageBoxResult.Cancel)
+            {
+                WpfClipboard.SetText(await GetEditorContentAsync());
+                await ReloadDiskVersionAsync();
+            }
+        });
+    }
+
+    private async Task ReloadDiskVersionAsync()
+    {
+        if (_current is null) return;
+        _current = await _documents.OpenAsync(_current.DocumentId, _lifetime.Token);
+        _editorContent = _current.Content;
+        _saveState = SaveState.Clean;
+        _jsonValid = IsJson(_editorContent);
+        if (_editorReady && !_inDiffMode) await SendEditorCommandAsync("replaceContent", new { content = _editorContent });
+        UpdateStatus();
+    }
+
+    private void OnProcessFailed(object? sender, CoreWebView2ProcessFailedEventArgs e)
+    {
+        if (_closing || !ReferenceEquals(sender, _editor?.CoreWebView2)) return;
+        _ = RecoverEditorAsync();
+    }
+
+    private async Task RecoverEditorAsync()
+    {
+        SaveStateStatus.Text = "编辑器进程异常，正在恢复...";
+        _editorReady = false;
+        DestroyEditor();
+        await Task.Delay(250, _lifetime.Token);
+        await EnsureEditorAsync();
+    }
+
+    protected override void OnClosing(CancelEventArgs e)
+    {
+        if (_closing) { base.OnClosing(e); return; }
+        e.Cancel = true;
+        _ = CloseToHiddenAsync();
+    }
+
+    private async Task CloseToHiddenAsync()
+    {
+        _closing = true;
+        try
+        {
+            if (!await FlushCurrentAsync()) return;
+            DestroyEditor();
+            Hide();
+        }
+        finally { _closing = false; }
+    }
+
+    private void DestroyEditor()
+    {
+        _autosave.Stop();
+        _editorReady = false;
+        _generation++;
+        foreach (var request in _requests.Values) request.TrySetCanceled();
+        _requests.Clear();
+        if (_editor is not { } editor) return;
+        if (editor.CoreWebView2 is { } core)
+        {
+            core.WebMessageReceived -= OnWebMessage;
+            core.ProcessFailed -= OnProcessFailed;
+        }
+        EditorHost.Children.Remove(editor);
+        editor.Dispose();
+        _editor = null;
+    }
+
+    private async Task ExecuteAsync(JsonCommand command)
+    {
+        try { await _commands[command](); }
+        catch (Exception ex) when (ex is not OperationCanceledException) { SaveStateStatus.Text = "操作失败: " + ex.Message; }
+    }
+
+    private void UpdateStatus()
+    {
+        SaveStateStatus.Text = _saveState switch { SaveState.Clean => "已保存", SaveState.Dirty => "未保存", SaveState.Saving => "正在保存...", SaveState.Conflict => "外部修改冲突", _ => "保存失败" };
+        ValidationStatus.Text = _jsonValid ? "JSON: 有效" : "JSON: 格式错误";
+    }
+
     private void OnShortcut(object sender, System.Windows.Input.KeyEventArgs e)
     {
-        if (System.Windows.Input.Keyboard.Modifiers != System.Windows.Input.ModifierKeys.Alt) return;
-        if (e.Key == System.Windows.Input.Key.A) New_Click(sender, e); else if (e.Key == System.Windows.Input.Key.S) Save_Click(sender, e); else if (e.Key == System.Windows.Input.Key.F) Format_Click(sender, e); else if (e.Key == System.Windows.Input.Key.C) Copy_Click(sender, e); else return;
+        if (e.IsRepeat || Keyboard.Modifiers != ModifierKeys.Alt || Keyboard.IsKeyDown(Key.RightAlt)) return;
+        var command = e.Key switch
+        {
+            Key.A => JsonCommand.New, Key.S => JsonCommand.Save, Key.F => JsonCommand.Format,
+            Key.C => JsonCommand.CopyText, Key.X => JsonCommand.CopyMinified, Key.V => JsonCommand.CopyFile,
+            Key.E => JsonCommand.UnfoldAll, Key.R => JsonCommand.FoldAll, Key.D => JsonCommand.UnfoldLevel,
+            Key.Q => JsonCommand.EnterDiff, _ => (JsonCommand?)null,
+        };
+        if (command is null) return;
         e.Handled = true;
+        _ = ExecuteAsync(command.Value);
+    }
+
+    private static bool IsJson(string content) { try { JsonDocument.Parse(content); return true; } catch (JsonException) { return false; } }
+    private static bool TryGetContent(JsonElement payload, out string content) { content = string.Empty; return payload.ValueKind == JsonValueKind.Object && payload.TryGetProperty("content", out var value) && value.ValueKind == JsonValueKind.String && (content = value.GetString()!) is not null; }
+    private static bool TryGetPosition(JsonElement payload, out int line, out int column) { line = column = 0; return payload.ValueKind == JsonValueKind.Object && payload.TryGetProperty("lineNumber", out var l) && l.TryGetInt32(out line) && payload.TryGetProperty("column", out var c) && c.TryGetInt32(out column) && line > 0 && column > 0; }
+    private static bool TryGetValidation(JsonElement payload, out bool valid)
+    {
+        valid = false;
+        if (payload.ValueKind != JsonValueKind.Object || !payload.TryGetProperty("hasErrors", out var errors) || errors.ValueKind is not (JsonValueKind.True or JsonValueKind.False)) return false;
+        valid = !errors.GetBoolean();
+        return true;
+    }
+    private static bool TryGetCommandResult(JsonElement payload, out string? error) { error = null; if (payload.ValueKind != JsonValueKind.Object || !payload.TryGetProperty("ok", out var ok) || ok.ValueKind is not (JsonValueKind.True or JsonValueKind.False)) return false; if (ok.GetBoolean()) return payload.TryGetProperty("result", out _); error = payload.TryGetProperty("error", out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : "编辑器命令失败。"; return false; }
+    private static string? PromptForName(string value) { var input = new WpfTextBox { Text = value, Margin = new Thickness(12), MinWidth = 260 }; var dialog = new Window { Title = "重命名 JSON", Owner = WpfApplication.Current.MainWindow, SizeToContent = SizeToContent.WidthAndHeight, WindowStartupLocation = WindowStartupLocation.CenterOwner, Content = new StackPanel { Children = { input, new WpfButton { Content = "确定", IsDefault = true, Margin = new Thickness(12, 0, 12, 12) } } } }; ((WpfButton)((StackPanel)dialog.Content).Children[1]).Click += (_, _) => dialog.DialogResult = true; return dialog.ShowDialog() == true ? input.Text : null; }
+
+    private void New_Click(object sender, RoutedEventArgs e) => _ = ExecuteAsync(JsonCommand.New);
+    private void Save_Click(object sender, RoutedEventArgs e) => _ = ExecuteAsync(JsonCommand.Save);
+    private void Format_Click(object sender, RoutedEventArgs e) => _ = ExecuteAsync(JsonCommand.Format);
+    private void Copy_Click(object sender, RoutedEventArgs e) => _ = ExecuteAsync(JsonCommand.CopyText);
+    private void Minify_Click(object sender, RoutedEventArgs e) => _ = ExecuteAsync(JsonCommand.CopyMinified);
+    private void FileCopy_Click(object sender, RoutedEventArgs e) => _ = ExecuteAsync(JsonCommand.CopyFile);
+    private void Fold_Click(object sender, RoutedEventArgs e) => _ = ExecuteAsync(JsonCommand.FoldAll);
+    private void Unfold_Click(object sender, RoutedEventArgs e) => _ = ExecuteAsync(JsonCommand.UnfoldAll);
+    private void FoldLevel_Click(object sender, RoutedEventArgs e) => _ = ExecuteAsync(JsonCommand.UnfoldLevel);
+    private void Diff_Click(object sender, RoutedEventArgs e) => _ = ExecuteAsync(JsonCommand.EnterDiff);
+    private void ExitDiff_Click(object sender, RoutedEventArgs e) => _ = ExecuteAsync(JsonCommand.ExitDiff);
+    private void Rename_Click(object sender, RoutedEventArgs e) => _ = ExecuteAsync(JsonCommand.Rename);
+    private void Delete_Click(object sender, RoutedEventArgs e) => _ = ExecuteAsync(JsonCommand.Delete);
+
+    private enum JsonCommand { New, Save, Format, CopyText, CopyMinified, CopyFile, FoldAll, UnfoldAll, UnfoldLevel, EnterDiff, ExitDiff, Rename, Delete }
+    private sealed record DocumentListItem(JsonDocumentId Id, string FileName, string DisplayName);
+    private sealed record BridgeMessage(string Type, string? RequestId, JsonElement Payload)
+    {
+        private static readonly HashSet<string> Types = ["ready", "contentChanged", "cursorChanged", "validationChanged", "saveRequested", "editorFocused", "commandResult"];
+        public static bool TryParse(JsonElement root, out BridgeMessage message)
+        {
+            message = default!;
+            if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty("version", out var version) || version.ValueKind != JsonValueKind.Number || version.GetInt32() != ProtocolVersion || !root.TryGetProperty("type", out var type) || type.ValueKind != JsonValueKind.String || !Types.Contains(type.GetString()!) || !root.TryGetProperty("requestId", out var requestId) || requestId.ValueKind is not (JsonValueKind.String or JsonValueKind.Null) || !root.TryGetProperty("payload", out var payload)) return false;
+            if (type.GetString() == "commandResult" && requestId.ValueKind != JsonValueKind.String) return false;
+            message = new(type.GetString()!, requestId.ValueKind == JsonValueKind.String ? requestId.GetString() : null, payload.Clone());
+            return true;
+        }
     }
 }

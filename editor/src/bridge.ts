@@ -1,4 +1,4 @@
-import { PROTOCOL_VERSION, type EditorEvent, type EditorEventMessage, type HostMessage } from "./protocol";
+import { isHostMessage, PROTOCOL_VERSION, type EditorEvent, type EditorEventMessage, type HostMessage } from "./protocol";
 
 type MessageHandler = (message: HostMessage) => void | Promise<void>;
 
@@ -41,13 +41,4 @@ export class Bridge {
     };
     window.chrome?.webview?.postMessage(message);
   }
-}
-
-function isHostMessage(value: unknown): value is HostMessage {
-  if (typeof value !== "object" || value === null) return false;
-  const message = value as Partial<HostMessage>;
-  return message.version === PROTOCOL_VERSION
-    && typeof message.type === "string"
-    && (typeof message.requestId === "string" || message.requestId === null)
-    && "payload" in message;
 }

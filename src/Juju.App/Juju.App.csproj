@@ -11,6 +11,8 @@
     <ProjectReference Include="..\Juju.Tools.Json\Juju.Tools.Json.csproj" />
     <ProjectReference Include="..\Juju.Platform.Windows\Juju.Platform.Windows.csproj" />
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.3650.58" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.0" />
   </ItemGroup>
   <Target Name="BuildEditor" BeforeTargets="Build">
     <Exec Command="npm run build" WorkingDirectory="$(MSBuildProjectDirectory)\..\..\editor" />

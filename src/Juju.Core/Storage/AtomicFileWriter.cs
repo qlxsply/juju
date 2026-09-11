@@ -19,7 +19,11 @@ public sealed class AtomicFileWriter : IAtomicFileWriter
                 stream.Flush(flushToDisk: true);
             }
 
-            if (File.Exists(path)) File.Move(temporary, path, overwrite: true);
+            if (File.Exists(path))
+            {
+                // Replace does not truncate the destination before the temporary file is durable.
+                File.Replace(temporary, path, null, ignoreMetadataErrors: true);
+            }
             else File.Move(temporary, path);
         }
         finally

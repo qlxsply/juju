@@ -16,3 +16,5 @@ public sealed record JsonMetadata(int SchemaVersion, JsonSequence Sequence, List
 public sealed record DocumentRevision(long Length, DateTime LastWriteTimeUtc, string Hash);
 public sealed record JsonDocumentSnapshot(JsonDocumentId DocumentId, string Content, DocumentRevision Revision);
 public enum SaveState { Clean, Dirty, Saving, SaveFailed, Conflict }
+public enum ExternalDocumentChangeKind { Changed, Deleted, Renamed }
+public sealed record JsonDocumentExternalChange(JsonDocumentId DocumentId, ExternalDocumentChangeKind Kind, DocumentRevision? Revision);

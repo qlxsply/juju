@@ -21,7 +21,7 @@ public sealed class JsonMetadataStore(string dataRoot, IAtomicFileWriter writer)
         }
         catch (Exception ex) when (ex is JsonException or IOException)
         {
-            var backup = Path + ".corrupt-" + DateTime.UtcNow.ToString("yyyyMMddHHmmss");
+            var backup = Path + ".corrupt-" + DateTime.UtcNow.ToString("yyyyMMddHHmmssfff");
             try { File.Copy(Path, backup, overwrite: false); } catch { }
             throw new JujuException(ErrorCode.MetadataCorrupted, "JSON document metadata could not be read.", ex);
         }
@@ -34,5 +34,10 @@ public sealed class JsonMetadataStore(string dataRoot, IAtomicFileWriter writer)
         finally { _gate.Release(); }
     }
 
-    public Task SaveAsync(JsonMetadata metadata, CancellationToken cancellationToken = default) => UpdateAsync(_ => metadata, cancellationToken);
+    public async Task SaveAsync(JsonMetadata metadata, CancellationToken cancellationToken = default)
+    {
+        await _gate.WaitAsync(cancellationToken);
+        try { await writer.WriteTextAsync(Path, JsonSerializer.Serialize(metadata, Options), cancellationToken); }
+        finally { _gate.Release(); }
+    }
 }

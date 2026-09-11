@@ -7,16 +7,18 @@ namespace Juju.Tools.Json.Documents;
 
 public interface IJsonDocumentService
 {
+    event EventHandler<JsonDocumentExternalChange>? ExternalChanged;
     Task<IReadOnlyList<JsonDocumentMetadata>> ListAsync(CancellationToken cancellationToken = default);
     Task<JsonDocumentSnapshot> OpenAsync(JsonDocumentId id, CancellationToken cancellationToken = default);
     Task<JsonDocumentMetadata> CreateAsync(CancellationToken cancellationToken = default);
     Task SaveAsync(JsonDocumentId id, string content, DocumentRevision expectedRevision, CancellationToken cancellationToken = default);
+    Task OverwriteAsync(JsonDocumentId id, string content, CancellationToken cancellationToken = default);
     Task RenameAsync(JsonDocumentId id, string name, CancellationToken cancellationToken = default);
     Task DeleteAsync(JsonDocumentId id, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<JsonDocumentMetadata>> ImportAsync(IEnumerable<string> sourcePaths, CancellationToken cancellationToken = default);
 }
 
-public sealed class JsonDocumentService : IJsonDocumentService
+public sealed class JsonDocumentService : IJsonDocumentService, IAsyncDisposable
 {
     private readonly string _documents;
     private readonly string _trash;
@@ -24,6 +26,7 @@ public sealed class JsonDocumentService : IJsonDocumentService
     private readonly IAtomicFileWriter _writer;
     private readonly DocumentRevisionService _revisions;
     private readonly SemaphoreSlim _operations = new(1, 1);
+    private readonly JsonDocumentWatcher _watcher;
 
     public JsonDocumentService(string dataRoot, JsonMetadataStore metadata, IAtomicFileWriter writer, DocumentRevisionService revisions)
     {
@@ -32,7 +35,11 @@ public sealed class JsonDocumentService : IJsonDocumentService
         _metadata = metadata;
         _writer = writer;
         _revisions = revisions;
+        _watcher = new JsonDocumentWatcher(_documents, revisions, FindIdByFileName);
+        _watcher.Changed += (sender, change) => ExternalChanged?.Invoke(this, change);
     }
+
+    public event EventHandler<JsonDocumentExternalChange>? ExternalChanged;
 
     public async Task<IReadOnlyList<JsonDocumentMetadata>> ListAsync(CancellationToken cancellationToken = default)
     {
@@ -61,8 +68,11 @@ public sealed class JsonDocumentService : IJsonDocumentService
             var sequence = next - 1;
             var now = DateTimeOffset.UtcNow;
             var document = new JsonDocumentMetadata(JsonDocumentId.New(), fileName, metadata.Documents.Count, now, now, new("created"));
-            await _writer.WriteTextAsync(DocumentPath(fileName), "{}", cancellationToken);
-            await _metadata.SaveAsync(metadata with { Sequence = new(today, sequence), Documents = [.. metadata.Documents, document] }, cancellationToken);
+            var path = DocumentPath(fileName);
+            await _writer.WriteTextAsync(path, "{}", cancellationToken);
+            try { await _metadata.SaveAsync(metadata with { Sequence = new(today, sequence), Documents = [.. metadata.Documents, document] }, cancellationToken); }
+            catch { try { File.Delete(path); } catch { } throw; }
+            _watcher.RegisterSelfWrite(path, await _revisions.GetAsync(path, cancellationToken));
             return document;
         }
         finally { _operations.Release(); }
@@ -78,6 +88,21 @@ public sealed class JsonDocumentService : IJsonDocumentService
             if (!Equals(await _revisions.GetAsync(path, cancellationToken), expectedRevision))
                 throw new JujuException(ErrorCode.ExternalModificationConflict, "The file changed outside juju and was not overwritten.");
             await _writer.WriteTextAsync(path, content, cancellationToken);
+            await _metadata.UpdateAsync(current => current with { Documents = current.Documents.Select(item => item.Id == id ? item with { UpdatedAtUtc = DateTimeOffset.UtcNow } : item).ToList() }, cancellationToken);
+            _watcher.RegisterSelfWrite(path, await _revisions.GetAsync(path, cancellationToken));
+        }
+        finally { _operations.Release(); }
+    }
+
+    public async Task OverwriteAsync(JsonDocumentId id, string content, CancellationToken cancellationToken = default)
+    {
+        await _operations.WaitAsync(cancellationToken);
+        try
+        {
+            var document = await GetAsync(id, cancellationToken);
+            var path = DocumentPath(document.FileName);
+            await _writer.WriteTextAsync(path, content, cancellationToken);
+            _watcher.RegisterSelfWrite(path, await _revisions.GetAsync(path, cancellationToken));
             await _metadata.UpdateAsync(current => current with { Documents = current.Documents.Select(item => item.Id == id ? item with { UpdatedAtUtc = DateTimeOffset.UtcNow } : item).ToList() }, cancellationToken);
         }
         finally { _operations.Release(); }
@@ -95,7 +120,11 @@ public sealed class JsonDocumentService : IJsonDocumentService
             var targetPath = DocumentPath(targetName);
             if (File.Exists(targetPath)) throw new JujuException(ErrorCode.DocumentAlreadyExists, "A document with that name already exists.");
             File.Move(oldPath, targetPath);
-            try { await _metadata.UpdateAsync(current => current with { Documents = current.Documents.Select(item => item.Id == id ? item with { FileName = targetName, UpdatedAtUtc = DateTimeOffset.UtcNow } : item).ToList() }, cancellationToken); }
+            try
+            {
+                await _metadata.UpdateAsync(current => current with { Documents = current.Documents.Select(item => item.Id == id ? item with { FileName = targetName, UpdatedAtUtc = DateTimeOffset.UtcNow } : item).ToList() }, cancellationToken);
+                _watcher.RegisterSelfWrite(targetPath, await _revisions.GetAsync(targetPath, cancellationToken));
+            }
             catch { try { File.Move(targetPath, oldPath); } catch { } throw; }
         }
         finally { _operations.Release(); }
@@ -123,18 +152,26 @@ public sealed class JsonDocumentService : IJsonDocumentService
         try
         {
             var metadata = await _metadata.ReadAsync(cancellationToken);
+            var copiedPaths = new List<string>();
             foreach (var source in sourcePaths)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 if (!string.Equals(Path.GetExtension(source), ".json", StringComparison.OrdinalIgnoreCase)) continue;
                 var baseName = JsonDocumentName.Normalize(Path.GetFileName(source));
                 var candidate = baseName;
                 for (var suffix = 2; File.Exists(DocumentPath(candidate)); suffix++) candidate = $"{Path.GetFileNameWithoutExtension(baseName)}-{suffix}.json";
                 await _writer.WriteTextAsync(DocumentPath(candidate), await File.ReadAllTextAsync(source, cancellationToken), cancellationToken);
+                copiedPaths.Add(DocumentPath(candidate));
                 var now = DateTimeOffset.UtcNow;
                 var item = new JsonDocumentMetadata(JsonDocumentId.New(), candidate, metadata.Documents.Count + imported.Count, now, now, new("imported", Path.GetFileName(source)));
                 imported.Add(item);
             }
-            if (imported.Count > 0) await _metadata.SaveAsync(metadata with { Documents = [.. metadata.Documents, .. imported] }, cancellationToken);
+            if (imported.Count > 0)
+            {
+                try { await _metadata.SaveAsync(metadata with { Documents = [.. metadata.Documents, .. imported] }, cancellationToken); }
+                catch { foreach (var path in copiedPaths) try { File.Delete(path); } catch { } throw; }
+                foreach (var path in copiedPaths) _watcher.RegisterSelfWrite(path, await _revisions.GetAsync(path, cancellationToken));
+            }
             return imported;
         }
         finally { _operations.Release(); }
@@ -160,7 +197,7 @@ public sealed class JsonDocumentService : IJsonDocumentService
             JsonMetadata metadata;
             try { metadata = await _metadata.ReadAsync(cancellationToken); }
             catch (JujuException ex) when (ex.Code == ErrorCode.MetadataCorrupted) { metadata = JsonMetadata.Empty(); }
-            var files = Directory.EnumerateFiles(_documents, "*.json").Select(Path.GetFileName).OfType<string>().Order(StringComparer.OrdinalIgnoreCase).ToArray();
+            var files = Directory.EnumerateFiles(_documents, "*.json").Select(Path.GetFileName).OfType<string>().OrderBy(file => File.GetCreationTimeUtc(DocumentPath(file)), Comparer<DateTime>.Default).ThenBy(file => file, StringComparer.Ordinal).ToArray();
             var existing = metadata.Documents.Where(document => files.Contains(document.FileName, StringComparer.OrdinalIgnoreCase)).ToList();
             foreach (var file in files.Where(file => existing.All(document => !string.Equals(document.FileName, file, StringComparison.OrdinalIgnoreCase))))
             {
@@ -169,9 +206,7 @@ public sealed class JsonDocumentService : IJsonDocumentService
             }
             var today = DateTime.UtcNow.ToString("yyyyMMdd");
             var recoveredLast = files.Select(file => TryGetSequence(file, today)).DefaultIfEmpty(0).Max();
-            var sequence = metadata.Sequence.Date == today
-                ? new JsonSequence(today, Math.Max(metadata.Sequence.Last, recoveredLast))
-                : metadata.Sequence;
+            var sequence = new JsonSequence(today, metadata.Sequence.Date == today ? Math.Max(metadata.Sequence.Last, recoveredLast) : recoveredLast);
             var reconciled = metadata with { Sequence = sequence, Documents = existing.Select((document, order) => document with { Order = order }).ToList() };
             if (!Equals(metadata, reconciled)) await _metadata.SaveAsync(reconciled, cancellationToken);
         }
@@ -179,4 +214,12 @@ public sealed class JsonDocumentService : IJsonDocumentService
     }
 
     private static int TryGetSequence(string fileName, string date) => fileName.StartsWith(date, StringComparison.Ordinal) && int.TryParse(Path.GetFileNameWithoutExtension(fileName)[date.Length..], out var value) ? value : 0;
+
+    private JsonDocumentId? FindIdByFileName(string fileName)
+    {
+        try { return _metadata.ReadAsync().GetAwaiter().GetResult().Documents.SingleOrDefault(item => string.Equals(item.FileName, fileName, StringComparison.OrdinalIgnoreCase))?.Id; }
+        catch { return null; }
+    }
+
+    public async ValueTask DisposeAsync() { await _watcher.DisposeAsync(); _operations.Dispose(); }
 }
