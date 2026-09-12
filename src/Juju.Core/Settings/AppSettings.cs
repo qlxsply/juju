@@ -1,3 +1,5 @@
+using Juju.Core.Storage;
+
 namespace Juju.Core.Settings;
 
 public enum ThemePreference { System, Light, Dark }
@@ -11,5 +13,5 @@ public sealed record AppSettings(
     int AutosaveDelayMilliseconds = 800,
     int JsonIndentSize = 2)
 {
-    public static AppSettings CreateDefault() => new(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".juju"));
+    public static AppSettings CreateDefault() => new(ApplicationPaths.DataRoot);
 }

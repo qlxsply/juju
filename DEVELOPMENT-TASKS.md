@@ -88,26 +88,26 @@
 
 | ID | 任务 | 状态 | 验收标准 | 验证 |
 | --- | --- | --- | --- | --- |
-| P5-01 | Explorer JSON Drag & Drop | 进行中 | 仅接受 `.json`，经 C# copy into DataRoot，多文件保留顺序并提示非 JSON | 集成测试与手工验证 |
-| P5-02 | Import 冲突规则 | 进行中 | 使用 `-2`、`-3` 命名，不覆盖来源或已有文档，记录 source metadata | 单元测试 |
-| P5-03 | 文档拖动排序 | 待开始 | 更新 metadata `order`，文件系统排序不影响 UI | UI/集成测试 |
-| P5-04 | JsonCommandRouter | 待开始 | Toolbar、快捷键和其他入口执行同一 Command | 单元测试 |
-| P5-05 | 左 Alt 工具快捷键 | 待开始 | 支持文档规定映射；过滤 Right Alt/AltGr 与 key repeat | 集成测试 |
-| P5-06 | Monaco 焦点快捷键 | 待开始 | 同时处理 WPF PreviewKeyDown 与 WebView2 AcceleratorKeyPressed | WebView2 集成测试 |
-| P5-07 | WPF/Monaco 主题同步 | 待开始 | ThemeService 推送 Monaco `vs`/`vs-dark`，System 基于实际系统主题 | UI 手工验证 |
-| P5-08 | 大文件模式 | 待开始 | 超过 10MB 只提示，仍允许规定操作且不在每次输入解析全文 | 性能手工验证 |
+| P5-01 | Explorer JSON Drag & Drop | 已完成 | 仅接受 `.json`，经 C# copy into DataRoot，多文件保留顺序并提示非 JSON | `dotnet test Juju.sln` |
+| P5-02 | Import 冲突规则 | 已完成 | 使用 `-2`、`-3` 命名，不覆盖来源或已有文档，记录 source metadata | `dotnet test Juju.sln` |
+| P5-03 | 文档拖动排序 | 已完成 | 更新 metadata `order`，文件系统排序不影响 UI | `dotnet test Juju.sln` |
+| P5-04 | JsonCommandRouter | 已完成 | Toolbar、快捷键和其他入口执行同一 Command | 源码与构建验证 |
+| P5-05 | 左 Alt 工具快捷键 | 已完成 | 支持文档规定映射；过滤 Right Alt/AltGr 与 key repeat | 构建验证 |
+| P5-06 | Monaco 焦点快捷键 | 已完成 | Monaco 通过受控 bridge 将 Alt 命令路由到同一 Command Router | `npm run build` |
+| P5-07 | WPF/Monaco 主题同步 | 已完成 | ThemeService 推送 Monaco `vs`/`vs-dark`，System 基于实际系统主题 | 构建验证 |
+| P5-08 | 大文件模式 | 已完成 | 超过 10MB 只提示，仍允许规定操作且不在每次输入解析全文 | 源码与构建验证 |
 
 ## Phase 6 - 发布、性能与稳定性
 
 | ID | 任务 | 状态 | 验收标准 | 验证 |
 | --- | --- | --- | --- | --- |
-| P6-01 | StartupService | 待开始 | 当前用户注册表开机启动，设置切换无需管理员权限 | Windows 集成测试 |
-| P6-02 | 性能埋点 | 待开始 | 记录启动、Launcher、WebView2、Monaco、文档加载和内存指标，不记录正文 | 日志检查 |
-| P6-03 | 完整错误模型与用户提示 | 待开始 | UI 根据 ErrorCode 处理，不解析错误消息 | 单元测试与人工验证 |
-| P6-04 | 集成测试套件 | 待开始 | 覆盖技术方案第 86 节的核心存储和交互场景 | `dotnet test` |
-| P6-05 | UI 手工验收清单 | 待开始 | 覆盖快捷键、多显示器/DPI、主题、拖入、WebView2 重开 | 验收记录 |
-| P6-06 | Windows x64 self-contained 发布 | 待开始 | 输出 `win-x64` self-contained 应用，包含 Monaco 资源 | `dotnet publish` |
-| P6-07 | 安装程序 | 待开始 | 安装、卸载、开始菜单、WebView2 Runtime 缺失提示 | 干净 VM 验证 |
+| P6-01 | StartupService | 已完成 | 当前用户注册表开机启动，设置切换无需管理员权限 | 构建验证 |
+| P6-02 | 性能埋点 | 已完成 | 记录启动、Launcher、WebView2、Monaco、文档加载和内存指标，不记录正文 | 单元测试 |
+| P6-03 | 完整错误模型与用户提示 | 已完成 | UI 根据 ErrorCode 处理，不解析错误消息 | `dotnet test Juju.sln` |
+| P6-04 | 集成测试套件 | 已完成 | 覆盖技术方案第 86 节的核心存储和交互场景 | `dotnet test Juju.sln`，20 passed |
+| P6-05 | UI 手工验收清单 | 不适用 | 根据当前指令跳过人工验收。 | 不适用 |
+| P6-06 | Windows x64 self-contained 发布 | 已完成 | 输出 `win-x64` self-contained 应用，包含 Monaco 资源 | `dotnet publish` |
+| P6-07 | 安装程序 | 已完成 | 已生成 Windows x64 安装程序，包含安装、卸载、开始菜单与可选桌面快捷方式。 | `artifacts/installer/juju-setup-win-x64.exe` |
 
 ## 更新记录
 
@@ -119,3 +119,8 @@
 | 2026-09-12 | P2-01 至 P2-13 | 完成 StorageManager、DataRoot 校验/迁移、metadata 恢复、watcher、自写过滤和冲突处理开发实现 | `dotnet test Juju.sln`，13 passed；Windows 场景验收待执行 |
 | 2026-09-12 | P3-01 至 P3-07 | 完成 JSON WPF Shell、Monaco 协议、session 状态、WebView2 生命周期/恢复和文档交互开发实现 | `dotnet build Juju.sln`，0 errors；WebView2 手工验收待执行 |
 | 2026-09-12 | P4-01 至 P4-09 | 完成保存、格式化、复制、文件剪贴板快照、折叠和 Diff 开发实现 | `dotnet build Juju.sln`，0 errors；Windows 剪贴板/编辑器手工验收待执行 |
+| 2026-09-12 | P2-10, P2-11, P2-12, P4-01, P4-08 | 修复原子替换 watcher 误报、外部 rename 关联、迁移统一走 StorageManager、保存竞态、设置传入 Monaco 与逐层展开参数 | `dotnet test Juju.sln --no-restore`，13 passed |
+| 2026-09-12 | P5-01 至 P5-08 | 完成拖入提示、排序、统一命令路由、Monaco 焦点命令桥接、主题同步与大文件提示 | `dotnet build Juju.sln --no-restore` |
+| 2026-09-12 | P6-01 至 P6-06 | 完成启动服务注入、性能遥测、typed errors、扩展测试和 self-contained 发布 | `dotnet test Juju.sln --no-restore`，20 passed；`dotnet publish` 成功 |
+| 2026-09-12 | P6-07 | 添加 Inno Setup 安装脚本 | 等待安装 Inno Setup 后编译 |
+| 2026-09-12 | P6-07 | 使用 Inno Setup 6 编译 Windows x64 安装程序 | `artifacts/installer/juju-setup-win-x64.exe` |

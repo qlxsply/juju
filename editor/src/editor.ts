@@ -69,12 +69,12 @@ export class EditorAdapter {
     await this.runAction("editor.unfoldAll");
   }
 
-  async unfoldLevel(): Promise<void> {
+  async unfoldLevel(payload: FoldLevelPayload): Promise<void> {
     const editor = this.getEditor();
     editor.setPosition({ lineNumber: 1, column: 1 });
     const action = editor.getAction("editor.unfold");
     if (!action) throw new Error("Monaco action 'editor.unfold' is unavailable.");
-    await action.run({ levels: 1, direction: "down", selectionLines: [0] });
+    await action.run({ levels: Math.max(1, Math.min(7, Math.trunc(payload.level))), direction: "down", selectionLines: [0] });
   }
 
   async foldLevel(payload: FoldLevelPayload): Promise<void> {

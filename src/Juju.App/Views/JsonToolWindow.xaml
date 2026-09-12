@@ -30,7 +30,7 @@
           <Button Click="Rename_Click" Content="重命名" Margin="0,0,0,4"/>
           <Button Click="Delete_Click" Content="删除"/>
         </StackPanel>
-        <ListBox x:Name="Documents" SelectionChanged="Documents_SelectionChanged">
+        <ListBox x:Name="Documents" AllowDrop="True" SelectionChanged="Documents_SelectionChanged" PreviewMouseLeftButtonDown="Documents_PreviewMouseLeftButtonDown" PreviewMouseMove="Documents_PreviewMouseMove" Drop="Documents_Drop">
           <ListBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding DisplayName}"/></DataTemplate></ListBox.ItemTemplate>
         </ListBox>
       </DockPanel>

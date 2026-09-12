@@ -16,8 +16,8 @@ public sealed class ThemeService
         var theme = preference == ThemePreference.System ? GetSystemTheme() : preference == ThemePreference.Dark ? EffectiveTheme.Dark : EffectiveTheme.Light;
         Current = theme;
         var resources = System.Windows.Application.Current.Resources;
-        resources["JujuBackground"] = theme == EffectiveTheme.Dark ? "#202020" : "#F5F5F5";
-        resources["JujuForeground"] = theme == EffectiveTheme.Dark ? "#FFFFFF" : "#202020";
+        resources["JujuBackground"] = theme == EffectiveTheme.Dark ? System.Windows.Media.Brushes.Black : System.Windows.Media.Brushes.WhiteSmoke;
+        resources["JujuForeground"] = theme == EffectiveTheme.Dark ? System.Windows.Media.Brushes.White : System.Windows.Media.Brushes.Black;
         Changed?.Invoke(theme);
     }
 

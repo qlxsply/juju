@@ -23,6 +23,14 @@ const editor = new EditorAdapter(container, bridge);
 bridge.onMessage((message) => handleCommand(message));
 bridge.send("ready", {});
 
+window.addEventListener("keydown", (event) => {
+  if (!event.altKey || event.ctrlKey || event.shiftKey || event.repeat || event.location === KeyboardEvent.DOM_KEY_LOCATION_RIGHT) return;
+  const key = event.key.toUpperCase();
+  if (!new Set(["A", "S", "F", "C", "X", "V", "E", "R", "D", "Q"]).has(key)) return;
+  event.preventDefault();
+  bridge.send("shortcut", { key });
+}, true);
+
 async function handleCommand(message: HostMessage): Promise<void> {
   try {
     let result: unknown = {};
@@ -34,7 +42,7 @@ async function handleCommand(message: HostMessage): Promise<void> {
       case "format": await editor.format(); break;
       case "foldAll": await editor.foldAll(); break;
       case "unfoldAll": await editor.unfoldAll(); break;
-      case "unfoldLevel": await editor.unfoldLevel(); break;
+      case "unfoldLevel": await editor.unfoldLevel(foldLevelPayload(message)); break;
       case "foldLevel": await editor.foldLevel(foldLevelPayload(message)); break;
       case "enterDiff": editor.enterDiff(diffPayload(message)); break;
       case "exitDiff": editor.exitDiff(); break;

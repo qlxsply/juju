@@ -7,7 +7,7 @@ namespace Juju.App.Services;
 
 public sealed class JsonFileClipboard(IAtomicFileWriter writer) : IJsonFileClipboard
 {
-    private readonly string _directory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "juju", "cache", "clipboard");
+    private readonly string _directory = Path.Combine(ApplicationPaths.ToolDataDirectory("json"), "cache", "clipboard");
 
     public async Task CopySnapshotAsync(JsonDocumentSnapshot snapshot, string fileName, CancellationToken cancellationToken = default)
     {

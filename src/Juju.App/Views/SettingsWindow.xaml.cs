@@ -11,11 +11,11 @@ public partial class SettingsWindow : Window
     private readonly DataRootConfigurationService _roots;
     private readonly ThemeService _themes;
     private readonly LauncherWindow _launcher;
-    private readonly IStartupService _startup = new StartupService();
+    private readonly IStartupService _startup;
 
-    public SettingsWindow(ISettingsService settings, DataRootConfigurationService roots, ThemeService themes, LauncherWindow launcher)
+    public SettingsWindow(ISettingsService settings, DataRootConfigurationService roots, ThemeService themes, LauncherWindow launcher, IStartupService startup)
     {
-        _settings = settings; _roots = roots; _themes = themes; _launcher = launcher;
+        _settings = settings; _roots = roots; _themes = themes; _launcher = launcher; _startup = startup;
         InitializeComponent();
         LoadSettings();
     }

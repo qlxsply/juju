@@ -3,10 +3,11 @@ using Juju.Core.Settings;
 using Juju.Core.Storage;
 using Juju.Core.Tools;
 using Juju.Tools.Json.Documents;
+using Juju.Platform.Windows.Startup;
 
 namespace Juju.App.Bootstrap;
 
-public sealed class DesktopWindowManager(JsonDocumentService documents, ISettingsService settings, DataRootService roots, WindowStateService windowState, ThemeService themes, IJsonFileClipboard fileClipboard) : IWindowManager
+public sealed class DesktopWindowManager(JsonDocumentService documents, ISettingsService settings, DataRootService roots, IStorageManager storage, WindowStateService windowState, ThemeService themes, IJsonFileClipboard fileClipboard, IStartupService startup) : IWindowManager
 {
     private LauncherWindow? _launcher;
     private SettingsWindow? _settings;
@@ -24,7 +25,7 @@ public sealed class DesktopWindowManager(JsonDocumentService documents, ISetting
     public void ShowLauncher() => _launcher?.Toggle();
     public void ShowSettings()
     {
-        _settings ??= new SettingsWindow(settings, new DataRootConfigurationService(roots, settings), themes, _launcher!);
+        _settings ??= new SettingsWindow(settings, new DataRootConfigurationService(roots, storage, settings), themes, _launcher!, startup);
         windowState.Restore(_settings, "settings");
         Show(_settings);
     }
@@ -34,7 +35,7 @@ public sealed class DesktopWindowManager(JsonDocumentService documents, ISetting
         if (tool != ToolId.Json) return;
         if (_json is null)
         {
-            _json = new JsonToolWindow(documents) { FileClipboard = fileClipboard };
+            _json = new JsonToolWindow(documents, settings) { FileClipboard = fileClipboard };
             windowState.Restore(_json, "json");
             themes.Changed += _json.ApplyTheme;
             _json.ApplyTheme(themes.Current);

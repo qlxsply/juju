@@ -1,11 +1,13 @@
 using System.ComponentModel;
 using System.IO;
+using System.Text;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Threading;
 using Juju.Core.Errors;
+using Juju.Core.Settings;
 using Juju.App.Bootstrap;
 using Juju.Tools.Json.Documents;
 using Juju.Tools.Json.Minify;
@@ -31,6 +33,7 @@ public partial class JsonToolWindow : Window
 {
     private const int ProtocolVersion = 1;
     private readonly JsonDocumentService _documents;
+    private readonly ISettingsService _settings;
     private readonly DispatcherTimer _autosave = new() { Interval = TimeSpan.FromMilliseconds(800) };
     private readonly SemaphoreSlim _documentGate = new(1, 1);
     private readonly SemaphoreSlim _saveGate = new(1, 1);
@@ -52,10 +55,15 @@ public partial class JsonToolWindow : Window
     private int _foldDepth;
     private int _generation;
     private int _request;
+    private long _contentVersion;
+    private System.Windows.Point _dragStart;
+    private bool _largeDocument;
 
-    public JsonToolWindow(JsonDocumentService documents)
+    public JsonToolWindow(JsonDocumentService documents, ISettingsService settings)
     {
         _documents = documents;
+        _settings = settings;
+        _autosave.Interval = TimeSpan.FromMilliseconds(settings.Current.AutosaveDelayMilliseconds);
         _commands = new()
         {
             [JsonCommand.New] = NewAsync,
@@ -168,8 +176,10 @@ public partial class JsonToolWindow : Window
             _editorContent = _current.Content;
             _saveState = SaveState.Clean;
             _jsonValid = IsJson(_editorContent);
+            _largeDocument = Encoding.UTF8.GetByteCount(_editorContent) > 10 * 1024 * 1024;
             _foldDepth = 0;
             UpdateStatus();
+            if (_largeDocument) SaveStateStatus.Text = "大文件模式：部分操作可能耗时较长";
             if (_editorReady) await SendEditorCommandAsync("openDocument", new { documentId = _current.DocumentId.ToString(), content = _current.Content, language = "json" });
         }
         catch (Exception ex) { SaveStateStatus.Text = "打开失败: " + ex.Message; }
@@ -213,6 +223,7 @@ public partial class JsonToolWindow : Window
                     if (TryGetContent(message.Payload, out var content) && !_inDiffMode)
                     {
                         _editorContent = content;
+                        _contentVersion++;
                         _saveState = SaveState.Dirty;
                         _foldDepth = 0;
                         UpdateStatus();
@@ -229,6 +240,9 @@ public partial class JsonToolWindow : Window
                 case "saveRequested":
                     if (TryGetContent(message.Payload, out var requestedContent)) _ = SaveCurrentAsync(requestedContent);
                     break;
+                case "shortcut":
+                    if (message.Payload.TryGetProperty("key", out var shortcut) && shortcut.ValueKind == JsonValueKind.String) ExecuteAltShortcut(shortcut.GetString());
+                    break;
                 case "commandResult":
                     if (message.RequestId is not null && _requests.Remove(message.RequestId, out var request)) request.TrySetResult(message);
                     break;
@@ -241,7 +255,7 @@ public partial class JsonToolWindow : Window
     {
         try
         {
-            await SendEditorCommandAsync("initialize", new { theme = _theme == EffectiveTheme.Dark ? "vs-dark" : "vs", indentSize = 2 });
+            await SendEditorCommandAsync("initialize", new { theme = _theme == EffectiveTheme.Dark ? "vs-dark" : "vs", indentSize = _settings.Current.JsonIndentSize });
             if (_current is not null) await SendEditorCommandAsync("openDocument", new { documentId = _current.DocumentId.ToString(), content = _current.Content, language = "json" });
             UpdateStatus();
         }
@@ -289,10 +303,10 @@ public partial class JsonToolWindow : Window
     {
         var session = _current;
         if (session is null || _inDiffMode) return;
+        var contentVersion = _contentVersion;
         await _saveGate.WaitAsync(_lifetime.Token);
         try
         {
-            _editorContent = content;
             _saveState = SaveState.Saving;
             UpdateStatus();
             await _documents.SaveAsync(session.DocumentId, content, session.Revision, _lifetime.Token);
@@ -300,8 +314,17 @@ public partial class JsonToolWindow : Window
             if (_current?.DocumentId == session.DocumentId)
             {
                 _current = refreshed;
-                _editorContent = refreshed.Content;
-                _saveState = SaveState.Clean;
+                if (_contentVersion == contentVersion)
+                {
+                    _editorContent = refreshed.Content;
+                    _saveState = SaveState.Clean;
+                }
+                else
+                {
+                    _saveState = SaveState.Dirty;
+                    _autosave.Stop();
+                    _autosave.Start();
+                }
                 UpdateStatus();
             }
         }
@@ -364,7 +387,7 @@ public partial class JsonToolWindow : Window
     private async Task UnfoldLevelAsync()
     {
         _foldDepth = _foldDepth == 7 ? 1 : _foldDepth + 1;
-        await SendEditorCommandAsync("unfoldLevel", new { });
+        await SendEditorCommandAsync("unfoldLevel", new { level = _foldDepth });
         SaveStateStatus.Text = $"已展开至第 {_foldDepth} 层";
     }
 
@@ -408,9 +431,31 @@ public partial class JsonToolWindow : Window
     private async Task ImportDropAsync(System.Windows.DragEventArgs eventArgs)
     {
         if (eventArgs.Data.GetData(WpfDataFormats.FileDrop) is not string[] paths) return;
-        await _documents.ImportAsync(paths.Where(path => string.Equals(Path.GetExtension(path), ".json", StringComparison.OrdinalIgnoreCase)), _lifetime.Token);
+        var jsonPaths = paths.Where(path => string.Equals(Path.GetExtension(path), ".json", StringComparison.OrdinalIgnoreCase)).ToArray();
+        await _documents.ImportAsync(jsonPaths, _lifetime.Token);
         await RefreshDocumentsAsync();
-        SaveStateStatus.Text = "导入完成";
+        SaveStateStatus.Text = jsonPaths.Length == paths.Length ? "导入完成" : "已导入 JSON 文件；非 JSON 文件已忽略";
+    }
+
+    private void Documents_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e) => _dragStart = e.GetPosition(Documents);
+
+    private void Documents_PreviewMouseMove(object sender, System.Windows.Input.MouseEventArgs e)
+    {
+        if (e.LeftButton != MouseButtonState.Pressed || Documents.SelectedItem is not DocumentListItem item) return;
+        var position = e.GetPosition(Documents);
+        if (Math.Abs(position.X - _dragStart.X) < SystemParameters.MinimumHorizontalDragDistance && Math.Abs(position.Y - _dragStart.Y) < SystemParameters.MinimumVerticalDragDistance) return;
+        DragDrop.DoDragDrop(Documents, new System.Windows.DataObject(typeof(DocumentListItem), item), System.Windows.DragDropEffects.Move);
+    }
+
+    private async void Documents_Drop(object sender, System.Windows.DragEventArgs e)
+    {
+        if (!e.Data.GetDataPresent(typeof(DocumentListItem)) || e.Data.GetData(typeof(DocumentListItem)) is not DocumentListItem source) return;
+        var targetElement = ItemsControl.ContainerFromElement(Documents, e.OriginalSource as DependencyObject) as ListBoxItem;
+        var target = targetElement?.DataContext as DocumentListItem;
+        if (target is null || target.Id == source.Id) return;
+        await _documents.ReorderAsync(source.Id, Array.IndexOf(_items.ToArray(), target), _lifetime.Token);
+        await RefreshDocumentsAsync();
+        Documents.SelectedItem = _items.Single(item => item.Id == source.Id);
     }
 
     private void OnExternalDocumentChanged(object? sender, JsonDocumentExternalChange change)
@@ -521,16 +566,21 @@ public partial class JsonToolWindow : Window
     private void OnShortcut(object sender, System.Windows.Input.KeyEventArgs e)
     {
         if (e.IsRepeat || Keyboard.Modifiers != ModifierKeys.Alt || Keyboard.IsKeyDown(Key.RightAlt)) return;
-        var command = e.Key switch
+        if (ExecuteAltShortcut(e.Key.ToString())) e.Handled = true;
+    }
+
+    private bool ExecuteAltShortcut(string? key)
+    {
+        var command = key?.ToUpperInvariant() switch
         {
-            Key.A => JsonCommand.New, Key.S => JsonCommand.Save, Key.F => JsonCommand.Format,
-            Key.C => JsonCommand.CopyText, Key.X => JsonCommand.CopyMinified, Key.V => JsonCommand.CopyFile,
-            Key.E => JsonCommand.UnfoldAll, Key.R => JsonCommand.FoldAll, Key.D => JsonCommand.UnfoldLevel,
-            Key.Q => JsonCommand.EnterDiff, _ => (JsonCommand?)null,
+            "A" => JsonCommand.New, "S" => JsonCommand.Save, "F" => JsonCommand.Format,
+            "C" => JsonCommand.CopyText, "X" => JsonCommand.CopyMinified, "V" => JsonCommand.CopyFile,
+            "E" => JsonCommand.UnfoldAll, "R" => JsonCommand.FoldAll, "D" => JsonCommand.UnfoldLevel,
+            "Q" => JsonCommand.EnterDiff, _ => (JsonCommand?)null,
         };
-        if (command is null) return;
-        e.Handled = true;
+        if (command is null) return false;
         _ = ExecuteAsync(command.Value);
+        return true;
     }
 
     private static bool IsJson(string content) { try { JsonDocument.Parse(content); return true; } catch (JsonException) { return false; } }
@@ -564,7 +614,7 @@ public partial class JsonToolWindow : Window
     private sealed record DocumentListItem(JsonDocumentId Id, string FileName, string DisplayName);
     private sealed record BridgeMessage(string Type, string? RequestId, JsonElement Payload)
     {
-        private static readonly HashSet<string> Types = ["ready", "contentChanged", "cursorChanged", "validationChanged", "saveRequested", "editorFocused", "commandResult"];
+        private static readonly HashSet<string> Types = ["ready", "contentChanged", "cursorChanged", "validationChanged", "saveRequested", "shortcut", "editorFocused", "commandResult"];
         public static bool TryParse(JsonElement root, out BridgeMessage message)
         {
             message = default!;

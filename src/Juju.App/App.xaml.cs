@@ -12,6 +12,7 @@ using Juju.Tools.Json.Metadata;
 using Juju.Tools.Json.Storage;
 using Juju.App.Bootstrap;
 using Juju.App.Services;
+using Juju.Platform.Windows.Startup;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
@@ -33,7 +34,6 @@ public partial class App : System.Windows.Application
         _mutex = new Mutex(true, InstanceName, out var firstInstance);
         if (!firstInstance) { await ActivateExistingInstanceAsync(); Shutdown(); return; }
         _shutdown = new CancellationTokenSource();
-        var localRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "juju");
         var writer = new AtomicFileWriter();
         var settings = new SettingsService(writer);
         await settings.LoadAsync(_shutdown.Token);
@@ -54,9 +54,10 @@ public partial class App : System.Windows.Application
         services.AddSingleton<WindowStateService>();
         services.AddSingleton<ThemeService>();
         services.AddSingleton<IJsonFileClipboard, JsonFileClipboard>();
+        services.AddSingleton<IStartupService, StartupService>();
         services.AddSingleton<IWindowManager>(provider => provider.GetRequiredService<DesktopWindowManager>());
         services.AddSingleton<IToolManager, ToolManager>();
-        services.AddLogging(builder => builder.AddProvider(new RollingFileLoggerProvider(Path.Combine(localRoot, "logs"))));
+        services.AddLogging(builder => builder.AddProvider(new RollingFileLoggerProvider(Path.Combine(ApplicationPaths.ApplicationDataDirectory, "logs"))));
         services.AddSingleton<TrayService>(provider => new TrayService(provider.GetRequiredService<IWindowManager>(), provider.GetRequiredService<IToolManager>(), () => _ = ExitAsync()));
         services.AddSingleton<IAppLifecycle, DesktopAppLifecycle>();
         _services = services.BuildServiceProvider();

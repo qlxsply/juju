@@ -75,6 +75,7 @@ export type EditorEvent =
   | "cursorChanged"
   | "validationChanged"
   | "saveRequested"
+  | "shortcut"
   | "editorFocused"
   | "commandResult";
 

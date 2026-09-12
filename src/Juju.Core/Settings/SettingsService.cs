@@ -13,7 +13,7 @@ public interface ISettingsService
 public sealed class SettingsService(IAtomicFileWriter writer) : ISettingsService
 {
     private static readonly JsonSerializerOptions Options = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase, WriteIndented = true };
-    private readonly string _path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "juju", "config.json");
+    private readonly string _path = ApplicationPaths.ConfigurationFile;
     public AppSettings Current { get; private set; } = AppSettings.CreateDefault();
     public async Task LoadAsync(CancellationToken cancellationToken = default)
     {

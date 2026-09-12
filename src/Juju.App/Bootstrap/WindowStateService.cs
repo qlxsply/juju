@@ -8,7 +8,7 @@ namespace Juju.App.Bootstrap;
 
 public sealed class WindowStateService(IAtomicFileWriter writer)
 {
-    private readonly string _path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "juju", "window-state.json");
+    private readonly string _path = Path.Combine(ApplicationPaths.ApplicationDataDirectory, "window-state.json");
     private Dictionary<string, WindowPlacement> _placements = [];
 
     public async Task LoadAsync(CancellationToken cancellationToken) => _placements = File.Exists(_path)
