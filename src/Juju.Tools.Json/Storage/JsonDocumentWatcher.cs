@@ -3,13 +3,17 @@ using Juju.Tools.Json.Documents;
 
 namespace Juju.Tools.Json.Storage;
 
-/// <summary>Debounces noisy filesystem notifications and suppresses the revision written by this process.</summary>
+/// <summary>
+/// 对嘈杂的文件系统通知去抖，并抑制本进程刚写入的版本。它实现 <see cref="IAsyncDisposable"/>，
+/// 因而拥有者应使用 <c>await using</c> 或显式等待释放，以关闭观察器和定时器。
+/// </summary>
 public sealed class JsonDocumentWatcher : IAsyncDisposable
 {
     private readonly string _directory;
     private readonly DocumentRevisionService _revisions;
     private readonly Func<string, JsonDocumentId?> _documentIdForFile;
 
+    // 观察器回调与定时器并发运行，使用并发字典而非普通 Dictionary 加 lock。
     private readonly ConcurrentDictionary<string, (DocumentRevision Revision, int Events)> _selfWrites =
         new(StringComparer.OrdinalIgnoreCase);
 
@@ -40,27 +44,39 @@ public sealed class JsonDocumentWatcher : IAsyncDisposable
         _watcher.Renamed += OnRenamed;
     }
 
+    /// <summary>确认来自外部的文档变更，经过去抖和自身写入过滤后触发。</summary>
     public event EventHandler<JsonDocumentExternalChange>? Changed;
+
+    /// <summary>在原子写入前登记短暂意图，以忽略替换过程虚假的删除通知。</summary>
     public void MarkSelfWrite(string path) => _selfWriteIntents[path] = DateTimeOffset.UtcNow.AddSeconds(1);
 
+    /// <summary>在写入完成后登记其版本；相同版本的后续观察器事件会被消耗而非发布。</summary>
     public void RegisterSelfWrite(string path, DocumentRevision revision) =>
         _selfWrites.AddOrUpdate(path, (revision, 1), (_, current) => (revision, current.Events + 1));
 
+    /// <summary>接收创建和修改通知；删除交由协调流程恢复，因为 NTFS 原子替换会产生不可靠事件对。</summary>
     private void OnChanged(object sender, FileSystemEventArgs e)
     {
-        // Atomic replacement produces unreliable delete/create pairs on NTFS; reconciliation owns deletion recovery.
+        // NTFS 原子替换会产生不可靠的删除/创建对；协调流程拥有删除恢复的最终决定权。
         if (e.ChangeType != WatcherChangeTypes.Deleted) Queue(e.FullPath, e.ChangeType, null);
     }
 
+    /// <summary>将重命名的新路径入队，同时用旧文件名解析原文档 ID。</summary>
     private void OnRenamed(object sender, RenamedEventArgs e) => Queue(e.FullPath, e.ChangeType,
         _documentIdForFile(Path.GetFileName(e.OldFullPath)));
 
+    /// <summary>覆盖同一路径的待处理项并重置 150ms 定时器，实现末次事件去抖。</summary>
     private void Queue(string path, WatcherChangeTypes change, JsonDocumentId? id)
     {
         _pending[path] = (change, id);
         _timer.Change(150, Timeout.Infinite);
     }
 
+    /// <summary>
+    /// 在定时器触发后异步确认每项变更。删除会额外等待文件替换窗口；读取版本失败的 IO 通常是
+    /// 原子替换中的短暂状态，留给后续事件或协调过程处理。此后台任务没有取消令牌，因为观察器
+    /// 生命周期由 <see cref="DisposeAsync"/> 终止。
+    /// </summary>
     private async Task PublishAsync()
     {
         foreach (var item in _pending.ToArray())
@@ -69,17 +85,18 @@ public sealed class JsonDocumentWatcher : IAsyncDisposable
             var kind = pending.Kind;
             var id = pending.Id ?? _documentIdForFile(Path.GetFileName(item.Key));
             if (id is null) continue;
-            // Atomic replacement can transiently surface as Deleted before the replacement file appears.
+            // 原子替换时，新文件出现前可能暂时报告 Deleted。
             if (kind == WatcherChangeTypes.Deleted)
             {
                 await Task.Delay(300).ConfigureAwait(false);
                 if (!File.Exists(item.Key))
                 {
-                    // Windows can report the removal half of an atomic replacement after the new file event.
+                    // Windows 甚至可能在新文件事件之后才报告原子替换的移除半边。
                     if (_selfWriteIntents.TryGetValue(item.Key, out var intent) &&
                         intent >= DateTimeOffset.UtcNow) continue;
                     _selfWrites.TryRemove(item.Key, out _);
-                    Changed?.Invoke(this, new(id.Value, ExternalDocumentChangeKind.Deleted, null));
+                    Changed?.Invoke(this,
+                        new JsonDocumentExternalChange(id.Value, ExternalDocumentChangeKind.Deleted, null));
                     continue;
                 }
             }
@@ -95,14 +112,14 @@ public sealed class JsonDocumentWatcher : IAsyncDisposable
                 }
 
                 Changed?.Invoke(this,
-                    new(id.Value,
+                    new JsonDocumentExternalChange(id.Value,
                         kind == WatcherChangeTypes.Renamed
                             ? ExternalDocumentChangeKind.Renamed
                             : ExternalDocumentChangeKind.Changed, revision));
             }
             catch (IOException)
             {
-                /* A transient atomic replacement will be reconciled by its follow-up event. */
+                /* 原子替换造成的短暂读取失败会由其后续事件或协调流程修复。 */
             }
         }
 
@@ -110,6 +127,7 @@ public sealed class JsonDocumentWatcher : IAsyncDisposable
             _selfWriteIntents.TryRemove(intent.Key, out _);
     }
 
+    /// <summary>同步释放 FileSystemWatcher 和 Timer；返回完成的 ValueTask 以满足异步释放契约。</summary>
     public ValueTask DisposeAsync()
     {
         _watcher.Dispose();

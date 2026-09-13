@@ -5,6 +5,7 @@ using Juju.Platform.Windows.Startup;
 
 namespace Juju.App.Settings;
 
+// 设置节由 DI 作为 ISettingsSection 的一个实现收集，并在 SettingsWindow 中动态组合。
 public sealed class SystemSettingsSection : ISettingsSection
 {
     private readonly System.Windows.Controls.CheckBox _startAtLogin = new() { Content = "开机自动启动" };
@@ -19,6 +20,7 @@ public sealed class SystemSettingsSection : ISettingsSection
     private readonly ThemeService _themes;
     private readonly IStartupService _startup;
 
+    // with 为 record 的非破坏性复制：保留未编辑字段，只创建包含新值的 AppSettings 实例。
     public async Task SaveAsync()
     {
         var value = _settings.Current with
@@ -33,6 +35,7 @@ public sealed class SystemSettingsSection : ISettingsSection
         _themes.Apply(value.Theme);
     }
 
+    // 构造函数注入使此 UI 适配器依赖抽象服务，而不是自行创建配置、主题或注册表访问对象。
     public SystemSettingsSection(ISettingsService settings, ThemeService themes, IStartupService startup)
     {
         _settings = settings;
@@ -53,6 +56,7 @@ public sealed class SystemSettingsSection : ISettingsSection
         _theme.SelectedIndex = (int)current.Theme;
     }
 
+    // 此页面以代码生成控件而非 XAML；仍使用标准 WPF 视觉树与布局容器。
     private static void AddField(System.Windows.Controls.Panel panel, string label,
         System.Windows.Controls.Control control)
     {

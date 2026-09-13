@@ -2,6 +2,7 @@ using Juju.Core.Errors;
 
 namespace Juju.Tools.Json.Storage;
 
+/// <summary>JSON 文档文件名的规范化和安全验证工具，集中阻止路径穿越与 Windows 保留设备名。</summary>
 public static class JsonDocumentName
 {
     private static readonly HashSet<string> Reserved = new(StringComparer.OrdinalIgnoreCase)
@@ -10,6 +11,10 @@ public static class JsonDocumentName
         "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9"
     };
 
+    /// <summary>
+    /// 去除首尾空白、补齐扩展名并拒绝空名称、无效字符、目录分隔符和保留名称。
+    /// 验证发生在路径组合前，是抵御 <c>..</c> 路径穿越的第一层防线。
+    /// </summary>
     public static string Normalize(string name)
     {
         var value = name.Trim();
@@ -21,5 +26,6 @@ public static class JsonDocumentName
         return value;
     }
 
+    /// <summary>返回供 UI 展示的无扩展名部分，不承担安全验证职责。</summary>
     public static string DisplayName(string fileName) => Path.GetFileNameWithoutExtension(fileName);
 }

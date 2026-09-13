@@ -7,6 +7,7 @@ using MediaBrushes = System.Windows.Media.Brushes;
 
 namespace Juju.App.Settings;
 
+// JSON 设置页以运行时创建的 WPF 控件实现，并通过 ISettingsSection 接口被 SettingsWindow 发现。
 public sealed class JsonSettingsSection : ISettingsSection
 {
     private readonly IJsonToolSettingsService _settings;
@@ -23,6 +24,7 @@ public sealed class JsonSettingsSection : ISettingsSection
     public string DisplayName => "JSON";
     public FrameworkElement View { get; } = new StackPanel { Margin = new Thickness(16) };
 
+    // 设置服务由 DI 注入；控件只编辑内存中的行模型，点击总保存时才写入持久化配置。
     public JsonSettingsSection(IJsonToolSettingsService settings)
     {
         _settings = settings;
@@ -37,10 +39,12 @@ public sealed class JsonSettingsSection : ISettingsSection
         panel.Children.Add(_filter);
         _rows = JsonToolShortcuts.Definitions
             .Select(definition => new ShortcutRow(definition, settings.Current.Shortcuts[definition.Command])).ToList();
+        // TextChanged 是 WPF 事件；每次过滤重建可见行，但保留 _rows 中的编辑值。
         _filter.TextChanged += (_, _) => RefreshShortcutRows();
         panel.Children.Add(CreateShortcutTable());
     }
 
+    // 目标设置是 record 风格的不可变值；对象初始化器仅替换 Shortcuts 属性。
     public Task SaveAsync() => _settings.SaveAsync(new(ReadNumber(_autosave, 100, 10000), ReadNumber(_indent, 1, 8))
     {
         Shortcuts = _rows.ToDictionary(row => row.Command, row => row.Shortcut)
@@ -75,6 +79,7 @@ public sealed class JsonSettingsSection : ISettingsSection
             { BorderBrush = MediaBrushes.LightSteelBlue, BorderThickness = new Thickness(1), Child = table };
     }
 
+    // 这里重建的是视觉行而不是数据模型，所以过滤和重置不会丢失未保存的 ShortcutRow。
     private void RefreshShortcutRows()
     {
         _shortcutRows.Children.Clear();
@@ -87,6 +92,7 @@ public sealed class JsonSettingsSection : ISettingsSection
             AddTextCell(grid, row.Context, 2);
 
             var shortcut = new System.Windows.Controls.TextBox { MinHeight = 26, Text = row.Shortcut };
+            // 事件直接同步行模型；INotifyPropertyChanged 则供任何绑定消费者观察后续变化。
             shortcut.TextChanged += (_, _) => row.Shortcut = shortcut.Text;
             AddCell(grid, shortcut, 3);
 
@@ -162,6 +168,7 @@ public sealed class JsonSettingsSection : ISettingsSection
             ? value
             : throw new InvalidOperationException($"{box.Text} 不是有效范围内的数字。");
 
+    // C# 主构造函数把只用于初始化的参数放在类型声明处；Java 中可理解为简化的构造函数和字段赋值。
     private sealed class ShortcutRow(JsonToolCommandMetadata definition, string shortcut) : INotifyPropertyChanged
     {
         private string _shortcut = shortcut;
@@ -183,6 +190,7 @@ public sealed class JsonSettingsSection : ISettingsSection
             {
                 if (_shortcut == value) return;
                 _shortcut = value;
+                // 标准 .NET 属性变更通知，作用类似 JavaBeans PropertyChangeSupport。
                 PropertyChanged?.Invoke(this, new(nameof(Shortcut)));
             }
         }

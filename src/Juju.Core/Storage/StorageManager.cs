@@ -4,59 +4,84 @@ using Juju.Core.Errors;
 
 namespace Juju.Core.Storage;
 
+/// <summary>来自其他进程的文件系统变更，以数据根目录内的相对路径传递给订阅者。</summary>
 public sealed record StorageExternalChange(string RelativePath, WatcherChangeTypes ChangeType);
 
+/// <summary>
+/// 数据根目录的异步生命周期和受限文件访问契约。继承 <see cref="IAsyncDisposable"/> 表示实现
+/// 可能拥有需异步停止的资源；调用方应优先使用 <c>await using</c>。
+/// </summary>
 public interface IStorageManager : IAsyncDisposable
 {
+    /// <summary>已验证数据根目录；尚未初始化时为 null。</summary>
     string? DataRoot { get; }
+
+    /// <summary>最近一次可恢复的存储 IO 失败后为 false。</summary>
     bool IsAvailable { get; }
+
+    /// <summary>经过去抖并排除本进程写入后的外部文件变更事件。</summary>
     event EventHandler<StorageExternalChange>? ExternalChanged;
+
+    /// <summary>验证、必要时初始化并切换至数据根目录。</summary>
     Task InitializeAsync(string dataRoot, CancellationToken cancellationToken = default);
+
+    /// <summary>验证并使用既有数据根目录，当前实现也允许初始化空目录。</summary>
     Task UseExistingDataRootAsync(string dataRoot, CancellationToken cancellationToken = default);
+
+    /// <summary>复制并校验所有数据文件后切换根目录，源目录会被保留。</summary>
     Task MigrateToAsync(string destination, CancellationToken cancellationToken = default);
+
+    /// <summary>由相对片段得到根目录内路径，并拒绝路径穿越。</summary>
     string GetPath(params string[] segments);
+
+    /// <summary>异步读取根目录内文本，IO 错误转换为领域异常。</summary>
     Task<string> ReadTextAsync(string relativePath, CancellationToken cancellationToken = default);
+
+    /// <summary>原子异步写入根目录内文本，并标记为本进程写入。</summary>
     Task WriteTextAsync(string relativePath, string content, CancellationToken cancellationToken = default);
 }
 
-public sealed class StorageManager : IStorageManager
+/// <summary>
+/// 协调数据根目录切换、文件读写和外部变更通知。并发字典服务于回调线程，
+/// <see cref="SemaphoreSlim"/> 则串行化会改变根目录和观察器的异步操作。
+/// </summary>
+public sealed class StorageManager(DataRootService roots, IAtomicFileWriter writer) : IStorageManager
 {
-    private readonly DataRootService _roots;
-    private readonly IAtomicFileWriter _writer;
+    // 异步锁不能用 C# lock 替代；lock 无法跨 await 保持所有权。
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly ConcurrentDictionary<string, DateTimeOffset> _selfWrites = new(StringComparer.OrdinalIgnoreCase);
     private FileSystemWatcher? _watcher;
     private Timer? _debounce;
     private readonly ConcurrentDictionary<string, WatcherChangeTypes> _pending = new(StringComparer.OrdinalIgnoreCase);
 
-    public StorageManager(DataRootService roots, IAtomicFileWriter writer)
-    {
-        _roots = roots;
-        _writer = writer;
-    }
-
     public string? DataRoot { get; private set; }
     public bool IsAvailable { get; private set; }
     public event EventHandler<StorageExternalChange>? ExternalChanged;
 
+    /// <summary>切换到可初始化的数据根目录。</summary>
     public Task InitializeAsync(string dataRoot, CancellationToken cancellationToken = default) =>
         SwitchAsync(dataRoot, true, cancellationToken);
 
+    /// <summary>切换到经过验证的已有数据根目录。</summary>
     public Task UseExistingDataRootAsync(string dataRoot, CancellationToken cancellationToken = default) =>
         SwitchAsync(dataRoot, true, cancellationToken);
 
+    /// <summary>
+    /// 将源目录复制到空目标目录，逐文件比较 SHA-256 和长度，全部成功后才切换活动根目录。
+    /// 文件流使用异步 IO 与写穿透，取消会在文件边界和复制操作中传播。
+    /// </summary>
     public async Task MigrateToAsync(string destination, CancellationToken cancellationToken = default)
     {
         var source = DataRoot ??
                      throw new JujuException(ErrorCode.DataRootUnavailable, "No data root is available to migrate.");
-        var target = await _roots.ValidateAsync(destination, false, cancellationToken);
+        var target = await roots.ValidateAsync(destination, false, cancellationToken);
         if (target.Path is null ||
             (Directory.Exists(target.Path) && Directory.EnumerateFileSystemEntries(target.Path).Any()))
             throw new JujuException(ErrorCode.DataRootInvalid, "The migration destination must be an empty directory.");
         if (target.Path.StartsWith(source + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
             throw new JujuException(ErrorCode.DataRootInvalid,
                 "The migration destination cannot be inside the source data root.");
-        await _roots.EnsureInitializedAsync(target.Path, cancellationToken);
+        await roots.EnsureInitializedAsync(target.Path, cancellationToken);
         try
         {
             foreach (var file in Directory.EnumerateFiles(source, "*", SearchOption.AllDirectories))
@@ -88,9 +113,10 @@ public sealed class StorageManager : IStorageManager
         catch
         {
             throw;
-        } // Source is intentionally retained after failed or successful migration.
+        } // 即使迁移成功也保留源目录；失败时也不尝试破坏性清理。
     }
 
+    /// <summary>组合后再规范化完整路径，防止 <c>..</c> 或绝对片段逃出数据根目录。</summary>
     public string GetPath(params string[] segments)
     {
         var root = DataRoot ?? throw new JujuException(ErrorCode.DataRootUnavailable, "The data root is unavailable.");
@@ -101,6 +127,7 @@ public sealed class StorageManager : IStorageManager
         return path;
     }
 
+    /// <summary>读取文本；取消不包装，以便调用方能按常规取消语义处理。</summary>
     public async Task<string> ReadTextAsync(string relativePath, CancellationToken cancellationToken = default)
     {
         try
@@ -118,12 +145,13 @@ public sealed class StorageManager : IStorageManager
         }
     }
 
+    /// <summary>通过原子写入器保存文本，并暂时抑制随后的自身文件观察器事件。</summary>
     public async Task WriteTextAsync(string relativePath, string content, CancellationToken cancellationToken = default)
     {
         var path = GetPath(relativePath);
         try
         {
-            await _writer.WriteTextAsync(path, content, cancellationToken);
+            await writer.WriteTextAsync(path, content, cancellationToken);
             _selfWrites[path] = DateTimeOffset.UtcNow.AddSeconds(2);
         }
         catch (OperationCanceledException)
@@ -137,12 +165,13 @@ public sealed class StorageManager : IStorageManager
         }
     }
 
+    /// <summary>在异步互斥锁内验证根目录、重建观察器，并确保锁在异常或取消时释放。</summary>
     private async Task SwitchAsync(string root, bool initializeEmpty, CancellationToken cancellationToken)
     {
         await _gate.WaitAsync(cancellationToken);
         try
         {
-            var validated = await _roots.ValidateAsync(root, initializeEmpty, cancellationToken);
+            var validated = await roots.ValidateAsync(root, initializeEmpty, cancellationToken);
             if (!validated.IsValid)
                 throw new JujuException(
                     validated.Path is null ? ErrorCode.DataRootUnavailable : ErrorCode.DataRootInvalid,
@@ -170,6 +199,7 @@ public sealed class StorageManager : IStorageManager
     private void OnWatcher(object sender, FileSystemEventArgs e) => Queue(e.FullPath, e.ChangeType);
     private void OnRenamed(object sender, RenamedEventArgs e) => Queue(e.FullPath, e.ChangeType);
 
+    /// <summary>合并短时间内同一路径的嘈杂通知，延迟后只发布最终一次变更。</summary>
     private void Queue(string path, WatcherChangeTypes change)
     {
         if (_selfWrites.TryGetValue(path, out var until) && until >= DateTimeOffset.UtcNow) return;
@@ -178,6 +208,7 @@ public sealed class StorageManager : IStorageManager
         _debounce.Change(150, Timeout.Infinite);
     }
 
+    /// <summary>在定时器线程提取待发布项，并清理过期的自身写入抑制标记。</summary>
     private void PublishChanges()
     {
         foreach (var item in _pending.ToArray())
@@ -187,6 +218,7 @@ public sealed class StorageManager : IStorageManager
             _selfWrites.TryRemove(entry.Key, out _);
     }
 
+    /// <summary>异步流式计算文件 SHA-256，避免为完整文件额外分配内存。</summary>
     private static async Task<byte[]> HashAsync(string path, CancellationToken cancellationToken)
     {
         await using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 81920,
@@ -194,6 +226,10 @@ public sealed class StorageManager : IStorageManager
         return await SHA256.HashDataAsync(stream, cancellationToken);
     }
 
+    /// <summary>
+    /// 停止非托管文件观察器和定时器并释放异步锁。当前清理本身无需等待，故返回已完成的
+    /// <see cref="ValueTask"/>，避免为同步完成路径分配 <see cref="Task"/>。
+    /// </summary>
     public ValueTask DisposeAsync()
     {
         _watcher?.Dispose();

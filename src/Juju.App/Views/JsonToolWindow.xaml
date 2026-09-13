@@ -1,25 +1,32 @@
-<!-- WindowChrome supplies resizing and snap behavior while this view draws its own title bar. -->
-<Window x:Class="Juju.App.JsonToolWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+<!-- JSON 工具窗口自绘标题栏；WindowChrome 保留系统的调整大小和贴靠行为。 -->
+<Window x:Class="Juju.App.Views.JsonToolWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework" Title=""
         Icon="/Assets/json.ico" AutomationProperties.Name="JSON 工具" Width="1200" Height="760" MinWidth="900"
         MinHeight="600" AllowDrop="True" WindowStyle="None" ResizeMode="CanResize" Background="White">
+    <!-- AutomationProperties.Name 为屏幕阅读器提供窗口名称；AllowDrop 允许窗口及子控件参与文件拖放。初始和最小尺寸确保双栏编辑区可用。 -->
+    <!-- WindowStyle=None 隐藏系统标题栏；CaptionHeight=48 对应下方自绘栏，ResizeBorderThickness=6 是可拖拽缩放的边缘宽度。 -->
     <shell:WindowChrome.WindowChrome>
         <shell:WindowChrome CaptionHeight="48" ResizeBorderThickness="6" GlassFrameThickness="0"
                             UseAeroCaptionButtons="False" />
     </shell:WindowChrome.WindowChrome>
     <Window.Resources>
+        <!-- 最小化、最大化按钮共享的无边框标题栏样式；ControlTemplate 取代默认 Button 外观。 -->
         <Style x:Key="WindowActionButton" TargetType="Button">
+            <!-- 透明表面让按钮融入标题栏，前景色和字号控制符号的初始呈现。 -->
             <Setter Property="Foreground" Value="#1F2937" /><Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderBrush" Value="Transparent" /><Setter Property="BorderThickness" Value="0" />
             <Setter Property="FontSize" Value="15" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
+                        <!-- TemplateBinding 将具体按钮的 Background 传给命名 Border，便于触发器只改变表面。 -->
                         <Border x:Name="Surface" Background="{TemplateBinding Background}">
+                            <!-- ContentPresenter 在按钮中心显示 Unicode 图标 Content。 -->
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
                         </Border>
                         <ControlTemplate.Triggers>
+                            <!-- 悬停和按下状态分别使用较浅、较深的灰色，反馈不改变布局。 -->
                             <Trigger Property="IsMouseOver" Value="True">
                                 <Setter TargetName="Surface" Property="Background" Value="#E5E7EB" />
                             </Trigger>
@@ -31,6 +38,7 @@
                 </Setter.Value>
             </Setter>
         </Style>
+        <!-- 关闭按钮在基础窗口操作样式上叠加危险操作的红色悬停/按下状态。 -->
         <Style x:Key="CloseWindowActionButton" TargetType="Button" BasedOn="{StaticResource WindowActionButton}">
             <Style.Triggers>
                 <Trigger Property="IsMouseOver" Value="True">
@@ -42,16 +50,21 @@
             </Style.Triggers>
         </Style>
     </Window.Resources>
-    <!-- DockPanel fixes title/status regions; the central Grid is the file-list/editor workspace. -->
+    <!-- DockPanel 固定顶部标题栏和底部状态栏；未停靠的中央 Grid 填满剩余编辑工作区。 -->
     <DockPanel>
+        <!-- 顶部 Grid 既是自绘标题栏也是拖动区域，MouseLeftButtonDown 由代码后置发起窗口拖动。 -->
         <Grid DockPanel.Dock="Top" Height="48" Background="#F4F6FA" MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
             <Grid.ColumnDefinitions>
+                <!-- 图标、菜单和窗口操作按钮区域固定；中间 * 列把窗口操作按钮推到右边缘。 -->
                 <ColumnDefinition Width="64" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" />
                 <ColumnDefinition Width="138" />
             </Grid.ColumnDefinitions>
+            <!-- 包内图标放在第一列；尺寸和 Margin 使其在 48 像素标题栏内居中。 -->
             <Image Grid.Column="0" Width="36" Height="36" Margin="14,6" Source="/Assets/json.ico" />
+            <!-- 菜单位于标题栏内；IsHitTestVisibleInChrome=True 令 Chrome 不拦截菜单的鼠标点击。 -->
             <Menu Grid.Column="1" VerticalAlignment="Center" Background="Transparent"
                   shell:WindowChrome.IsHitTestVisibleInChrome="True">
+                <!-- 每个 MenuItem 的 Tag 是统一命令处理器使用的命令标识，Click 交由 MenuCommand_Click 分派。 -->
                 <MenuItem Header="文件">
                     <MenuItem Header="新建" Tag="New" Click="MenuCommand_Click" />
                     <MenuItem Header="保存" Tag="Save" Click="MenuCommand_Click" /><Separator />
@@ -74,46 +87,60 @@
                     <MenuItem Header="退出对比" Tag="ExitDiff" Click="MenuCommand_Click" />
                 </MenuItem>
             </Menu>
+            <!-- 右侧横向 StackPanel 承载三枚窗口操作按钮，并标记为可在标题栏 Chrome 内接收点击。 -->
             <StackPanel Grid.Column="3" Orientation="Horizontal" HorizontalAlignment="Right"
                         shell:WindowChrome.IsHitTestVisibleInChrome="True">
+                <!-- 固定宽高与标题栏匹配；Content 是最小化符号，Click 调用对应窗口操作处理器。 -->
                 <Button Width="46" Height="48" Style="{StaticResource WindowActionButton}" Click="Minimize_Click"
                         Content="&#x2015;" ToolTip="最小化" />
+                <!-- Content 使用方框符号表示最大化；ToolTip 为鼠标悬停和辅助功能补充含义。 -->
                 <Button Width="46" Height="48" Style="{StaticResource WindowActionButton}" Click="Maximize_Click"
                         Content="&#x25A1;" ToolTip="最大化" />
+                <!-- 关闭按钮采用红色专用样式，Click 由代码后置关闭当前窗口。 -->
                 <Button Width="46" Height="48" Style="{StaticResource CloseWindowActionButton}" Click="Close_Click"
                         Content="&#x2715;" ToolTip="关闭" />
             </StackPanel>
         </Grid>
+        <!-- 底部 Border 通过上边框分隔状态栏与编辑区，固定 26 像素高度。 -->
         <Border DockPanel.Dock="Bottom" Height="26" Background="#F4F6FA" BorderBrush="#D9DEE8"
                 BorderThickness="0,1,0,0">
+            <!-- 内部 Grid 将保存状态、校验状态与右对齐光标位置分列显示。 -->
             <Grid Margin="8,0">
                 <Grid.ColumnDefinitions>
+                    <!-- 第一列固定给保存状态，第二列随内容宽度，第三列占余宽以把光标状态推到最右。 -->
                     <ColumnDefinition Width="100" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
+                <!-- 三个命名 TextBlock 由代码后置更新；初始文字向用户说明编辑器仍在准备。 -->
                 <TextBlock x:Name="SaveStateStatus" VerticalAlignment="Center" Text="正在加载编辑器..." />
                 <TextBlock x:Name="ValidationStatus" Grid.Column="1" VerticalAlignment="Center" Text="JSON: 未知" />
                 <TextBlock x:Name="CursorStatus" Grid.Column="2" HorizontalAlignment="Right" VerticalAlignment="Center"
                            Text="Ln 1, Col 1" />
             </Grid>
         </Border>
+        <!-- 工作区双栏 Grid：固定宽度的文档导航在左，嵌入式编辑器在右并占余宽。 -->
         <Grid>
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="220" /><ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
+            <!-- 左侧 DockPanel 先停靠筛选框，文档列表自动填满剩余垂直空间。 -->
             <DockPanel Grid.Column="0" Background="#F5F5F5">
+                <!-- TextChanged 在每次输入后刷新列表过滤结果；Padding 改善单行输入的可读性。 -->
                 <TextBox x:Name="DocumentFilter" DockPanel.Dock="Top" Height="28" Margin="0" Padding="6,3"
                          TextChanged="DocumentFilter_TextChanged" ToolTip="按文件名过滤" />
+                <!-- 文档列表允许拖放；选择、双击、键盘预览和鼠标拖动事件分别由代码后置处理打开、命令和重排。 -->
                 <ListBox x:Name="Documents" AllowDrop="True" SelectionChanged="Documents_SelectionChanged"
                          MouseDoubleClick="Documents_MouseDoubleClick" PreviewKeyDown="Documents_PreviewKeyDown"
                          PreviewMouseLeftButtonDown="Documents_PreviewMouseLeftButtonDown"
                          PreviewMouseMove="Documents_PreviewMouseMove" Drop="Documents_Drop">
                     <ListBox.ItemTemplate>
+                        <!-- 数据模板把每个文档项的 DisplayName 绑定为可见标签，而不是显示对象的默认字符串。 -->
                         <DataTemplate>
                             <TextBlock Text="{Binding DisplayName}" />
                         </DataTemplate>
                     </ListBox.ItemTemplate>
                 </ListBox>
             </DockPanel>
+            <!-- 空 Grid 是宿主容器，代码后置将 WebView/Monaco 编辑器附加到该列。 -->
             <Grid x:Name="EditorHost" Grid.Column="1" />
         </Grid>
     </DockPanel>
