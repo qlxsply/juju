@@ -38,7 +38,6 @@ public partial class LauncherWindow : Window
 
     public bool ApplySettings(AppSettings settings)
     {
-        ShortcutText.Text = settings.LeaderShortcut;
         _timeout.Interval = TimeSpan.FromMilliseconds(Math.Clamp(settings.LauncherTimeoutMilliseconds, 250, 30000));
         if (PresentationSource.FromVisual(this) is HwndSource source && !_shortcut.Register(source.Handle, settings.LeaderShortcut))
         {
@@ -79,6 +78,20 @@ public partial class LauncherWindow : Window
         var area = FormsScreen.FromPoint(FormsControl.MousePosition).WorkingArea;
         Left = Math.Clamp(area.Left + (area.Width - Width) / 2d, area.Left, area.Right - Width);
         Top = Math.Clamp(area.Top + (area.Height - Height) / 2d, area.Top, area.Bottom - Height);
+    }
+
+    private void TitleBar_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.OriginalSource == sender && e.LeftButton == MouseButtonState.Pressed) DragMove();
+    }
+
+    private void Settings_Click(object sender, RoutedEventArgs e) { _windows.ShowSettings(); Hide(); }
+
+    private void Tool_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not System.Windows.Controls.Button { Tag: string value } || !Enum.TryParse<ToolId>(value, out var tool)) return;
+        if (tool == ToolId.Json) { _windows.ShowTool(tool); Hide(); return; }
+        System.Windows.MessageBox.Show($"{value} 正在开发中。", "juju", MessageBoxButton.OK, MessageBoxImage.Information);
     }
 
     private IntPtr WindowProcedure(IntPtr hwnd, int message, IntPtr wParam, IntPtr lParam, ref bool handled)

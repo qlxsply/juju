@@ -17,6 +17,22 @@ export interface DocumentPayload {
 export interface InitializePayload {
   theme?: ThemeName;
   indentSize?: number;
+  monacoBindings?: MonacoBinding[];
+  jujuBindings?: JujuBinding[];
+}
+
+export type MonacoCommand = "Save" | "Format" | "FoldAll" | "UnfoldAll";
+export type JujuContext = "Editor" | "List" | "Diff";
+
+export interface MonacoBinding {
+  command: MonacoCommand;
+  shortcut: string;
+}
+
+export interface JujuBinding {
+  command: string;
+  shortcut: string;
+  context: JujuContext;
 }
 
 export interface OpenDocumentPayload extends DocumentPayload {

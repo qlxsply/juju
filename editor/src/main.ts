@@ -2,7 +2,7 @@ import EditorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
 import JsonWorker from "monaco-editor/esm/vs/language/json/json.worker?worker";
 import { Bridge } from "./bridge";
 import { EditorAdapter } from "./editor";
-import type { EnterDiffPayload, FoldLevelPayload, HostMessage, InitializePayload, OpenDocumentPayload, ReplaceContentPayload, ThemeName } from "./protocol";
+import type { EnterDiffPayload, FoldLevelPayload, HostMessage, InitializePayload, JujuBinding, MonacoBinding, OpenDocumentPayload, ReplaceContentPayload, ThemeName } from "./protocol";
 
 self.MonacoEnvironment = {
   getWorker(_, label) {
@@ -24,11 +24,10 @@ bridge.onMessage((message) => handleCommand(message));
 bridge.send("ready", {});
 
 window.addEventListener("keydown", (event) => {
-  if (!event.altKey || event.ctrlKey || event.shiftKey || event.repeat || event.location === KeyboardEvent.DOM_KEY_LOCATION_RIGHT) return;
-  const key = event.key.toUpperCase();
-  if (!new Set(["A", "S", "F", "C", "X", "V", "E", "R", "D", "Q"]).has(key)) return;
-  event.preventDefault();
-  bridge.send("shortcut", { key });
+  if (editor.handleShortcut(event)) {
+    event.preventDefault();
+    event.stopPropagation();
+  }
 }, true);
 
 async function handleCommand(message: HostMessage): Promise<void> {
@@ -70,7 +69,22 @@ function initializePayload(message: HostMessage): InitializePayload {
   const payload = objectPayload(message);
   if (payload.theme !== undefined && payload.theme !== "vs" && payload.theme !== "vs-dark") throw new Error("Invalid theme.");
   if (payload.indentSize !== undefined && (typeof payload.indentSize !== "number" || !Number.isInteger(payload.indentSize) || payload.indentSize < 1 || payload.indentSize > 8)) throw new Error("Invalid indent size.");
-  return payload as unknown as InitializePayload;
+  if (payload.monacoBindings !== undefined && !isMonacoBindings(payload.monacoBindings)) throw new Error("Invalid Monaco bindings.");
+  if (payload.jujuBindings !== undefined && !isJujuBindings(payload.jujuBindings)) throw new Error("Invalid Juju bindings.");
+  return payload as InitializePayload;
+}
+
+function isMonacoBindings(value: unknown): value is MonacoBinding[] {
+  return Array.isArray(value) && value.every((binding) => typeof binding === "object" && binding !== null
+    && ["Save", "Format", "FoldAll", "UnfoldAll"].includes((binding as Record<string, unknown>).command as string)
+    && typeof (binding as Record<string, unknown>).shortcut === "string");
+}
+
+function isJujuBindings(value: unknown): value is JujuBinding[] {
+  return Array.isArray(value) && value.every((binding) => typeof binding === "object" && binding !== null
+    && typeof (binding as Record<string, unknown>).command === "string"
+    && typeof (binding as Record<string, unknown>).shortcut === "string"
+    && ["Editor", "List", "Diff"].includes((binding as Record<string, unknown>).context as string));
 }
 
 function openDocumentPayload(message: HostMessage): OpenDocumentPayload {

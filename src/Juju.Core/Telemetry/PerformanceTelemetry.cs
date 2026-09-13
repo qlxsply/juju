@@ -15,7 +15,11 @@ public enum PerformanceOperation
     DocumentReconcile
 }
 
-public sealed record PerformanceMeasurement(PerformanceOperation Operation, TimeSpan Duration, long WorkingSetBytes, long ManagedMemoryBytes);
+public sealed record PerformanceMeasurement(
+    PerformanceOperation Operation,
+    TimeSpan Duration,
+    long WorkingSetBytes,
+    long ManagedMemoryBytes);
 
 public interface IPerformanceTelemetry
 {
@@ -55,13 +59,23 @@ public sealed class PerformanceTelemetry(ILogger<PerformanceTelemetry> logger) :
 public sealed class NullPerformanceTelemetry : IPerformanceTelemetry
 {
     public static NullPerformanceTelemetry Instance { get; } = new();
-    private NullPerformanceTelemetry() { }
+
+    private NullPerformanceTelemetry()
+    {
+    }
+
     public IDisposable Measure(PerformanceOperation operation) => EmptyDisposable.Instance;
-    public void RecordMemory(PerformanceOperation operation) { }
+
+    public void RecordMemory(PerformanceOperation operation)
+    {
+    }
 
     private sealed class EmptyDisposable : IDisposable
     {
         public static EmptyDisposable Instance { get; } = new();
-        public void Dispose() { }
+
+        public void Dispose()
+        {
+        }
     }
 }

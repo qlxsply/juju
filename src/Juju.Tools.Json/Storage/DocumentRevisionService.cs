@@ -11,6 +11,6 @@ public sealed class DocumentRevisionService
         var info = new FileInfo(path);
         var content = await File.ReadAllTextAsync(path, cancellationToken);
         var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(content)));
-        return new(info.Length, info.LastWriteTimeUtc, hash);
+        return new DocumentRevision(info.Length, info.LastWriteTimeUtc, hash);
     }
 }

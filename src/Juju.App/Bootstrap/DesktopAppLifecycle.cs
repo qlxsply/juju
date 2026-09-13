@@ -5,7 +5,14 @@ using Microsoft.Extensions.Logging;
 
 namespace Juju.App.Bootstrap;
 
-public sealed class DesktopAppLifecycle(IServiceProvider services, DesktopWindowManager windows, IRuntimeManager runtimes, ISettingsService settings, WindowStateService states, TrayService tray, ILogger<DesktopAppLifecycle> log) : IAppLifecycle
+public sealed class DesktopAppLifecycle(
+    IServiceProvider services,
+    DesktopWindowManager windows,
+    IRuntimeManager runtimes,
+    ISettingsService settings,
+    WindowStateService states,
+    TrayService tray,
+    ILogger<DesktopAppLifecycle> log) : IAppLifecycle
 {
     private int _stopping;
 

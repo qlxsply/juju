@@ -1,59 +1,57 @@
 using System.Windows;
-using Juju.App.Bootstrap;
-using Juju.Core.Settings;
-using Juju.Platform.Windows.Startup;
+using Juju.App.Settings;
 
 namespace Juju.App;
 
 public partial class SettingsWindow : Window
 {
-    private readonly ISettingsService _settings;
-    private readonly DataRootConfigurationService _roots;
-    private readonly ThemeService _themes;
-    private readonly LauncherWindow _launcher;
-    private readonly IStartupService _startup;
+    private readonly IReadOnlyList<ISettingsSection> _sections;
+    public bool AllowClose { get; set; }
 
-    public SettingsWindow(ISettingsService settings, DataRootConfigurationService roots, ThemeService themes, LauncherWindow launcher, IStartupService startup)
+    public SettingsWindow(IEnumerable<ISettingsSection> sections)
     {
-        _settings = settings; _roots = roots; _themes = themes; _launcher = launcher; _startup = startup;
+        _sections = sections.ToArray();
         InitializeComponent();
-        LoadSettings();
+        var roots = new[]
+        {
+            new SettingsTreeNode("基础", _sections.Where(section => section.Id == "system")),
+            new SettingsTreeNode("工具", _sections.Where(section => section.Id != "system"))
+        };
+        SettingsTree.ItemsSource = roots;
+        SectionContent.Content = _sections.FirstOrDefault(section => section.Id == "system")?.View;
     }
 
-    private void LoadSettings()
+    private void SettingsTree_SelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
     {
-        var current = _settings.Current;
-        StartAtLogin.IsChecked = current.StartAtLogin; Shortcut.Text = current.LeaderShortcut; Timeout.Text = current.LauncherTimeoutMilliseconds.ToString();
-        Theme.SelectedIndex = (int)current.Theme; DataRoot.Text = current.DataRoot; Autosave.Text = current.AutosaveDelayMilliseconds.ToString(); Indent.Text = current.JsonIndentSize.ToString();
+        if (e.NewValue is SettingsTreeNode { Section: { } section }) SectionContent.Content = section.View;
     }
-    private AppSettings ReadSettings() => _settings.Current with
-    {
-        StartAtLogin = StartAtLogin.IsChecked == true, LeaderShortcut = Shortcut.Text.Trim(),
-        LauncherTimeoutMilliseconds = ReadNumber(Timeout, 250, 30000), Theme = (ThemePreference)Math.Max(0, Theme.SelectedIndex),
-        DataRoot = DataRoot.Text.Trim(), AutosaveDelayMilliseconds = ReadNumber(Autosave, 100, 10000), JsonIndentSize = ReadNumber(Indent, 1, 8)
-    };
-    private static int ReadNumber(System.Windows.Controls.TextBox box, int minimum, int maximum) => int.TryParse(box.Text, out var value) && value >= minimum && value <= maximum ? value : throw new InvalidOperationException($"{box.Text} 不是有效范围内的数字。");
+
     private async void Save_Click(object sender, RoutedEventArgs e)
     {
-        try
-        {
-            var value = ReadSettings();
-            var validation = await _roots.ValidateAsync(value.DataRoot, false, CancellationToken.None);
-            if (!validation.IsValid) throw new InvalidOperationException(validation.Error);
-            value = value with { DataRoot = validation.Path! };
-            if (!_launcher.ApplySettings(value)) throw new InvalidOperationException("快捷键未保存，旧快捷键仍在使用。");
-            _startup.SetEnabled(value.StartAtLogin); await _settings.SaveAsync(value); _themes.Apply(value.Theme); Status.Text = "已保存";
-        }
+        try { if (SettingsTree.SelectedItem is SettingsTreeNode { Section: { } section }) await section.SaveAsync(); Status.Text = "已保存"; }
         catch (Exception ex) { Status.Text = "保存失败: " + ex.Message; }
     }
-    private async void UseDataRoot_Click(object sender, RoutedEventArgs e)
+
+    protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
     {
-        try { await _roots.UseAsync(DataRoot.Text.Trim(), CancellationToken.None); Status.Text = "DataRoot 已保存，下次启动时生效"; }
-        catch (Exception ex) { Status.Text = "无法使用 DataRoot: " + ex.Message; }
+        if (!AllowClose)
+        {
+            e.Cancel = true;
+            Hide();
+        }
+        base.OnClosing(e);
     }
-    private async void MigrateDataRoot_Click(object sender, RoutedEventArgs e)
-    {
-        try { await _roots.MigrateAsync(DataRoot.Text.Trim(), CancellationToken.None); Status.Text = "已迁移 DataRoot，下次启动时生效"; }
-        catch (Exception ex) { Status.Text = "迁移失败: " + ex.Message; }
-    }
+
+}
+
+// Public because SettingsWindow.xaml's HierarchicalDataTemplate binds to this type.
+public sealed class SettingsTreeNode
+{
+    public SettingsTreeNode(string name, IEnumerable<ISettingsSection> sections) { Name = name; Children = sections.Select(section => new SettingsTreeNode(section.DisplayName, section)).ToArray(); }
+    private SettingsTreeNode(string name, ISettingsSection section) { Name = name; Section = section; }
+    public string Name { get; }
+    public bool IsExpanded => Children.Count > 0;
+    public ISettingsSection? Section { get; }
+    public IReadOnlyList<SettingsTreeNode> Children { get; } = [];
+    public override string ToString() => Name;
 }

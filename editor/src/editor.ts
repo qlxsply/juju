@@ -5,6 +5,10 @@ import type {
   EnterDiffPayload,
   FoldLevelPayload,
   InitializePayload,
+  JujuBinding,
+  JujuContext,
+  MonacoBinding,
+  MonacoCommand,
   OpenDocumentPayload,
   ReplaceContentPayload,
   ThemeName,
@@ -19,12 +23,18 @@ export class EditorAdapter {
   private indentSize = 2;
   private inDiffMode = false;
   private suppressContentChanged = false;
+  private monacoBindings: MonacoBinding[] = [];
+  private jujuBindings: JujuBinding[] = [];
+  private pendingShortcut: string | null = null;
+  private pendingShortcutAt = 0;
 
   constructor(private readonly container: HTMLElement, private readonly bridge: Bridge) {}
 
   initialize(payload: InitializePayload): void {
     this.theme = payload.theme ?? this.theme;
     this.indentSize = payload.indentSize ?? this.indentSize;
+    this.monacoBindings = payload.monacoBindings ?? [];
+    this.jujuBindings = payload.jujuBindings ?? [];
     monaco.editor.setTheme(this.theme);
     this.showEditor();
   }
@@ -105,6 +115,23 @@ export class EditorAdapter {
     return this.requireModel().getValue();
   }
 
+  handleShortcut(event: KeyboardEvent): boolean {
+    if (event.repeat || event.getModifierState("AltGraph")) return false;
+    const stroke = shortcutStroke(event);
+    if (!stroke) return false;
+    const context: JujuContext = this.inDiffMode ? "Diff" : "Editor";
+    const bindings = this.jujuBindings.filter((binding) => binding.context === context);
+    const now = Date.now();
+    if (this.pendingShortcut !== null && now - this.pendingShortcutAt <= 1000) {
+      const chord = `${this.pendingShortcut} ${stroke}`;
+      this.pendingShortcut = null;
+      if (this.handleShortcutCombination(chord, bindings, now)) return true;
+    } else {
+      this.pendingShortcut = null;
+    }
+    return this.handleShortcutCombination(stroke, bindings, now);
+  }
+
   private showEditor(): void {
     if (this.editor) return;
     this.container.replaceChildren();
@@ -130,9 +157,7 @@ export class EditorAdapter {
       });
     });
     this.editor.onDidFocusEditorText(() => this.bridge.send("editorFocused", {}));
-    this.editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
-      this.bridge.send("saveRequested", { content: this.getContent() });
-    });
+    this.configureMonacoBindings();
     monaco.editor.onDidChangeMarkers((resources) => {
       if (this.model && resources.some((resource) => resource.toString() === this.model?.uri.toString())) {
         this.sendValidation();
@@ -157,6 +182,41 @@ export class EditorAdapter {
     this.bridge.send("validationChanged", payload);
   }
 
+  private handleShortcutCombination(combination: string, bindings: JujuBinding[], now: number): boolean {
+    if (bindings.some((binding) => binding.shortcut === combination)) {
+      this.bridge.send("shortcut", { combination });
+      return true;
+    }
+    if (!bindings.some((binding) => binding.shortcut.startsWith(`${combination} `))) return false;
+    this.pendingShortcut = combination;
+    this.pendingShortcutAt = now;
+    return true;
+  }
+
+  private configureMonacoBindings(): void {
+    const editor = this.getEditor();
+    for (const binding of this.monacoBindings) {
+      editor.addCommand(monacoKeybinding(binding.shortcut), () => this.executeMonacoCommand(binding.command));
+    }
+  }
+
+  private executeMonacoCommand(command: MonacoCommand): void {
+    switch (command) {
+      case "Save":
+        this.bridge.send("saveRequested", { content: this.getContent() });
+        break;
+      case "Format":
+        void this.format().catch(() => undefined);
+        break;
+      case "FoldAll":
+        void this.foldAll();
+        break;
+      case "UnfoldAll":
+        void this.unfoldAll();
+        break;
+    }
+  }
+
   private getEditor(): monaco.editor.IStandaloneCodeEditor {
     this.showEditor();
     return this.editor!;
@@ -172,4 +232,46 @@ export class EditorAdapter {
     if (!action) throw new Error(`Monaco action '${id}' is unavailable.`);
     await action.run();
   }
+}
+
+function monacoKeybinding(shortcut: string): number {
+  const strokes = shortcut.split(" ");
+  const bindings = strokes.map(monacoKeybindingStroke);
+  return bindings.length === 2 ? monaco.KeyMod.chord(bindings[0], bindings[1]) : bindings[0];
+}
+
+function monacoKeybindingStroke(stroke: string): number {
+  const parts = stroke.split("+");
+  const key = parts.at(-1);
+  if (!key) throw new Error(`Invalid shortcut '${stroke}'.`);
+  let binding = monacoKeyCode(key);
+  if (parts.includes("Ctrl")) binding |= monaco.KeyMod.CtrlCmd;
+  if (parts.includes("Alt")) binding |= monaco.KeyMod.Alt;
+  if (parts.includes("Shift")) binding |= monaco.KeyMod.Shift;
+  return binding;
+}
+
+function monacoKeyCode(key: string): monaco.KeyCode {
+  if (/^[A-Z]$/.test(key)) return monaco.KeyCode.KeyA + key.charCodeAt(0) - "A".charCodeAt(0);
+  if (/^\d$/.test(key)) return monaco.KeyCode.Digit0 + Number(key);
+  if (/^F(?:[1-9]|1\d|2[0-4])$/.test(key)) return monaco.KeyCode.F1 + Number(key.slice(1)) - 1;
+  const keys: Record<string, monaco.KeyCode> = {
+    Escape: monaco.KeyCode.Escape, Delete: monaco.KeyCode.Delete, Backspace: monaco.KeyCode.Backspace,
+    Enter: monaco.KeyCode.Enter, Space: monaco.KeyCode.Space, Tab: monaco.KeyCode.Tab,
+    Up: monaco.KeyCode.UpArrow, Down: monaco.KeyCode.DownArrow, Left: monaco.KeyCode.LeftArrow, Right: monaco.KeyCode.RightArrow,
+    Home: monaco.KeyCode.Home, End: monaco.KeyCode.End, PageUp: monaco.KeyCode.PageUp, PageDown: monaco.KeyCode.PageDown, Insert: monaco.KeyCode.Insert,
+  };
+  if (!(key in keys)) throw new Error(`Unsupported Monaco shortcut key '${key}'.`);
+  return keys[key];
+}
+
+function shortcutStroke(event: KeyboardEvent): string | null {
+  const keys: Record<string, string> = {
+    Escape: "Escape", Delete: "Delete", Backspace: "Backspace", Enter: "Enter", " ": "Space", Tab: "Tab",
+    ArrowUp: "Up", ArrowDown: "Down", ArrowLeft: "Left", ArrowRight: "Right",
+    Home: "Home", End: "End", PageUp: "PageUp", PageDown: "PageDown", Insert: "Insert",
+  };
+  const key = /^[a-z]$/i.test(event.key) ? event.key.toUpperCase() : /^\d$/.test(event.key) || /^F(?:[1-9]|1\d|2[0-4])$/.test(event.key) ? event.key.toUpperCase() : keys[event.key];
+  if (!key) return null;
+  return [event.ctrlKey ? "Ctrl" : null, event.altKey ? "Alt" : null, event.shiftKey ? "Shift" : null, key].filter((part): part is string => part !== null).join("+");
 }

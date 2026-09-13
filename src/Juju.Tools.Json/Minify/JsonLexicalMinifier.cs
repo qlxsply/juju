@@ -8,8 +8,14 @@ public sealed class JsonLexicalMinifier
 {
     public string Minify(string content)
     {
-        try { using var _ = JsonDocument.Parse(content); }
-        catch (JsonException ex) { throw new JujuException(ErrorCode.InvalidJson, "Only valid JSON can be minified.", ex); }
+        try
+        {
+            using var _ = JsonDocument.Parse(content);
+        }
+        catch (JsonException ex)
+        {
+            throw new JujuException(ErrorCode.InvalidJson, "Only valid JSON can be minified.", ex);
+        }
 
         var output = new StringBuilder(content.Length);
         var inString = false;
@@ -23,9 +29,14 @@ public sealed class JsonLexicalMinifier
                 else if (character == '\\') escaped = true;
                 else if (character == '"') inString = false;
             }
-            else if (character == '"') { inString = true; output.Append(character); }
+            else if (character == '"')
+            {
+                inString = true;
+                output.Append(character);
+            }
             else if (!char.IsWhiteSpace(character)) output.Append(character);
         }
+
         return output.ToString();
     }
 }

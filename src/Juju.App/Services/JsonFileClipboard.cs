@@ -9,7 +9,8 @@ public sealed class JsonFileClipboard(IAtomicFileWriter writer) : IJsonFileClipb
 {
     private readonly string _directory = Path.Combine(ApplicationPaths.ToolDataDirectory("json"), "cache", "clipboard");
 
-    public async Task CopySnapshotAsync(JsonDocumentSnapshot snapshot, string fileName, CancellationToken cancellationToken = default)
+    public async Task CopySnapshotAsync(JsonDocumentSnapshot snapshot, string fileName,
+        CancellationToken cancellationToken = default)
     {
         Directory.CreateDirectory(_directory);
         var path = Path.Combine(_directory, fileName);
@@ -27,9 +28,16 @@ public sealed class JsonFileClipboard(IAtomicFileWriter writer) : IJsonFileClipb
             cancellationToken.ThrowIfCancellationRequested();
             if (File.GetLastWriteTimeUtc(file) < DateTime.UtcNow - maximumAge)
             {
-                try { File.Delete(file); } catch (IOException) { }
+                try
+                {
+                    File.Delete(file);
+                }
+                catch (IOException)
+                {
+                }
             }
         }
+
         return Task.CompletedTask;
     }
 }

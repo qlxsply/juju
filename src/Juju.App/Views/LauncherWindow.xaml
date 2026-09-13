@@ -1,3 +1,71 @@
-<Window x:Class="Juju.App.LauncherWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Title="juju" Width="360" Height="180" ResizeMode="NoResize" ShowInTaskbar="False">
-  <Border Padding="20" Background="{DynamicResource JujuBackground}"><StackPanel><TextBlock Foreground="{DynamicResource JujuForeground}" FontSize="24" Text="juju"/><TextBlock Foreground="{DynamicResource JujuForeground}" Opacity="0.7" Margin="0,8" Text="1  JSON     S  设置     Esc  关闭"/><TextBlock x:Name="ShortcutText" Foreground="{DynamicResource JujuForeground}" Opacity="0.5" Margin="0,14,0,0"/></StackPanel></Border>
+<!-- WindowStyle=None removes the native title bar; WindowChrome below restores resize and caption behavior. -->
+<Window x:Class="Juju.App.LauncherWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework" Title=""
+        Icon="/Assets/juju.ico" Width="380" Height="280" MinWidth="300" MinHeight="220" ResizeMode="CanResize"
+        WindowStyle="None" ShowInTaskbar="False" Background="{DynamicResource JujuBackground}">
+    <shell:WindowChrome.WindowChrome>
+        <shell:WindowChrome CaptionHeight="44" ResizeBorderThickness="6" GlassFrameThickness="0"
+                            UseAeroCaptionButtons="False" />
+    </shell:WindowChrome.WindowChrome>
+    <Window.Resources>
+        <Style x:Key="LauncherAction" TargetType="Button">
+            <Setter Property="Background" Value="Transparent" /><Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Surface" Background="{TemplateBinding Background}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Surface" Property="Background" Value="#E5E7EB" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="LauncherTool" TargetType="Button">
+            <Setter Property="HorizontalContentAlignment" Value="Left" /><Setter Property="Padding" Value="16,10" />
+            <Setter Property="Margin" Value="0,2" /><Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" /><Setter Property="FontSize" Value="15" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Surface" Background="{TemplateBinding Background}" CornerRadius="3">
+                            <ContentPresenter Margin="{TemplateBinding Padding}" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Surface" Property="Background" Value="#E8EEF9" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Surface" Property="Background" Value="#D5E2F6" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+    <!-- DockPanel reserves the custom title bar, then lets the tool list use remaining space. -->
+    <DockPanel>
+        <Grid DockPanel.Dock="Top" Height="44" Background="#F4F6FA" MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="52" /><ColumnDefinition Width="*" /><ColumnDefinition Width="44" />
+            </Grid.ColumnDefinitions>
+            <Image Grid.Column="0" Width="28" Height="28" Margin="12,8" Source="/Assets/juju.ico" />
+            <Button Grid.Column="2" Style="{StaticResource LauncherAction}" Content="&#x2699;" FontSize="18"
+                    ToolTip="设置" Click="Settings_Click" shell:WindowChrome.IsHitTestVisibleInChrome="True" />
+        </Grid>
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+            <StackPanel Margin="12">
+                <Button Style="{StaticResource LauncherTool}" Tag="Json" Content="JSON" Click="Tool_Click" />
+                <Button Style="{StaticResource LauncherTool}" Tag="EchoHttp" Content="EchoHttp" Click="Tool_Click" />
+                <Button Style="{StaticResource LauncherTool}" Tag="Kairos" Content="Kairos" Click="Tool_Click" />
+            </StackPanel>
+        </ScrollViewer>
+    </DockPanel>
 </Window>

@@ -1,3 +1,14 @@
-<Application x:Class="Juju.App.App" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" ShutdownMode="OnExplicitShutdown">
-  <Application.Resources><ResourceDictionary><SolidColorBrush x:Key="JujuBackground" Color="#F5F5F5"/><SolidColorBrush x:Key="JujuForeground" Color="#202020"/><Style TargetType="Button"><Setter Property="Margin" Value="4"/><Setter Property="Padding" Value="9,5"/></Style></ResourceDictionary></Application.Resources>
+<!-- Application is the WPF entry point; explicit shutdown keeps the tray process alive after windows hide. -->
+<Application x:Class="Juju.App.App" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" ShutdownMode="OnExplicitShutdown">
+    <!-- Resources are shared by every XAML view. DynamicResource consumers update when ThemeService replaces a brush. -->
+    <Application.Resources>
+        <ResourceDictionary>
+            <SolidColorBrush x:Key="JujuBackground" Color="#F5F5F5" />
+            <SolidColorBrush x:Key="JujuForeground" Color="#202020" />
+            <Style TargetType="Button">
+                <Setter Property="Margin" Value="4" /><Setter Property="Padding" Value="9,5" />
+            </Style>
+        </ResourceDictionary>
+    </Application.Resources>
 </Application>

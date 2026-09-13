@@ -4,6 +4,7 @@ using Juju.Core.Telemetry;
 using Juju.Tools.Json.Documents;
 using Juju.Tools.Json.Metadata;
 using Juju.Tools.Json.Minify;
+using Juju.Tools.Json.Settings;
 using Juju.Tools.Json.Storage;
 
 namespace Juju.Tools.Json.Tests;
@@ -17,7 +18,8 @@ public sealed class JsonDocumentServiceTests : IAsyncLifetime
     {
         var writer = new AtomicFileWriter();
         await new DataRootService(writer).EnsureInitializedAsync(_root);
-        _documents = new JsonDocumentService(_root, new JsonMetadataStore(_root, writer), writer, new DocumentRevisionService());
+        _documents = new JsonDocumentService(_root, new JsonMetadataStore(_root, writer), writer,
+            new DocumentRevisionService());
     }
 
     public async Task DisposeAsync()
@@ -42,7 +44,8 @@ public sealed class JsonDocumentServiceTests : IAsyncLifetime
         var opened = await _documents.OpenAsync(created.Id);
         var path = Path.Combine(_root, "json", "documents", created.FileName);
         await File.WriteAllTextAsync(path, "{\"external\":true}");
-        var error = await Assert.ThrowsAsync<JujuException>(() => _documents.SaveAsync(created.Id, "{}", opened.Revision));
+        var error = await Assert.ThrowsAsync<JujuException>(() =>
+            _documents.SaveAsync(created.Id, "{}", opened.Revision));
         Assert.Equal(ErrorCode.ExternalModificationConflict, error.Code);
     }
 
@@ -81,7 +84,8 @@ public sealed class JsonDocumentServiceTests : IAsyncLifetime
 
     [Theory]
     [InlineData("{ \"value\": 1e10, \"text\": \"a b\" }", "{\"value\":1e10,\"text\":\"a b\"}")]
-    public void Minify_preserves_json_tokens(string input, string expected) => Assert.Equal(expected, new JsonLexicalMinifier().Minify(input));
+    public void Minify_preserves_json_tokens(string input, string expected) =>
+        Assert.Equal(expected, new JsonLexicalMinifier().Minify(input));
 
     [Fact]
     public void Minify_invalid_json_uses_a_typed_error()
@@ -90,11 +94,53 @@ public sealed class JsonDocumentServiceTests : IAsyncLifetime
         Assert.Equal(ErrorCode.InvalidJson, error.Code);
     }
 
+    [Fact]
+    public void Json_shortcuts_default_to_the_overlap_plan()
+    {
+        var shortcuts = JsonToolShortcuts.Normalize(null);
+
+        Assert.Equal(JsonToolShortcuts.Commands.Count, shortcuts.Count);
+        Assert.Equal("Ctrl+S", shortcuts[JsonToolCommand.Save]);
+        Assert.Equal("Ctrl+K Ctrl+0", shortcuts[JsonToolCommand.FoldAll]);
+        Assert.Equal("Escape", shortcuts[JsonToolCommand.ExitDiff]);
+        Assert.Equal(JsonToolShortcutSource.Monaco, JsonToolShortcuts.GetDefinition(JsonToolCommand.Save).Source);
+        Assert.Equal(JsonToolShortcutContext.List, JsonToolShortcuts.GetDefinition(JsonToolCommand.Rename).Context);
+    }
+
+    [Fact]
+    public void Json_shortcuts_normalize_combinations_and_allow_cross_context_duplicates()
+    {
+        var shortcuts = JsonToolShortcuts.Defaults.ToDictionary(pair => pair.Key, pair => pair.Value);
+        shortcuts[JsonToolCommand.New] = " control + alt + n ";
+        shortcuts[JsonToolCommand.Rename] = "ctrl+alt+n";
+
+        var normalized = JsonToolShortcuts.Normalize(shortcuts);
+
+        Assert.Equal("Ctrl+Alt+N", normalized[JsonToolCommand.New]);
+        Assert.Equal("Ctrl+Alt+N", normalized[JsonToolCommand.Rename]);
+    }
+
+    [Theory]
+    [InlineData(JsonToolCommand.New, "Ctrl+S")]
+    [InlineData(JsonToolCommand.New, "Alt+F4")]
+    [InlineData(JsonToolCommand.New, "Ctrl+Alt+Delete")]
+    [InlineData(JsonToolCommand.New, "Ctrl+Shift+Alt+Space")]
+    [InlineData(JsonToolCommand.New, "Ctrl++N")]
+    public void Json_shortcuts_reject_duplicate_reserved_or_invalid_combinations(JsonToolCommand command,
+        string shortcut)
+    {
+        var shortcuts = JsonToolShortcuts.Defaults.ToDictionary(pair => pair.Key, pair => pair.Value);
+        shortcuts[command] = shortcut;
+
+        Assert.Throws<InvalidOperationException>(() => JsonToolShortcuts.Normalize(shortcuts));
+    }
+
     [Theory]
     [InlineData("CON")]
     [InlineData("../escape")]
     [InlineData("name/child")]
-    public void Document_name_rejects_unsafe_values(string name) => Assert.Throws<JujuException>(() => JsonDocumentName.Normalize(name));
+    public void Document_name_rejects_unsafe_values(string name) =>
+        Assert.Throws<JujuException>(() => JsonDocumentName.Normalize(name));
 
     [Fact]
     public async Task Data_root_rejects_non_empty_unmarked_directory()
@@ -102,7 +148,8 @@ public sealed class JsonDocumentServiceTests : IAsyncLifetime
         var root = Path.Combine(_root, "not-a-root");
         Directory.CreateDirectory(root);
         await File.WriteAllTextAsync(Path.Combine(root, "user-file.txt"), "not juju data");
-        var error = await Assert.ThrowsAsync<JujuException>(() => new DataRootService(new AtomicFileWriter()).EnsureInitializedAsync(root));
+        var error = await Assert.ThrowsAsync<JujuException>(() =>
+            new DataRootService(new AtomicFileWriter()).EnsureInitializedAsync(root));
         Assert.Equal(ErrorCode.DataRootInvalid, error.Code);
         Assert.False(File.Exists(Path.Combine(root, "juju.json")));
     }
@@ -150,8 +197,10 @@ public sealed class JsonDocumentServiceTests : IAsyncLifetime
 
         Assert.Equal(["import-2.json", "import-3.json"], imported.Select(item => item.FileName));
         Assert.Equal("{}", (await _documents.OpenAsync(existing.Id)).Content);
-        Assert.Equal("{\"first\":true}", await File.ReadAllTextAsync(Path.Combine(_root, "json", "documents", "import-2.json")));
-        Assert.Equal("{\"second\":true}", await File.ReadAllTextAsync(Path.Combine(_root, "json", "documents", "import-3.json")));
+        Assert.Equal("{\"first\":true}",
+            await File.ReadAllTextAsync(Path.Combine(_root, "json", "documents", "import-2.json")));
+        Assert.Equal("{\"second\":true}",
+            await File.ReadAllTextAsync(Path.Combine(_root, "json", "documents", "import-3.json")));
         Assert.All(imported, item => Assert.Equal("imported", item.Source.Kind));
         Assert.All(imported, item => Assert.Equal("import.json", item.Source.OriginalFileName));
     }
@@ -180,7 +229,10 @@ public sealed class JsonDocumentServiceTests : IAsyncLifetime
             Assert.True(File.Exists(Path.Combine(_root, "json", "documents", "migrate.json")));
             Assert.True(File.Exists(Path.Combine(destination, "json", "documents", "migrate.json")));
         }
-        finally { if (Directory.Exists(destination)) Directory.Delete(destination, recursive: true); }
+        finally
+        {
+            if (Directory.Exists(destination)) Directory.Delete(destination, recursive: true);
+        }
     }
 
     [Fact]
@@ -189,7 +241,8 @@ public sealed class JsonDocumentServiceTests : IAsyncLifetime
         var created = await _documents.CreateAsync();
         // Let the create operation's watcher event settle before observing the save operation.
         await Task.Delay(400);
-        var observed = new TaskCompletionSource<JsonDocumentExternalChange>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var observed =
+            new TaskCompletionSource<JsonDocumentExternalChange>(TaskCreationOptions.RunContinuationsAsynchronously);
         _documents.ExternalChanged += (_, change) => observed.TrySetResult(change);
         var opened = await _documents.OpenAsync(created.Id);
         await _documents.SaveAsync(created.Id, "{\"self\":true}", opened.Revision);
@@ -219,12 +272,14 @@ public sealed class JsonDocumentServiceTests : IAsyncLifetime
         var telemetry = new RecordingTelemetry();
         await _documents.DisposeAsync();
         var writer = new AtomicFileWriter();
-        _documents = new JsonDocumentService(_root, new JsonMetadataStore(_root, writer), writer, new DocumentRevisionService(), telemetry);
+        _documents = new JsonDocumentService(_root, new JsonMetadataStore(_root, writer), writer,
+            new DocumentRevisionService(), telemetry);
         var created = await _documents.CreateAsync();
 
         await _documents.OpenAsync(created.Id);
 
-        var measurement = Assert.Single(telemetry.Measurements, item => item.Operation == PerformanceOperation.DocumentLoad);
+        var measurement = Assert.Single(telemetry.Measurements,
+            item => item.Operation == PerformanceOperation.DocumentLoad);
         Assert.True(measurement.Duration >= TimeSpan.Zero);
         Assert.True(measurement.WorkingSetBytes > 0);
         Assert.True(measurement.ManagedMemoryBytes > 0);
@@ -238,7 +293,8 @@ public sealed class JsonDocumentServiceTests : IAsyncLifetime
         await writer.WriteTextAsync(path, "old");
         using var cancellation = new CancellationTokenSource();
         cancellation.Cancel();
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => writer.WriteTextAsync(path, "new", cancellation.Token));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            writer.WriteTextAsync(path, "new", cancellation.Token));
         Assert.Equal("old", await File.ReadAllTextAsync(path));
     }
 
@@ -246,9 +302,12 @@ public sealed class JsonDocumentServiceTests : IAsyncLifetime
     {
         public List<PerformanceMeasurement> Measurements { get; } = [];
         public IDisposable Measure(PerformanceOperation operation) => new Measurement(operation, Measurements);
-        public void RecordMemory(PerformanceOperation operation) => Measurements.Add(new(operation, TimeSpan.Zero, 1, 1));
 
-        private sealed class Measurement(PerformanceOperation operation, List<PerformanceMeasurement> measurements) : IDisposable
+        public void RecordMemory(PerformanceOperation operation) =>
+            Measurements.Add(new(operation, TimeSpan.Zero, 1, 1));
+
+        private sealed class Measurement(PerformanceOperation operation, List<PerformanceMeasurement> measurements)
+            : IDisposable
         {
             public void Dispose() => measurements.Add(new(operation, TimeSpan.Zero, 1, 1));
         }

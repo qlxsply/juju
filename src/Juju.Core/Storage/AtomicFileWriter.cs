@@ -1,17 +1,22 @@
 namespace Juju.Core.Storage;
 
-public interface IAtomicFileWriter { Task WriteTextAsync(string path, string content, CancellationToken cancellationToken = default); }
+public interface IAtomicFileWriter
+{
+    Task WriteTextAsync(string path, string content, CancellationToken cancellationToken = default);
+}
 
 public sealed class AtomicFileWriter : IAtomicFileWriter
 {
     public async Task WriteTextAsync(string path, string content, CancellationToken cancellationToken = default)
     {
-        var directory = Path.GetDirectoryName(path) ?? throw new ArgumentException("A file path must have a parent directory.", nameof(path));
+        var directory = Path.GetDirectoryName(path) ??
+                        throw new ArgumentException("A file path must have a parent directory.", nameof(path));
         Directory.CreateDirectory(directory);
         var temporary = path + ".tmp." + Guid.NewGuid().ToString("N");
         try
         {
-            await using (var stream = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None, 4096, FileOptions.Asynchronous | FileOptions.WriteThrough))
+            await using (var stream = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None,
+                             4096, FileOptions.Asynchronous | FileOptions.WriteThrough))
             await using (var writer = new StreamWriter(stream))
             {
                 await writer.WriteAsync(content.AsMemory(), cancellationToken);

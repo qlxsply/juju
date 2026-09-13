@@ -7,10 +7,10 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Threading;
 using Juju.Core.Errors;
-using Juju.Core.Settings;
 using Juju.App.Bootstrap;
 using Juju.Tools.Json.Documents;
 using Juju.Tools.Json.Minify;
+using Juju.Tools.Json.Settings;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.Wpf;
 using WpfApplication = System.Windows.Application;
@@ -33,12 +33,12 @@ public partial class JsonToolWindow : Window
 {
     private const int ProtocolVersion = 1;
     private readonly JsonDocumentService _documents;
-    private readonly ISettingsService _settings;
+    private readonly IJsonToolSettingsService _settings;
     private readonly DispatcherTimer _autosave = new() { Interval = TimeSpan.FromMilliseconds(800) };
     private readonly SemaphoreSlim _documentGate = new(1, 1);
     private readonly SemaphoreSlim _saveGate = new(1, 1);
     private readonly Dictionary<string, TaskCompletionSource<BridgeMessage>> _requests = [];
-    private readonly Dictionary<JsonCommand, Func<Task>> _commands;
+    private readonly Dictionary<JsonToolCommand, Func<Task>> _commands;
     private readonly CancellationTokenSource _lifetime = new();
     private WebView2? _editor;
     private JsonDocumentSnapshot? _current;
@@ -58,27 +58,29 @@ public partial class JsonToolWindow : Window
     private long _contentVersion;
     private System.Windows.Point _dragStart;
     private bool _largeDocument;
+    private string? _pendingShortcut;
+    private DateTime _pendingShortcutAt;
 
-    public JsonToolWindow(JsonDocumentService documents, ISettingsService settings)
+    public JsonToolWindow(JsonDocumentService documents, IJsonToolSettingsService settings)
     {
         _documents = documents;
         _settings = settings;
         _autosave.Interval = TimeSpan.FromMilliseconds(settings.Current.AutosaveDelayMilliseconds);
         _commands = new()
         {
-            [JsonCommand.New] = NewAsync,
-            [JsonCommand.Save] = SaveFromEditorAsync,
-            [JsonCommand.Format] = FormatAsync,
-            [JsonCommand.CopyText] = CopyTextAsync,
-            [JsonCommand.CopyMinified] = CopyMinifiedAsync,
-            [JsonCommand.CopyFile] = CopyFileAsync,
-            [JsonCommand.FoldAll] = FoldAllAsync,
-            [JsonCommand.UnfoldAll] = UnfoldAllAsync,
-            [JsonCommand.UnfoldLevel] = UnfoldLevelAsync,
-            [JsonCommand.EnterDiff] = EnterDiffAsync,
-            [JsonCommand.ExitDiff] = ExitDiffAsync,
-            [JsonCommand.Rename] = RenameAsync,
-            [JsonCommand.Delete] = DeleteAsync,
+            [JsonToolCommand.New] = NewAsync,
+            [JsonToolCommand.Save] = SaveFromEditorAsync,
+            [JsonToolCommand.Format] = FormatAsync,
+            [JsonToolCommand.CopyText] = CopyTextAsync,
+            [JsonToolCommand.CopyMinified] = CopyMinifiedAsync,
+            [JsonToolCommand.CopyFile] = CopyFileAsync,
+            [JsonToolCommand.FoldAll] = FoldAllAsync,
+            [JsonToolCommand.UnfoldAll] = UnfoldAllAsync,
+            [JsonToolCommand.UnfoldLevel] = UnfoldLevelAsync,
+            [JsonToolCommand.EnterDiff] = EnterDiffAsync,
+            [JsonToolCommand.ExitDiff] = ExitDiffAsync,
+            [JsonToolCommand.Rename] = RenameAsync,
+            [JsonToolCommand.Delete] = DeleteAsync,
         };
         InitializeComponent();
         Loaded += async (_, _) => await EnsureEditorAsync();
@@ -147,7 +149,6 @@ public partial class JsonToolWindow : Window
         if (list.Count == 0) list = [await _documents.CreateAsync(_lifetime.Token)];
         _items = list.Select(item => new DocumentListItem(item.Id, item.FileName, Path.GetFileNameWithoutExtension(item.FileName))).ToArray();
         Documents.ItemsSource = _items;
-        DiffDocuments.ItemsSource = _items;
         var selected = _current is { } current ? _items.SingleOrDefault(item => item.Id == current.DocumentId) : _items[0];
         _selecting = true;
         Documents.SelectedItem = selected ?? _items[0];
@@ -241,7 +242,7 @@ public partial class JsonToolWindow : Window
                     if (TryGetContent(message.Payload, out var requestedContent)) _ = SaveCurrentAsync(requestedContent);
                     break;
                 case "shortcut":
-                    if (message.Payload.TryGetProperty("key", out var shortcut) && shortcut.ValueKind == JsonValueKind.String) ExecuteAltShortcut(shortcut.GetString());
+                    if (message.Payload.TryGetProperty("combination", out var shortcut) && shortcut.ValueKind == JsonValueKind.String) ExecuteShortcut(shortcut.GetString(), _inDiffMode ? JsonToolShortcutContext.Diff : JsonToolShortcutContext.Editor);
                     break;
                 case "commandResult":
                     if (message.RequestId is not null && _requests.Remove(message.RequestId, out var request)) request.TrySetResult(message);
@@ -255,7 +256,20 @@ public partial class JsonToolWindow : Window
     {
         try
         {
-            await SendEditorCommandAsync("initialize", new { theme = _theme == EffectiveTheme.Dark ? "vs-dark" : "vs", indentSize = _settings.Current.JsonIndentSize });
+            var shortcuts = _settings.Current.Shortcuts;
+            await SendEditorCommandAsync("initialize", new
+            {
+                theme = _theme == EffectiveTheme.Dark ? "vs-dark" : "vs",
+                indentSize = _settings.Current.IndentSize,
+                monacoBindings = JsonToolShortcuts.Definitions
+                    .Where(definition => definition.Source == JsonToolShortcutSource.Monaco)
+                    .Select(definition => new { command = definition.Command.ToString(), shortcut = shortcuts[definition.Command] })
+                    .ToArray(),
+                jujuBindings = JsonToolShortcuts.Definitions
+                    .Where(definition => definition.Source == JsonToolShortcutSource.Juju)
+                    .Select(definition => new { command = definition.Command.ToString(), shortcut = shortcuts[definition.Command], context = definition.Context.ToString() })
+                    .ToArray(),
+            });
             if (_current is not null) await SendEditorCommandAsync("openDocument", new { documentId = _current.DocumentId.ToString(), content = _current.Content, language = "json" });
             UpdateStatus();
         }
@@ -393,13 +407,13 @@ public partial class JsonToolWindow : Window
 
     private async Task EnterDiffAsync()
     {
-        if (DiffDocuments.SelectedItem is not DocumentListItem other || _current is null || other.Id == _current.DocumentId) { SaveStateStatus.Text = "请选择另一份文档进行对比"; return; }
+        if (_diffOriginal is null || _current is null || _diffOriginal.Id == _current.DocumentId) { _diffOriginal = _current is null ? null : _items.Single(item => item.Id == _current.DocumentId); SaveStateStatus.Text = "已选择左侧文档，请选择另一份文档后再次执行对比"; return; }
         var currentContent = await GetEditorContentAsync();
-        var comparison = await _documents.OpenAsync(other.Id, _lifetime.Token);
-        await SendEditorCommandAsync("enterDiff", new { original = new { documentId = _current.DocumentId.ToString(), content = currentContent }, modified = new { documentId = other.Id.ToString(), content = comparison.Content } });
+        var original = await _documents.OpenAsync(_diffOriginal.Id, _lifetime.Token);
+        await SendEditorCommandAsync("enterDiff", new { original = new { documentId = original.DocumentId.ToString(), content = original.Content }, modified = new { documentId = _current.DocumentId.ToString(), content = currentContent } });
         _inDiffMode = true;
         _autosave.Stop();
-        SaveStateStatus.Text = IsJson(currentContent) && IsJson(comparison.Content) ? "只读对比" : "存在非法 JSON，当前按原文比较";
+        SaveStateStatus.Text = IsJson(currentContent) && IsJson(original.Content) ? "只读对比" : "存在非法 JSON，当前按原文比较";
     }
 
     private async Task ExitDiffAsync()
@@ -427,6 +441,30 @@ public partial class JsonToolWindow : Window
         _current = null;
         await RefreshDocumentsAsync();
     }
+
+    private DocumentListItem? _diffOriginal;
+    private void DocumentFilter_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        var filter = DocumentFilter.Text.Trim();
+        Documents.ItemsSource = string.IsNullOrEmpty(filter) ? _items : _items.Where(item => item.DisplayName.Contains(filter, StringComparison.OrdinalIgnoreCase)).ToArray();
+    }
+    private void Documents_MouseDoubleClick(object sender, MouseButtonEventArgs e) => _ = ExecuteAsync(JsonToolCommand.Rename);
+    private void Documents_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        // List bindings are handled from the window preview route so they remain configurable.
+    }
+    private void MenuCommand_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is System.Windows.Controls.MenuItem { Tag: string name } && Enum.TryParse<JsonToolCommand>(name, out var command)) _ = ExecuteAsync(command);
+    }
+    private void TitleBar_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        // Child controls opt into WindowChrome hit testing; the remaining title area drags the window.
+        if (e.OriginalSource == sender && e.LeftButton == MouseButtonState.Pressed) DragMove();
+    }
+    private void Minimize_Click(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
+    private void Maximize_Click(object sender, RoutedEventArgs e) => WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
+    private void Close_Click(object sender, RoutedEventArgs e) => Close();
 
     private async Task ImportDropAsync(System.Windows.DragEventArgs eventArgs)
     {
@@ -551,7 +589,7 @@ public partial class JsonToolWindow : Window
         _editor = null;
     }
 
-    private async Task ExecuteAsync(JsonCommand command)
+    private async Task ExecuteAsync(JsonToolCommand command)
     {
         try { await _commands[command](); }
         catch (Exception ex) when (ex is not OperationCanceledException) { SaveStateStatus.Text = "操作失败: " + ex.Message; }
@@ -559,27 +597,69 @@ public partial class JsonToolWindow : Window
 
     private void UpdateStatus()
     {
-        SaveStateStatus.Text = _saveState switch { SaveState.Clean => "已保存", SaveState.Dirty => "未保存", SaveState.Saving => "正在保存...", SaveState.Conflict => "外部修改冲突", _ => "保存失败" };
+        // Saving remains an internal synchronization state; the user sees unsaved until persistence succeeds.
+        SaveStateStatus.Text = _saveState switch { SaveState.Clean => "已保存", SaveState.Dirty or SaveState.Saving => "未保存", SaveState.Conflict => "外部修改冲突", _ => "保存失败" };
         ValidationStatus.Text = _jsonValid ? "JSON: 有效" : "JSON: 格式错误";
     }
 
     private void OnShortcut(object sender, System.Windows.Input.KeyEventArgs e)
     {
-        if (e.IsRepeat || Keyboard.Modifiers != ModifierKeys.Alt || Keyboard.IsKeyDown(Key.RightAlt)) return;
-        if (ExecuteAltShortcut(e.Key.ToString())) e.Handled = true;
+        if (e.IsRepeat || !TryGetShortcutStroke(e, out var stroke)) return;
+        var context = _inDiffMode ? JsonToolShortcutContext.Diff : Documents.IsKeyboardFocusWithin ? JsonToolShortcutContext.List : JsonToolShortcutContext.Editor;
+        if (ExecuteShortcut(stroke, context)) e.Handled = true;
     }
 
-    private bool ExecuteAltShortcut(string? key)
+    private bool ExecuteShortcut(string? stroke, JsonToolShortcutContext context)
     {
-        var command = key?.ToUpperInvariant() switch
+        if (string.IsNullOrWhiteSpace(stroke)) return false;
+        var now = DateTime.UtcNow;
+        if (_pendingShortcut is not null && now - _pendingShortcutAt <= TimeSpan.FromSeconds(1))
         {
-            "A" => JsonCommand.New, "S" => JsonCommand.Save, "F" => JsonCommand.Format,
-            "C" => JsonCommand.CopyText, "X" => JsonCommand.CopyMinified, "V" => JsonCommand.CopyFile,
-            "E" => JsonCommand.UnfoldAll, "R" => JsonCommand.FoldAll, "D" => JsonCommand.UnfoldLevel,
-            "Q" => JsonCommand.EnterDiff, _ => (JsonCommand?)null,
+            var chord = $"{_pendingShortcut} {stroke}";
+            _pendingShortcut = null;
+            if (ExecuteShortcutCombination(chord, context, now)) return true;
+        }
+        else _pendingShortcut = null;
+        return ExecuteShortcutCombination(stroke, context, now);
+    }
+
+    private bool ExecuteShortcutCombination(string combination, JsonToolShortcutContext context, DateTime now)
+    {
+        var bindings = JsonToolShortcuts.Definitions.Where(definition => definition.Source == JsonToolShortcutSource.Juju && definition.Context == context).ToArray();
+        var binding = bindings.FirstOrDefault(definition => string.Equals(_settings.Current.Shortcuts[definition.Command], combination, StringComparison.Ordinal));
+        if (binding is not null)
+        {
+            _ = ExecuteAsync(binding.Command);
+            return true;
+        }
+        if (!bindings.Any(definition => _settings.Current.Shortcuts[definition.Command].StartsWith(combination + " ", StringComparison.Ordinal))) return false;
+        _pendingShortcut = combination;
+        _pendingShortcutAt = now;
+        return true;
+    }
+
+    private static bool TryGetShortcutStroke(System.Windows.Input.KeyEventArgs eventArgs, out string stroke)
+    {
+        var key = eventArgs.Key == Key.System ? eventArgs.SystemKey : eventArgs.Key;
+        var keyName = key switch
+        {
+            Key.D0 => "0", Key.D1 => "1", Key.D2 => "2", Key.D3 => "3", Key.D4 => "4", Key.D5 => "5", Key.D6 => "6", Key.D7 => "7", Key.D8 => "8", Key.D9 => "9",
+            Key.Return => "Enter", Key.Back => "Backspace", Key.Prior => "PageUp", Key.Next => "PageDown",
+            Key.Up => "Up", Key.Down => "Down", Key.Left => "Left", Key.Right => "Right",
+            Key.Escape => "Escape", Key.Delete => "Delete", Key.Space => "Space", Key.Tab => "Tab", Key.Home => "Home", Key.End => "End", Key.Insert => "Insert",
+            >= Key.A and <= Key.Z => key.ToString(),
+            >= Key.F1 and <= Key.F24 => key.ToString(),
+            _ => null,
         };
-        if (command is null) return false;
-        _ = ExecuteAsync(command.Value);
+        if (keyName is null) { stroke = string.Empty; return false; }
+        var modifiers = Keyboard.Modifiers;
+        stroke = string.Join('+', new[]
+        {
+            modifiers.HasFlag(ModifierKeys.Control) ? "Ctrl" : null,
+            modifiers.HasFlag(ModifierKeys.Alt) ? "Alt" : null,
+            modifiers.HasFlag(ModifierKeys.Shift) ? "Shift" : null,
+            keyName,
+        }.Where(part => part is not null));
         return true;
     }
 
@@ -596,21 +676,20 @@ public partial class JsonToolWindow : Window
     private static bool TryGetCommandResult(JsonElement payload, out string? error) { error = null; if (payload.ValueKind != JsonValueKind.Object || !payload.TryGetProperty("ok", out var ok) || ok.ValueKind is not (JsonValueKind.True or JsonValueKind.False)) return false; if (ok.GetBoolean()) return payload.TryGetProperty("result", out _); error = payload.TryGetProperty("error", out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : "编辑器命令失败。"; return false; }
     private static string? PromptForName(string value) { var input = new WpfTextBox { Text = value, Margin = new Thickness(12), MinWidth = 260 }; var dialog = new Window { Title = "重命名 JSON", Owner = WpfApplication.Current.MainWindow, SizeToContent = SizeToContent.WidthAndHeight, WindowStartupLocation = WindowStartupLocation.CenterOwner, Content = new StackPanel { Children = { input, new WpfButton { Content = "确定", IsDefault = true, Margin = new Thickness(12, 0, 12, 12) } } } }; ((WpfButton)((StackPanel)dialog.Content).Children[1]).Click += (_, _) => dialog.DialogResult = true; return dialog.ShowDialog() == true ? input.Text : null; }
 
-    private void New_Click(object sender, RoutedEventArgs e) => _ = ExecuteAsync(JsonCommand.New);
-    private void Save_Click(object sender, RoutedEventArgs e) => _ = ExecuteAsync(JsonCommand.Save);
-    private void Format_Click(object sender, RoutedEventArgs e) => _ = ExecuteAsync(JsonCommand.Format);
-    private void Copy_Click(object sender, RoutedEventArgs e) => _ = ExecuteAsync(JsonCommand.CopyText);
-    private void Minify_Click(object sender, RoutedEventArgs e) => _ = ExecuteAsync(JsonCommand.CopyMinified);
-    private void FileCopy_Click(object sender, RoutedEventArgs e) => _ = ExecuteAsync(JsonCommand.CopyFile);
-    private void Fold_Click(object sender, RoutedEventArgs e) => _ = ExecuteAsync(JsonCommand.FoldAll);
-    private void Unfold_Click(object sender, RoutedEventArgs e) => _ = ExecuteAsync(JsonCommand.UnfoldAll);
-    private void FoldLevel_Click(object sender, RoutedEventArgs e) => _ = ExecuteAsync(JsonCommand.UnfoldLevel);
-    private void Diff_Click(object sender, RoutedEventArgs e) => _ = ExecuteAsync(JsonCommand.EnterDiff);
-    private void ExitDiff_Click(object sender, RoutedEventArgs e) => _ = ExecuteAsync(JsonCommand.ExitDiff);
-    private void Rename_Click(object sender, RoutedEventArgs e) => _ = ExecuteAsync(JsonCommand.Rename);
-    private void Delete_Click(object sender, RoutedEventArgs e) => _ = ExecuteAsync(JsonCommand.Delete);
+    private void New_Click(object sender, RoutedEventArgs e) => _ = ExecuteAsync(JsonToolCommand.New);
+    private void Save_Click(object sender, RoutedEventArgs e) => _ = ExecuteAsync(JsonToolCommand.Save);
+    private void Format_Click(object sender, RoutedEventArgs e) => _ = ExecuteAsync(JsonToolCommand.Format);
+    private void Copy_Click(object sender, RoutedEventArgs e) => _ = ExecuteAsync(JsonToolCommand.CopyText);
+    private void Minify_Click(object sender, RoutedEventArgs e) => _ = ExecuteAsync(JsonToolCommand.CopyMinified);
+    private void FileCopy_Click(object sender, RoutedEventArgs e) => _ = ExecuteAsync(JsonToolCommand.CopyFile);
+    private void Fold_Click(object sender, RoutedEventArgs e) => _ = ExecuteAsync(JsonToolCommand.FoldAll);
+    private void Unfold_Click(object sender, RoutedEventArgs e) => _ = ExecuteAsync(JsonToolCommand.UnfoldAll);
+    private void FoldLevel_Click(object sender, RoutedEventArgs e) => _ = ExecuteAsync(JsonToolCommand.UnfoldLevel);
+    private void Diff_Click(object sender, RoutedEventArgs e) => _ = ExecuteAsync(JsonToolCommand.EnterDiff);
+    private void ExitDiff_Click(object sender, RoutedEventArgs e) => _ = ExecuteAsync(JsonToolCommand.ExitDiff);
+    private void Rename_Click(object sender, RoutedEventArgs e) => _ = ExecuteAsync(JsonToolCommand.Rename);
+    private void Delete_Click(object sender, RoutedEventArgs e) => _ = ExecuteAsync(JsonToolCommand.Delete);
 
-    private enum JsonCommand { New, Save, Format, CopyText, CopyMinified, CopyFile, FoldAll, UnfoldAll, UnfoldLevel, EnterDiff, ExitDiff, Rename, Delete }
     private sealed record DocumentListItem(JsonDocumentId Id, string FileName, string DisplayName);
     private sealed record BridgeMessage(string Type, string? RequestId, JsonElement Payload)
     {
