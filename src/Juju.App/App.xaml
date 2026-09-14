@@ -4,6 +4,10 @@
     <!-- Application.Resources 中的资源可被所有 XAML 视图按键引用；使用 DynamicResource 的控件会在主题服务替换画刷时自动刷新。 -->
     <Application.Resources>
         <ResourceDictionary>
+            <!-- 合并集中图标字典后，所有窗口都可通过 {StaticResource SettingsIcon} 等键复用 DrawingImage。 -->
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="Assets/IconResources.xaml" />
+            </ResourceDictionary.MergedDictionaries>
             <!-- 浅灰背景画刷；以键名提供给窗口和控件的 Background 属性。 -->
             <SolidColorBrush x:Key="JujuBackground" Color="#F5F5F5" />
             <!-- 深色前景画刷；保留为全局主题资源，供文本或控件按需使用。 -->

@@ -1,0 +1,47 @@
+<!--
+    集中管理 WPF 矢量图标。DrawingImage 是 ImageSource 的一种实现，能被 <Image Source="..." />
+    直接使用；它由 GeometryDrawing 构成，不依赖 PNG，也不需要运行时 SVG 渲染库。
+-->
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <!--
+        图标的默认描边色。当前 Launcher 标题栏固定为浅色，所以使用深灰以保持可读性。
+        将来若标题栏也改为主题资源，可在深浅主题资源字典中为同一键提供不同颜色。
+    -->
+    <SolidColorBrush x:Key="IconForeground" Color="#1F2937" />
+
+    <!--
+        Lucide Settings 图标的 WPF 表示，来源为 24x24 SVG：
+        - x:Key="SettingsIcon" 是消费者使用 StaticResource 引用的稳定名称。
+        - 第一条透明矩形保持原 SVG viewBox 的 24x24 边界，Image 缩放时不会裁掉图标留白。
+        - 第二个 GeometryDrawing 是 SVG 的 path；第三个是 SVG 的 circle。
+    -->
+    <DrawingImage x:Key="SettingsIcon">
+        <DrawingImage.Drawing>
+            <DrawingGroup>
+                <!-- Transparent 仍保留 24x24 绘制边界，但不会绘制任何可见像素。 -->
+                <GeometryDrawing Brush="Transparent" Geometry="M0,0 H24 V24 H0 Z" />
+                <!--
+                    Geometry 属性采用与 SVG path 相同的路径数据。
+                    Pen.Thickness=2、StartLineCap/EndLineCap=Round、LineJoin=Round 分别对应 SVG 的
+                    stroke-width、stroke-linecap 和 stroke-linejoin 属性。
+                -->
+                <GeometryDrawing Geometry="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915">
+                    <GeometryDrawing.Pen>
+                        <Pen Brush="{StaticResource IconForeground}" Thickness="2" StartLineCap="Round"
+                             EndLineCap="Round" LineJoin="Round" />
+                    </GeometryDrawing.Pen>
+                </GeometryDrawing>
+                <!-- SVG 的 circle cx="12" cy="12" r="3" 对应 EllipseGeometry 的圆心和两个半径。 -->
+                <GeometryDrawing>
+                    <GeometryDrawing.Pen>
+                        <Pen Brush="{StaticResource IconForeground}" Thickness="2" />
+                    </GeometryDrawing.Pen>
+                    <GeometryDrawing.Geometry>
+                        <EllipseGeometry Center="12,12" RadiusX="3" RadiusY="3" />
+                    </GeometryDrawing.Geometry>
+                </GeometryDrawing>
+            </DrawingGroup>
+        </DrawingImage.Drawing>
+    </DrawingImage>
+</ResourceDictionary>

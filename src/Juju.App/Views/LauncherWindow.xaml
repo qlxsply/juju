@@ -70,9 +70,22 @@
             </Grid.ColumnDefinitions>
             <!-- 使用包内 ico 显示应用标识；Margin 使其在固定标题高度内居中。 -->
             <Image Grid.Column="0" Width="28" Height="28" Margin="12,8" Source="/Assets/juju.ico" />
-            <!-- IsHitTestVisibleInChrome=True 声明此控件在 Chrome 标题区可接收点击；Click 打开设置窗口。 -->
-            <Button Grid.Column="2" Style="{StaticResource LauncherAction}" Content="&#x2699;" FontSize="18"
-                    ToolTip="设置" Click="Settings_Click" shell:WindowChrome.IsHitTestVisibleInChrome="True" />
+            <!--
+                Grid.Column=2：将按钮放到第三列，即标题栏最右侧的 44 像素操作区。
+                Style：复用 LauncherAction 的透明背景、悬停反馈和居中 ContentPresenter 模板。
+                ToolTip：鼠标停留时显示“设置”；Click：点击后调用 Settings_Click 打开设置窗口。
+                IsHitTestVisibleInChrome=True：让 WindowChrome 的标题栏区域内按钮仍能接收鼠标事件。
+            -->
+            <Button Grid.Column="2" Style="{StaticResource LauncherAction}" ToolTip="设置"
+                    Click="Settings_Click" shell:WindowChrome.IsHitTestVisibleInChrome="True">
+                <!--
+                    Source：从 App.xaml 合并的 IconResources.xaml 中取得 SettingsIcon DrawingImage。
+                    Width/Height=18：图标在 44 像素标题栏中的显示尺寸；Stretch=Uniform：保持 SVG 原始宽高比。
+                    IsHitTestVisible=False：图标本身不截获点击，鼠标事件仍由外层 Button 接收。
+                -->
+                <Image Source="{StaticResource SettingsIcon}" Width="18" Height="18" Stretch="Uniform"
+                       IsHitTestVisible="False" />
+            </Button>
         </Grid>
         <!-- 工具数量超过窗口高度时自动显示垂直滚动条。 -->
         <ScrollViewer VerticalScrollBarVisibility="Auto">
