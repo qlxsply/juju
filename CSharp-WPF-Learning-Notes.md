@@ -442,6 +442,25 @@ private static partial bool RegisterHotKey(IntPtr hWnd, int id, uint fsModifiers
 
 当前窗口不是纯绑定式 UI：例如 `JsonToolWindow` 直接设置 `SaveStateStatus.Text`，并直接写 `Documents.ItemsSource`。这在快速构建桌面工具时可行；若迁移到 MVVM，下一步应是让 `DocumentListItem`、保存状态和命令成为 ViewModel 属性，通过 `INotifyPropertyChanged` 和 `ICommand` 绑定，而非直接查找/设置控件。
 
+### 7.1 集中管理矢量图标
+
+`src/Juju.App/Assets/IconResources.xaml` 使用 `DrawingImage` 保存由 SVG 转换而来的矢量图标，
+`App.xaml` 通过 `ResourceDictionary.MergedDictionaries` 将其并入全局资源。窗口只需要引用资源：
+
+```xml
+<Image Source="{StaticResource SettingsIcon}"
+       Width="18" Height="18" Stretch="Uniform" />
+```
+
+`DrawingImage` 只描述图形，不决定它在按钮中的布局位置。位置由两层共同决定：
+
+- `LauncherAction` 模板中的 `ContentPresenter` 将整个 `Image` 控件放在按钮中央。
+- `IconResources.xaml` 中透明的 `RectangleGeometry Rect="0,0,24,24"` 建立 SVG 的 24×24 viewBox，确保可见几何以 `(12,12)` 为中心在 `Image` 内缩放。
+
+资源字典本身不是可视控件，因此 Visual Studio 的设计器通常不会像预览 Window 那样单独显示它。
+可在任意预览用 `Window`、`UserControl` 或实际按钮中放置引用该资源的 `Image`；运行应用的 Launcher
+就是当前最直接的预览入口。资源较多时可新增一个仅用于开发的图标画廊窗口，逐项显示资源键和图标。
+
 ## 8. 从一次点击到一次保存：完整调用链
 
 以用户在 JSON 工具中选择文件并编辑为例：

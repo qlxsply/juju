@@ -11,22 +11,60 @@
                             UseAeroCaptionButtons="False" />
     </shell:WindowChrome.WindowChrome>
     <Window.Resources>
-        <!-- 标题栏的图标按钮样式；该模板完全替换默认 Button 外观。 -->
+        <!--
+            标题栏图标按钮样式：
+            - x:Key="LauncherAction" 是资源键，按钮用 Style="{StaticResource LauncherAction}" 引用。
+            - TargetType="Button" 限定该样式用于 Button，并让 Setter 的 Property 名按 Button 属性解析。
+            - 此样式位于 Window.Resources，只能被当前 LauncherWindow 及其子元素使用。
+        -->
         <Style x:Key="LauncherAction" TargetType="Button">
-            <!-- 透明背景和边框让按钮初始状态融入自绘标题栏。 -->
-            <Setter Property="Background" Value="Transparent" /><Setter Property="BorderBrush" Value="Transparent" />
+            <!-- Background=Transparent：默认背景完全透明，但控件仍保留完整命中区域。 -->
+            <Setter Property="Background" Value="Transparent" />
+            <!-- BorderBrush=Transparent：边框画刷透明；当前模板没有直接显示默认 Button 边框。 -->
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <!-- BorderThickness=0：四边边框厚度均为 0，避免系统按钮边框影响标题栏外观。 -->
             <Setter Property="BorderThickness" Value="0" />
+            <!-- HorizontalContentAlignment=Center：按钮内容在水平方向居中。 -->
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <!-- VerticalContentAlignment=Center：按钮内容在垂直方向居中。 -->
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <!--
+                Template 属性的类型是 ControlTemplate，它是由 Border、ContentPresenter、Trigger 等对象
+                组成的复杂对象，不是数字、颜色这类可由 Value="..." 转换的简单值，所以必须使用：
+                <Setter Property="Template">
+                    <Setter.Value>复杂对象</Setter.Value>
+                </Setter>
+                这叫 XAML 属性元素语法。Setter.Value 表示“下面这个 ControlTemplate 对象就是 Value”。
+            -->
             <Setter Property="Template">
                 <Setter.Value>
+                    <!--
+                        ControlTemplate 完全定义 Button 的视觉树，但 Button 本身仍保留 Click、Command、
+                        IsPressed 等行为。TargetType="Button" 告诉模板它服务于 Button，使 TemplateBinding
+                        和 Trigger 可以安全引用 Button 的 Background、Content、IsMouseOver 等属性。
+                    -->
                     <ControlTemplate TargetType="Button">
-                        <!-- TemplateBinding 读取被套用按钮的 Background，避免模板硬编码颜色。 -->
+                        <!--
+                            Border 是按钮的可视表面。x:Name="Surface" 让 Trigger 能按名称修改它。
+                            TemplateBinding Background 把实际 Button.Background 单向传入 Border.Background，
+                            因而样式默认的 Transparent 和触发器设置的悬停色都能显示出来。
+                        -->
                         <Border x:Name="Surface" Background="{TemplateBinding Background}">
-                            <!-- ContentPresenter 呈现 Content，并在表面中央对齐。 -->
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            <!--
+                                ContentPresenter 是 Button.Content 的占位器。本按钮的 Content 就是下面声明的 Image。
+                                Content/ContentTemplate 显式转交按钮内容及其模板；两个 Alignment 通过 TemplateBinding
+                                使用上方 Setter 的 Center，因此 Image 控件在 44x44 按钮表面中居中。
+                            -->
+                            <ContentPresenter Content="{TemplateBinding Content}"
+                                              ContentTemplate="{TemplateBinding ContentTemplate}"
+                                              HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                              VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
                         </Border>
+                        <!-- 模板触发器根据 Button 状态改变视觉树，不需要在代码后置监听鼠标事件。 -->
                         <ControlTemplate.Triggers>
-                            <!-- 悬停时仅改变命名 Border 的背景，提供轻量反馈。 -->
+                            <!-- Property=IsMouseOver、Value=True：鼠标位于按钮范围内时条件成立。 -->
                             <Trigger Property="IsMouseOver" Value="True">
+                                <!-- TargetName=Surface 指定上面的 Border；#E5E7EB 是浅灰悬停背景色。 -->
                                 <Setter TargetName="Surface" Property="Background" Value="#E5E7EB" />
                             </Trigger>
                         </ControlTemplate.Triggers>
@@ -81,10 +119,12 @@
                 <!--
                     Source：从 App.xaml 合并的 IconResources.xaml 中取得 SettingsIcon DrawingImage。
                     Width/Height=18：图标在 44 像素标题栏中的显示尺寸；Stretch=Uniform：保持 SVG 原始宽高比。
+                    HorizontalAlignment/VerticalAlignment=Center：明确要求 Image 自身在父内容区域中居中；
+                    LauncherAction 的 ContentPresenter 也会把整个 Image 放在按钮中央。
                     IsHitTestVisible=False：图标本身不截获点击，鼠标事件仍由外层 Button 接收。
                 -->
                 <Image Source="{StaticResource SettingsIcon}" Width="18" Height="18" Stretch="Uniform"
-                       IsHitTestVisible="False" />
+                       HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False" />
             </Button>
         </Grid>
         <!-- 工具数量超过窗口高度时自动显示垂直滚动条。 -->

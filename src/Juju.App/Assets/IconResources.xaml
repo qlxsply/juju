@@ -11,28 +11,67 @@
     <SolidColorBrush x:Key="IconForeground" Color="#1F2937" />
 
     <!--
-        Lucide Settings 图标的 WPF 表示，来源为 24x24 SVG：
-        - x:Key="SettingsIcon" 是消费者使用 StaticResource 引用的稳定名称。
-        - 第一条透明矩形保持原 SVG viewBox 的 24x24 边界，Image 缩放时不会裁掉图标留白。
-        - 第二个 GeometryDrawing 是 SVG 的 path；第三个是 SVG 的 circle。
+        Lucide Settings 图标的 WPF 表示，来源为 viewBox="0 0 24 24" 的 SVG。
+
+        DrawingImage 是一种 ImageSource，它只描述“如何绘制”，不参与按钮布局。按钮中的 Image 控件负责
+        最终显示尺寸和布局位置。x:Key 是资源字典键，因此消费者可写：
+        <Image Source="{StaticResource SettingsIcon}" />。
+
+        此 DrawingImage 内有三个按顺序叠加的 GeometryDrawing：
+        1. 透明 24x24 矩形：建立与 SVG viewBox 相同的固定坐标边界。
+        2. 齿轮外轮廓：来自 SVG 的 path。
+        3. 中心圆：来自 SVG 的 circle。
+
+        外轮廓的实际描边边界中心约为 (12,12)，中心圆圆心也是 (12,12)，所以图形在坐标上居中。
+        如果某个图标因为造型不对称而需要“光学居中”，可给 DrawingGroup 添加 TranslateTransform，
+        例如 X="0.25" 或 Y="-0.25" 做极小位移；本图标不需要该补偿。
     -->
     <DrawingImage x:Key="SettingsIcon">
+        <!--
+            Drawing 是 DrawingImage 的复杂对象属性。复杂对象不能像 Width="18" 那样用简单字符串表达，
+            因此使用“属性元素语法” <DrawingImage.Drawing>...</DrawingImage.Drawing> 为它赋值。
+        -->
         <DrawingImage.Drawing>
+            <!-- DrawingGroup 把多个 Drawing 组合为一个图像；子项按书写顺序从后景画到前景。 -->
             <DrawingGroup>
-                <!-- Transparent 仍保留 24x24 绘制边界，但不会绘制任何可见像素。 -->
-                <GeometryDrawing Brush="Transparent" Geometry="M0,0 H24 V24 H0 Z" />
                 <!--
-                    Geometry 属性采用与 SVG path 相同的路径数据。
-                    Pen.Thickness=2、StartLineCap/EndLineCap=Round、LineJoin=Round 分别对应 SVG 的
-                    stroke-width、stroke-linecap 和 stroke-linejoin 属性。
+                    透明矩形对应 SVG 的 viewBox="0 0 24 24"：
+                    - Brush="Transparent" 会参与绘制边界计算，但不会产生可见颜色。
+                    - RectangleGeometry.Rect 的四个值依次是 X、Y、Width、Height。
+                    - 固定边界让 DrawingImage 始终围绕 (12,12) 缩放；如果删除它，WPF 会改用实际描边
+                      的最小外接矩形，来自不同 SVG 的图标可能因各自留白不同而看起来大小或位置不一致。
+                -->
+                <GeometryDrawing Brush="Transparent">
+                    <GeometryDrawing.Geometry>
+                        <RectangleGeometry Rect="0,0,24,24" />
+                    </GeometryDrawing.Geometry>
+                </GeometryDrawing>
+
+                <!--
+                    GeometryDrawing 将“形状 Geometry”和“描边 Pen”组合起来：
+                    - Geometry 使用 WPF 路径标记语法，它与 SVG path data 基本兼容。
+                    - M9.671 4.136：将当前点移动到绝对坐标 (9.671,4.136)，但不绘线。
+                    - a/A：绘制椭圆弧；小写 a 使用相对坐标，大写 A 使用绝对坐标。
+                    - 当前 SVG fill="none"，所以此 GeometryDrawing 不设置 Brush，只使用 Pen 描边。
                 -->
                 <GeometryDrawing Geometry="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915">
+                    <!-- Pen 也是复杂对象，所以用 GeometryDrawing.Pen 属性元素赋值。 -->
                     <GeometryDrawing.Pen>
+                        <!--
+                            Brush：引用统一图标颜色；Thickness=2：对应 SVG stroke-width="2"。
+                            StartLineCap/EndLineCap=Round：线段两端为圆头，对应 stroke-linecap="round"。
+                            LineJoin=Round：路径转角为圆角，对应 stroke-linejoin="round"。
+                        -->
                         <Pen Brush="{StaticResource IconForeground}" Thickness="2" StartLineCap="Round"
                              EndLineCap="Round" LineJoin="Round" />
                     </GeometryDrawing.Pen>
                 </GeometryDrawing>
-                <!-- SVG 的 circle cx="12" cy="12" r="3" 对应 EllipseGeometry 的圆心和两个半径。 -->
+
+                <!--
+                    SVG <circle cx="12" cy="12" r="3" /> 转换为 EllipseGeometry：
+                    Center="12,12" 是圆心；RadiusX/RadiusY 都是 3，所以结果是圆而不是椭圆。
+                    GeometryDrawing 没有 Brush，圆内部透明；Pen 只绘制圆周。
+                -->
                 <GeometryDrawing>
                     <GeometryDrawing.Pen>
                         <Pen Brush="{StaticResource IconForeground}" Thickness="2" />
