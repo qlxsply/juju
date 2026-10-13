@@ -154,6 +154,7 @@ public partial class JsonToolWindow : Window
     private async Task EnsureEditorAsync()
     {
         if (_editor is not null || _initializing || _closing || !IsVisible) return;
+        _autosave.Interval = TimeSpan.FromMilliseconds(_settings.Current.AutosaveDelayMilliseconds);
         _initializing = true;
         try
         {
@@ -297,6 +298,7 @@ public partial class JsonToolWindow : Window
                         _foldDepth = 0;
                         UpdateStatus();
                         _autosave.Stop();
+                        _autosave.Interval = TimeSpan.FromMilliseconds(_settings.Current.AutosaveDelayMilliseconds);
                         _autosave.Start();
                     }
 
@@ -740,7 +742,7 @@ public partial class JsonToolWindow : Window
     }
 
     // 重写 Window.OnClosing，接管系统关闭请求和自绘关闭按钮调用 Close() 后的统一生命周期。
-    // 用户关闭改为“保存后隐藏”，使 DesktopWindowManager 下次可以 Show 同一实例；
+    // 普通关闭先保存；工具设置决定复用隐藏窗口还是实际释放并在下次打开时重建。
     // ShutdownAsync 先设置 _closing=true，应用退出时才允许基类完成真正关闭和窗口资源销毁。
     protected override void OnClosing(CancelEventArgs e)
     {
@@ -751,19 +753,26 @@ public partial class JsonToolWindow : Window
             return;
         }
 
-        // 普通关闭路径：取消本次 Close，异步保存完成后改用 Hide；隐藏窗口仍然是可复用实例。
+        // 先取消同步 Closing，再等待异步保存；成功后按工具设置执行 Hide 或真正 Close。
         e.Cancel = true;
-        _ = CloseToHiddenAsync();
+        _ = CloseToolAsync();
     }
 
-    private async Task CloseToHiddenAsync()
+    private async Task CloseToolAsync()
     {
         _closing = true;
         try
         {
             if (!await FlushCurrentAsync()) return;
             DestroyEditor();
-            Hide();
+            if (_settings.Current.KeepWindowOnClose) Hide();
+            else
+            {
+                // 不保留窗口时真正关闭；窗口管理器的 Closed 回调会清空缓存，下一次重新创建。
+                _documents.ExternalChanged -= OnExternalDocumentChanged;
+                _lifetime.Cancel();
+                Close();
+            }
         }
         finally
         {

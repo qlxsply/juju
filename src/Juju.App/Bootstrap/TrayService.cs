@@ -2,6 +2,7 @@ using System.Windows.Forms;
 using Juju.Core.App;
 using Juju.Core.Tools;
 using Toto.App;
+using Juju.Core.Settings;
 
 namespace Juju.App.Bootstrap;
 
@@ -12,7 +13,8 @@ public sealed class TrayService : IDisposable
     private readonly System.Drawing.Icon _trayImage;
 
     // 依赖和退出回调由 DI 组装。菜单 Click 是同步事件，因此退出回调在 App 中转发到异步关停流程。
-    public TrayService(IWindowManager windows, IToolManager tools, TotoToolHost toto, Action exit)
+    public TrayService(IWindowManager windows, IToolManager tools, TotoToolHost toto,
+        ISettingsService settings, Action exit)
     {
         using var stream =
             System.Windows.Application.GetResourceStream(new Uri("pack://application:,,,/Assets/juju.ico"))!.Stream;
@@ -37,6 +39,14 @@ public sealed class TrayService : IDisposable
         {
             if (e.Button == MouseButtons.Left) windows.ShowLauncher();
         };
+        if (windows is DesktopWindowManager manager)
+            manager.ToolHidden += tool =>
+            {
+                if (!settings.Current.ShowToolNotifications) return;
+                _icon.ShowBalloonTip(1800, "juju Toolbox",
+                    $"{(tool == ToolId.Json ? "JSON" : "Toto")} 已隐藏，仍可从托盘或快捷键打开。",
+                    ToolTipIcon.Info);
+            };
     }
 
     // 托盘图标是系统资源；必须先隐藏再释放，避免应用结束后通知区域留下失效图标。

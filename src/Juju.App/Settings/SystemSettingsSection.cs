@@ -1,97 +1,68 @@
 using System.Windows;
 using Juju.App.Bootstrap;
+using Juju.App.Views;
 using Juju.Core.Settings;
 using Juju.Platform.Windows.Startup;
-using Juju.App.Views;
 
 namespace Juju.App.Settings;
 
-// 设置节由 DI 作为 ISettingsSection 的一个实现收集，并在 SettingsWindow 中动态组合。
+/// <summary>原型“应用设置 / 常用设置”对应的真实宿主行为，而不是仅改变 UI 的演示开关。</summary>
 public sealed class SystemSettingsSection : ISettingsSection
 {
-    private readonly System.Windows.Controls.CheckBox _startAtLogin = new() { Content = "开机自动启动" };
-    private readonly System.Windows.Controls.TextBox _shortcut = new();
-    private readonly System.Windows.Controls.TextBox _jsonShortcut = new();
-    private readonly System.Windows.Controls.TextBox _timeout = new();
-    private readonly System.Windows.Controls.ComboBox _theme = new();
-    public string Id => "system";
-    public string DisplayName => "系统";
-    public FrameworkElement View { get; } = new System.Windows.Controls.StackPanel { Margin = new Thickness(16) };
-
     private readonly ISettingsService _settings;
-    private readonly ThemeService _themes;
     private readonly IStartupService _startup;
+    private readonly System.Windows.Controls.CheckBox _startAtLogin;
+    private readonly System.Windows.Controls.CheckBox _startMinimized;
+    private readonly System.Windows.Controls.CheckBox _notifications;
+    private readonly System.Windows.Controls.CheckBox _autoHide;
+    private readonly System.Windows.Controls.CheckBox _returnAfterClose;
+    private readonly System.Windows.Controls.TextBox _timeout;
 
-    // with 为 record 的非破坏性复制：保留未编辑字段，只创建包含新值的 AppSettings 实例。
-    public async Task SaveAsync()
-    {
-        var previous = _settings.Current;
-        var value = previous with
-        {
-            StartAtLogin = _startAtLogin.IsChecked == true,
-            LeaderShortcut = _shortcut.Text.Trim(),
-            JsonShortcut = _jsonShortcut.Text.Trim(),
-            LauncherTimeoutMilliseconds = ReadNumber(_timeout, 250, 30000),
-            Theme = (ThemePreference)Math.Max(0, _theme.SelectedIndex)
-        };
-        var launcher = System.Windows.Application.Current.Windows.OfType<LauncherWindow>().FirstOrDefault();
-        // 先向 Windows 注册候选组合键；失败时保持当前配置和旧的全局热键。
-        if (launcher is not null && !launcher.ApplySettings(value))
-        {
-            launcher.ApplySettings(previous);
-            throw new InvalidOperationException("全局快捷键无效或已被占用，设置未保存。");
-        }
-        try
-        {
-            _startup.SetEnabled(value.StartAtLogin);
-            await _settings.SaveAsync(value);
-            _themes.Apply(value.Theme);
-        }
-        catch
-        {
-            launcher?.ApplySettings(previous);
-            throw;
-        }
-    }
+    public string Id => "system";
+    public string DisplayName => "常用设置";
+    public FrameworkElement View { get; }
 
-    // 构造函数注入使此 UI 适配器依赖抽象服务，而不是自行创建配置、主题或注册表访问对象。
-    public SystemSettingsSection(ISettingsService settings, ThemeService themes, IStartupService startup)
+    public SystemSettingsSection(ISettingsService settings, IStartupService startup)
     {
         _settings = settings;
-        _themes = themes;
         _startup = startup;
-        var panel = (System.Windows.Controls.StackPanel)View;
-        _theme.Items.Add("跟随系统");
-        _theme.Items.Add("浅色");
-        _theme.Items.Add("深色");
-        panel.Children.Add(_startAtLogin);
-        AddField(panel, "全局快捷键", _shortcut);
-        AddField(panel, "JSON 工具全局快捷键", _jsonShortcut);
-        panel.Children.Add(new System.Windows.Controls.TextBlock
-        {
-            Margin = new Thickness(0, 8, 0, 0),
-            Text = "Toto 的全局快捷键在 Toto 工具自己的设置窗口中修改。"
-        });
-        AddField(panel, "Launcher 超时（毫秒）", _timeout);
-        AddField(panel, "主题", _theme);
-        var current = _settings.Current;
-        _startAtLogin.IsChecked = current.StartAtLogin;
-        _shortcut.Text = current.LeaderShortcut;
-        _jsonShortcut.Text = current.JsonShortcut;
-        _timeout.Text = current.LauncherTimeoutMilliseconds.ToString();
-        _theme.SelectedIndex = (int)current.Theme;
+        var current = settings.Current;
+        var page = SettingsViewFactory.Page("APPLICATION / GENERAL", "常用设置",
+            "配置工具箱的启动与驻留行为。这里的选项只影响 juju 主程序。");
+        var startupCard = SettingsViewFactory.Group(page, "启动与关闭");
+        _startMinimized = SettingsViewFactory.Switch("启动时仅显示托盘图标", current.StartMinimized);
+        SettingsViewFactory.Row(startupCard, "启动时仅显示托盘图标", "关闭后，下次启动将显示工具入口。", _startMinimized);
+        _startAtLogin = SettingsViewFactory.Switch("登录 Windows 后自动启动", current.StartAtLogin);
+        SettingsViewFactory.Row(startupCard, "登录 Windows 后自动启动", "只创建 Juju 的启动项，Toto 不再单独启动。", _startAtLogin);
+        _notifications = SettingsViewFactory.Switch("显示工具状态提示", current.ShowToolNotifications);
+        SettingsViewFactory.Row(startupCard, "显示工具状态提示", "JSON 或 Toto 隐藏到后台时显示托盘提示。", _notifications);
+        _autoHide = SettingsViewFactory.Switch("点击入口以外区域时自动隐藏", current.AutoHideLauncher);
+        SettingsViewFactory.Row(startupCard, "点击工具入口以外的区域时自动隐藏", "不会退出 Juju 或停止 Toto 提醒。", _autoHide);
+
+        var behavior = SettingsViewFactory.Group(page, "窗口行为");
+        _returnAfterClose = SettingsViewFactory.Switch("工具关闭后重新显示入口", current.ReturnToLauncherOnToolClose);
+        SettingsViewFactory.Row(behavior, "工具窗口关闭后自动重新显示入口", "JSON/Toto 窗口隐藏后回到工具列表。", _returnAfterClose);
+        _timeout = SettingsViewFactory.Input(current.LauncherTimeoutMilliseconds.ToString(), 100);
+        SettingsViewFactory.Row(behavior, "Launcher 组合键超时（毫秒）", "按住唤醒组合键时等待修饰键松开的最长时间。", _timeout);
+        SettingsViewFactory.Note(page, "常驻托盘与单实例由 Juju 管理；Toto 到期提醒在主窗口隐藏时仍正常运行。");
+        View = page;
     }
 
-    // 此页面以代码生成控件而非 XAML；仍使用标准 WPF 视觉树与布局容器。
-    private static void AddField(System.Windows.Controls.Panel panel, string label,
-        System.Windows.Controls.Control control)
+    public async Task SaveAsync()
     {
-        panel.Children.Add(new System.Windows.Controls.TextBlock { Margin = new Thickness(0, 14, 0, 3), Text = label });
-        panel.Children.Add(control);
+        if (!int.TryParse(_timeout.Text, out var timeout) || timeout is < 250 or > 30000)
+            throw new InvalidOperationException("Launcher 超时必须在 250 到 30000 毫秒之间。");
+        var value = _settings.Current with
+        {
+            StartAtLogin = _startAtLogin.IsChecked == true,
+            StartMinimized = _startMinimized.IsChecked == true,
+            ShowToolNotifications = _notifications.IsChecked == true,
+            AutoHideLauncher = _autoHide.IsChecked == true,
+            ReturnToLauncherOnToolClose = _returnAfterClose.IsChecked == true,
+            LauncherTimeoutMilliseconds = timeout
+        };
+        _startup.SetEnabled(value.StartAtLogin);
+        await _settings.SaveAsync(value);
+        System.Windows.Application.Current.Windows.OfType<LauncherWindow>().FirstOrDefault()?.ApplySettings(value);
     }
-
-    private static int ReadNumber(System.Windows.Controls.TextBox box, int minimum, int maximum) =>
-        int.TryParse(box.Text, out var value) && value >= minimum && value <= maximum
-            ? value
-            : throw new InvalidOperationException($"{box.Text} 不是有效范围内的数字。");
 }

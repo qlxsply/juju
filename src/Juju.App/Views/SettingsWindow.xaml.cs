@@ -1,81 +1,140 @@
 using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
+using System.Windows.Input;
 using Juju.App.Settings;
+using Button = System.Windows.Controls.Button;
+using ComboBox = System.Windows.Controls.ComboBox;
+using KeyEventArgs = System.Windows.Input.KeyEventArgs;
 
 namespace Juju.App.Views;
 
-// SettingsWindow.xaml 编译后会生成 InitializeComponent；partial 将生成的控件字段与此处逻辑合并。
-// 这类似 Java 的 FXML 控制器绑定，但 WPF 使用编译期生成的强类型 partial 类。
+/// <summary>
+/// XAML 构建左侧静态导航，DI 注入的 ISettingsSection 提供右侧业务页面。
+/// 原型的前端状态 activeSection/toolsExpanded 对应下面的 _selectedId/_toolsExpanded。
+/// </summary>
 public partial class SettingsWindow : Window
 {
-    private readonly IReadOnlyList<ISettingsSection> _sections;
+    private readonly IReadOnlyDictionary<string, ISettingsSection> _sections;
+    private readonly Dictionary<string, Button> _navigation;
+    private string _selectedId = "system";
+    private bool _toolsExpanded;
+    private bool _saving;
+    private bool _saveAgain;
     public bool AllowClose { get; set; }
 
-    // IEnumerable 由 DI 注入，容器会收集所有 ISettingsSection 注册项，使新增设置页无需修改窗口。
     public SettingsWindow(IEnumerable<ISettingsSection> sections)
     {
-        _sections = sections.ToArray();
+        _sections = sections.ToDictionary(section => section.Id);
         InitializeComponent();
-        var roots = new[]
+        _navigation = new Dictionary<string, Button>
         {
-            new SettingsTreeNode("基础", _sections.Where(section => section.Id == "system")),
-            new SettingsTreeNode("工具", _sections.Where(section => section.Id != "system"))
+            ["system"] = NavGeneral, ["shortcut"] = NavShortcut, ["storage"] = NavStorage,
+            ["display"] = NavDisplay, ["about"] = NavAbout,
+            ["json"] = NavJson, ["toto"] = NavToto
         };
-        SettingsTree.ItemsSource = roots;
-        SectionContent.Content = _sections.FirstOrDefault(section => section.Id == "system")?.View;
+        Select("system");
+        // CheckBox 和 ComboBox 是标准 WPF 控件；路由事件在窗口集中触发即时保存。
+        // TextBox 不监听每个字符：用户输入完热键后使用“保存更改”，避免半输入状态注册失败。
+        AddHandler(ToggleButton.CheckedEvent, new RoutedEventHandler(ImmediateSave));
+        AddHandler(ToggleButton.UncheckedEvent, new RoutedEventHandler(ImmediateSave));
+        AddHandler(Selector.SelectionChangedEvent, new SelectionChangedEventHandler(SelectionChanged));
     }
 
-    // XAML 事件处理器运行在 Dispatcher/UI 线程；依据新选择项替换右侧承载的 View。
-    private void SettingsTree_SelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
+    private void Select(string id)
     {
-        if (e.NewValue is SettingsTreeNode { Section: { } section }) SectionContent.Content = section.View;
+        if (!_sections.TryGetValue(id, out var section)) return;
+        _selectedId = id;
+        SectionContent.Content = section.View;
+        ContentScroll.ScrollToTop();
+        foreach (var (key, button) in _navigation) button.Tag = key == id ? "Active" : null;
+        NavTools.Tag = id is "json" or "toto" ? "Active" : null;
+        SaveButton.Visibility = id is "storage" or "about" or "toto" ? Visibility.Collapsed : Visibility.Visible;
+        Status.Text = id is "storage" or "about" or "toto" ? "该页面无需保存" :
+            "更改开关后自动保存；文本输入请点击保存";
     }
 
-    // Button.Click 的委托要求 void，所以 async void 仅用于事件边界；保存异常在此转换为界面状态。
-    private async void Save_Click(object sender, RoutedEventArgs e)
+    public void NavigateToGeneral()
     {
+        ExpandTools(false);
+        Select("system");
+    }
+
+    private void Navigate_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { CommandParameter: string id }) return;
+        if (id is "json" or "toto") ExpandTools(true);
+        Select(id);
+    }
+
+    private void ToolGroup_Click(object sender, RoutedEventArgs e)
+    {
+        ExpandTools(!_toolsExpanded);
+        Select(_toolsExpanded ? "json" : "system");
+    }
+
+    private void ExpandTools(bool expanded)
+    {
+        _toolsExpanded = expanded;
+        ToolChildren.Visibility = expanded ? Visibility.Visible : Visibility.Collapsed;
+        ToolChevron.Text = expanded ? "⌄" : "›";
+    }
+
+    private async void ImmediateSave(object sender, RoutedEventArgs e)
+    {
+        if (_selectedId is "system" or "display" or "json") await SaveCurrentAsync();
+    }
+
+    private async void SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (e.OriginalSource is ComboBox && _selectedId == "display") await SaveCurrentAsync();
+    }
+
+    private async void Save_Click(object sender, RoutedEventArgs e) => await SaveCurrentAsync();
+
+    private async Task SaveCurrentAsync()
+    {
+        if (_saving) { _saveAgain = true; return; }
+        _saving = true;
+        SaveButton.IsEnabled = false;
         try
         {
-            if (SettingsTree.SelectedItem is SettingsTreeNode { Section: { } section }) await section.SaveAsync();
+            do
+            {
+                _saveAgain = false;
+                var section = _sections[_selectedId];
+                await section.SaveAsync();
+            } while (_saveAgain);
             Status.Text = "已保存";
         }
         catch (Exception ex)
         {
-            Status.Text = "保存失败: " + ex.Message;
+            Status.Text = "保存失败：" + ex.Message;
+        }
+        finally
+        {
+            SaveButton.IsEnabled = true;
+            _saving = false;
         }
     }
 
-    // 普通关闭改为隐藏，从而保留控件输入；应用显式关停时由管理器设置 AllowClose 释放窗口。
+    private void TitleBar_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.LeftButton == MouseButtonState.Pressed && e.OriginalSource == sender) DragMove();
+    }
+
+    private void Close_Click(object sender, RoutedEventArgs e) => Close();
+
+    protected override void OnPreviewKeyDown(KeyEventArgs e)
+    {
+        if (e.Key == Key.Escape) { Close(); e.Handled = true; }
+        base.OnPreviewKeyDown(e);
+    }
+
+    // 普通关闭保留已有控件输入和设置导航；Juju 退出时由 DesktopWindowManager 设置 AllowClose。
     protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
     {
-        if (!AllowClose)
-        {
-            e.Cancel = true;
-            Hide();
-        }
-
+        if (!AllowClose) { e.Cancel = true; Hide(); }
         base.OnClosing(e);
     }
-}
-
-// 必须为 public，因为 SettingsWindow.xaml 的 HierarchicalDataTemplate 需要在运行时访问此类型。
-// 树节点是纯展示模型，不承担保存行为；叶节点才保留实际的设置节。
-public sealed class SettingsTreeNode
-{
-    public SettingsTreeNode(string name, IEnumerable<ISettingsSection> sections)
-    {
-        Name = name;
-        Children = sections.Select(section => new SettingsTreeNode(section.DisplayName, section)).ToArray();
-    }
-
-    private SettingsTreeNode(string name, ISettingsSection section)
-    {
-        Name = name;
-        Section = section;
-    }
-
-    public string Name { get; }
-    public bool IsExpanded => Children.Count > 0;
-    public ISettingsSection? Section { get; }
-    public IReadOnlyList<SettingsTreeNode> Children { get; } = [];
-    public override string ToString() => Name;
 }

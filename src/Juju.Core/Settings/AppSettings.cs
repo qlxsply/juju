@@ -17,7 +17,12 @@ public sealed record AppSettings(
     string LeaderShortcut = "Ctrl+Shift+Alt+Space",
     int LauncherTimeoutMilliseconds = 2000,
     ThemePreference Theme = ThemePreference.System,
-    string JsonShortcut = "Ctrl+Alt+J")
+    string JsonShortcut = "Ctrl+Alt+J",
+    bool StartMinimized = true,
+    bool ShowToolNotifications = true,
+    bool AutoHideLauncher = true,
+    bool ReturnToLauncherOnToolClose = false,
+    bool CompactLauncher = false)
 {
     /// <summary>按构造函数默认值创建完整设置。</summary>
     public static AppSettings CreateDefault() => new();

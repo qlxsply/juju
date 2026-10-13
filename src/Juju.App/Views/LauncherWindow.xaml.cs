@@ -27,6 +27,8 @@ public partial class LauncherWindow : Window
     private readonly TotoToolHost _toto;
     private readonly DispatcherTimer _timeout = new();
     private bool _armed;
+    private bool _settingsOpen;
+    private bool _compact;
 
     // 构造函数依赖由窗口管理器传入；ThemeService 参数用于保持依赖图一致，主题资源由 WPF 全局资源解析。
     public LauncherWindow(IWindowManager windows, ISettingsService settings, ThemeService themes, TotoToolHost toto)
@@ -36,7 +38,7 @@ public partial class LauncherWindow : Window
         _toto = toto;
         InitializeComponent();
         // DispatcherTimer 在 WPF UI 线程触发，不需要额外 Dispatcher.Invoke 即可安全隐藏窗口。
-        _timeout.Tick += (_, _) => Hide();
+        _timeout.Tick += (_, _) => { if (!_settingsOpen) Hide(); };
         IsVisibleChanged += (_, _) =>
         {
             if (!IsVisible) _timeout.Stop();
@@ -53,14 +55,25 @@ public partial class LauncherWindow : Window
         };
         _toto.HotkeyChanged += OnTotoHotkeyChanged;
         _toto.HotkeyChanging += TryRegisterTotoHotkey;
-        // 失焦自动隐藏使 Launcher 表现为临时命令面板，而不是常驻普通窗口。
-        Deactivated += (_, _) => Hide();
+        // 设置窗口打开时入口留在后方；其余情况下由用户偏好决定是否失焦自动隐藏。
+        Deactivated += (_, _) =>
+        {
+            if (!_settingsOpen && _settings.Current.AutoHideLauncher) Hide();
+        };
     }
 
     // 重注册失败时保留旧热键，避免一次无效配置让用户完全失去唤起入口。
     public bool ApplySettings(AppSettings settings)
     {
         _timeout.Interval = TimeSpan.FromMilliseconds(Math.Clamp(settings.LauncherTimeoutMilliseconds, 250, 30000));
+        if (_compact != settings.CompactLauncher)
+        {
+            _compact = settings.CompactLauncher;
+            foreach (var row in new[] { JsonRow, TotoRow, EchoRow, KairosRow })
+                row.Height = _compact ? 45 : 53;
+            Height += _compact ? -32 : 32;
+        }
+        ShortcutHint.Text = "快捷键 " + settings.LeaderShortcut.Replace("+", " + ");
         if (PresentationSource.FromVisual(this) is HwndSource source &&
             !_shortcut.Register(source.Handle, settings.LeaderShortcut))
         {
@@ -76,6 +89,13 @@ public partial class LauncherWindow : Window
     private bool TryRegisterTotoHotkey(string hotkey) => RegisterToolHotkey(_totoShortcut, hotkey, "Toto");
     private void OnTotoHotkeyChanged(string hotkey) => RegisterToolHotkey(_totoShortcut, hotkey, "Toto");
 
+    /// <summary>设置对话框盖在 Launcher 上时禁止失焦、组合键残留与超时将入口隐藏。</summary>
+    public void SetSettingsOpen(bool value)
+    {
+        _settingsOpen = value;
+        if (value) _timeout.Stop();
+    }
+
     private bool RegisterToolHotkey(GlobalShortcutService service, string hotkey, string name)
     {
         if (PresentationSource.FromVisual(this) is not HwndSource source) return false;
@@ -88,6 +108,13 @@ public partial class LauncherWindow : Window
     // 显示前先按鼠标所在显示器定位，随后激活窗口以接收键盘预览事件。
     public void Toggle()
     {
+        // 与原型 toggleLauncher 一致：设置盖在入口上时，唤醒键先收起设置而不是隐藏整个入口。
+        if (_settingsOpen)
+        {
+            System.Windows.Application.Current.Windows.OfType<SettingsWindow>()
+                .FirstOrDefault(window => window.IsVisible)?.Close();
+            return;
+        }
         if (IsVisible)
         {
             Hide();
@@ -146,16 +173,15 @@ public partial class LauncherWindow : Window
             return;
         }
 
-        if (e.Key == Key.D1 || e.Key == Key.D2)
+        if (e.Key is Key.J or Key.T or Key.D1 or Key.D2)
         {
-            _windows.ShowTool(e.Key == Key.D1 ? ToolId.Json : ToolId.Toto);
+            _windows.ShowTool(e.Key is Key.J or Key.D1 ? ToolId.Json : ToolId.Toto);
             Hide();
             e.Handled = true;
         }
         else if (e.Key == Key.S)
         {
             _windows.ShowSettings();
-            Hide();
             e.Handled = true;
         }
 
@@ -181,7 +207,6 @@ public partial class LauncherWindow : Window
     private void Settings_Click(object sender, RoutedEventArgs e)
     {
         _windows.ShowSettings();
-        Hide();
     }
 
     private void Tool_Click(object sender, RoutedEventArgs e)

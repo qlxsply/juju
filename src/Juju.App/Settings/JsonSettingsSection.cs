@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
 using Juju.Tools.Json.Settings;
+using Juju.Core.Tools;
 using MediaBrush = System.Windows.Media.Brush;
 using MediaBrushes = System.Windows.Media.Brushes;
 
@@ -13,6 +14,9 @@ public sealed class JsonSettingsSection : ISettingsSection
     private readonly IJsonToolSettingsService _settings;
     private readonly System.Windows.Controls.TextBox _autosave = new();
     private readonly System.Windows.Controls.TextBox _indent = new();
+    private readonly System.Windows.Controls.CheckBox _keep;
+    private readonly System.Windows.Controls.CheckBox _maximized;
+    private readonly System.Windows.Controls.CheckBox _remember;
 
     private readonly System.Windows.Controls.TextBox _filter = new()
         { Margin = new Thickness(0, 12, 0, 6), Padding = new Thickness(6), ToolTip = "按命令、来源、上下文或快捷键过滤" };
@@ -22,30 +26,47 @@ public sealed class JsonSettingsSection : ISettingsSection
 
     public string Id => "json";
     public string DisplayName => "JSON";
-    public FrameworkElement View { get; } = new StackPanel { Margin = new Thickness(16) };
+    public FrameworkElement View { get; }
 
     // 设置服务由 DI 注入；控件只编辑内存中的行模型，点击总保存时才写入持久化配置。
-    public JsonSettingsSection(IJsonToolSettingsService settings)
+    public JsonSettingsSection(IJsonToolSettingsService settings, Action<ToolId> openTool)
     {
         _settings = settings;
-        var panel = (StackPanel)View;
-        AddField(panel, "自动保存延迟（毫秒）", _autosave);
-        AddField(panel, "缩进空格数", _indent);
-        _autosave.Text = settings.Current.AutosaveDelayMilliseconds.ToString();
-        _indent.Text = settings.Current.IndentSize.ToString();
+        var panel = SettingsViewFactory.Page("TOOL SETTINGS / J", "JSON 格式化",
+            "此页面只管理 JSON 编辑器的窗口与功能偏好，其他工具不受影响。");
+        SettingsViewFactory.Profile(panel, "JSON 格式化", "格式化和压缩 JSON 数据 · 启动键 J",
+            (System.Windows.Media.ImageSource)System.Windows.Application.Current.Resources["JsonToolIcon"],
+            "#EAF2FF", (_, _) => openTool(ToolId.Json));
+
+        var behavior = SettingsViewFactory.Group(panel, "独立窗口与进程行为");
+        _keep = SettingsViewFactory.Switch("关闭时保留 JSON 窗口会话", settings.Current.KeepWindowOnClose);
+        SettingsViewFactory.Row(behavior, "关闭窗口后保留工具会话", "关闭后隐藏；再次打开会复用同一个 WPF 窗口。", _keep);
+        _maximized = SettingsViewFactory.Switch("默认最大化打开 JSON", settings.Current.OpenMaximized);
+        SettingsViewFactory.Row(behavior, "默认最大化打开", "仅控制工具下次打开时的默认尺寸。", _maximized);
+        _remember = SettingsViewFactory.Switch("记住 JSON 窗口大小和位置", settings.Current.RememberWindowPlacement);
+        SettingsViewFactory.Row(behavior, "记住窗口大小与位置", "退出 Juju 时记录窗口最近的位置与尺寸。", _remember);
+
+        var options = SettingsViewFactory.Group(panel, "专属功能设置");
+        _autosave = SettingsViewFactory.Input(settings.Current.AutosaveDelayMilliseconds.ToString(), 95);
+        SettingsViewFactory.Row(options, "自动保存延迟（毫秒）", "编辑器停止输入后等待写入磁盘的时间。", _autosave);
+        _indent = SettingsViewFactory.Input(settings.Current.IndentSize.ToString(), 95);
+        SettingsViewFactory.Row(options, "JSON 缩进空格数", "格式化时的缩进宽度（1 到 8）。", _indent);
 
         panel.Children.Add(new TextBlock
-            { Margin = new Thickness(0, 20, 0, 0), FontSize = 16, FontWeight = FontWeights.SemiBold, Text = "快捷键" });
+            { Margin = new Thickness(0, 24, 0, 0), FontSize = 13, FontWeight = FontWeights.SemiBold, Text = "编辑器快捷键" });
         panel.Children.Add(_filter);
         _rows = JsonToolShortcuts.Definitions
             .Select(definition => new ShortcutRow(definition, settings.Current.Shortcuts[definition.Command])).ToList();
         // TextChanged 是 WPF 事件；每次过滤重建可见行，但保留 _rows 中的编辑值。
         _filter.TextChanged += (_, _) => RefreshShortcutRows();
         panel.Children.Add(CreateShortcutTable());
+        SettingsViewFactory.Note(panel, "编辑器快捷键按“来源 / 上下文”分组校验；修改后请点击底部的“保存更改”。");
+        View = panel;
     }
 
     // 目标设置是 record 风格的不可变值；对象初始化器仅替换 Shortcuts 属性。
-    public Task SaveAsync() => _settings.SaveAsync(new(ReadNumber(_autosave, 100, 10000), ReadNumber(_indent, 1, 8))
+    public Task SaveAsync() => _settings.SaveAsync(new(ReadNumber(_autosave, 100, 10000), ReadNumber(_indent, 1, 8),
+        _keep.IsChecked == true, _maximized.IsChecked == true, _remember.IsChecked == true)
     {
         Shortcuts = _rows.ToDictionary(row => row.Command, row => row.Shortcut)
     });
@@ -56,7 +77,7 @@ public sealed class JsonSettingsSection : ISettingsSection
         table.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         table.RowDefinitions.Add(new RowDefinition());
 
-        var header = CreateTableGrid(MediaBrushes.SteelBlue);
+        var header = CreateTableGrid((MediaBrush)new System.Windows.Media.BrushConverter().ConvertFromString("#6078E9")!);
         AddHeaderCell(header, "命令", 0);
         AddHeaderCell(header, "来源", 1);
         AddHeaderCell(header, "上下文", 2);
@@ -76,7 +97,8 @@ public sealed class JsonSettingsSection : ISettingsSection
 
         RefreshShortcutRows();
         return new Border
-            { BorderBrush = MediaBrushes.LightSteelBlue, BorderThickness = new Thickness(1), Child = table };
+            { BorderBrush = (MediaBrush)System.Windows.Application.Current.Resources["ToolboxLine"],
+                CornerRadius = new CornerRadius(10), BorderThickness = new Thickness(1), Child = table };
     }
 
     // 这里重建的是视觉行而不是数据模型，所以过滤和重置不会丢失未保存的 ShortcutRow。
@@ -86,7 +108,8 @@ public sealed class JsonSettingsSection : ISettingsSection
         var rowIndex = 0;
         foreach (var row in _rows.Where(MatchesFilter))
         {
-            var grid = CreateTableGrid(rowIndex++ % 2 == 0 ? MediaBrushes.White : MediaBrushes.AliceBlue);
+            var grid = CreateTableGrid(rowIndex++ % 2 == 0 ? MediaBrushes.White :
+                (MediaBrush)new System.Windows.Media.BrushConverter().ConvertFromString("#F9FAFF")!);
             AddTextCell(grid, row.CommandName, 0);
             AddTextCell(grid, row.Source, 1);
             AddTextCell(grid, row.Context, 2);
@@ -96,7 +119,11 @@ public sealed class JsonSettingsSection : ISettingsSection
             shortcut.TextChanged += (_, _) => row.Shortcut = shortcut.Text;
             AddCell(grid, shortcut, 3);
 
-            var reset = new System.Windows.Controls.Button { Content = "重置", Padding = new Thickness(8, 2, 8, 2) };
+            var reset = new System.Windows.Controls.Button
+            {
+                Content = "重置", Style = (Style)System.Windows.Application.Current.Resources["ToolboxSoftButton"],
+                Padding = new Thickness(8, 2, 8, 2)
+            };
             reset.Click += (_, _) =>
             {
                 row.Shortcut = row.Default;

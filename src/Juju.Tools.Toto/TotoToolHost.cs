@@ -32,6 +32,7 @@ public sealed class TotoToolHost : IDisposable
     private Exception? initializationError;
 
     public event Action<string>? HotkeyChanged;
+    public event Action? MainWindowHidden;
     // 宿主先尝试注册候选热键；失败时设置页不落盘，避免下次启动丢失旧快捷键。
     public event Func<string, bool>? HotkeyChanging;
     public string Hotkey => settings.Load().GetValueOrDefault("hotkey", "Ctrl+Alt+Space");
@@ -111,6 +112,10 @@ public sealed class TotoToolHost : IDisposable
             main = new MainForm(items, settings, scheduler, OnSettingsSaved, setStartup, getStartup,
                 TryRegisterHotkey);
             main.FormClosed += (_, _) => main = null;
+            main.VisibleChanged += (_, _) =>
+            {
+                if (main is { Visible: false } && !disposed) MainWindowHidden?.Invoke();
+            };
         }
         main.Show();
         if (main.WindowState == FormWindowState.Minimized) main.WindowState = FormWindowState.Normal;

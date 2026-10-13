@@ -1,171 +1,158 @@
 <!--
-    Launcher 自定义窗口的实现分为两步：
-    1. WindowStyle=None 删除 Windows 默认的非客户区（系统标题栏、边框和标题按钮）。
-    2. WindowChrome 为无边框窗口补回系统级的标题区、边缘缩放、贴靠和最大化等窗口行为。
-    顶部 Grid、应用图标和设置按钮都是普通 WPF 控件，因此外观完全由本文件控制。
+    以 WPF 控件复现 HTML 原型的悬浮工具入口：68 DIP 标题栏、图标/说明/单键行、底部托盘提示。
+    WindowStyle=None 去掉系统标题栏；WindowChrome 保留窗口拖动、边缘缩放与贴靠。
+    真正的系统托盘和全局热键仍由 Juju.App 的 WinForms NotifyIcon/Win32 RegisterHotKey 提供。
 -->
-<Window x:Class="Juju.App.Views.LauncherWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+<Window x:Class="Juju.App.Views.LauncherWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework" Title=""
-        Icon="/Assets/juju.ico" Width="380" Height="280" MinWidth="300" MinHeight="220" ResizeMode="CanResize"
-        WindowStyle="None" ShowInTaskbar="False" Background="{DynamicResource JujuBackground}">
-    <!--
-        Window 根元素的关键属性：
-        - x:Class：把 XAML 与 LauncherWindow.xaml.cs 中的 partial class LauncherWindow 连接起来。
-        - xmlns:shell：为 System.Windows.Shell 命名空间取别名，下面才能使用 shell:WindowChrome。
-        - Title=""：窗口标题为空；WindowStyle=None 后不会显示系统标题文字。
-        - Icon：任务切换器等系统界面使用的窗口图标；标题栏内的 Image 仍需单独声明。
-        - Width/Height：首次创建时的尺寸，单位是与 DPI 无关的 WPF DIP，而不是固定物理像素。
-        - MinWidth/MinHeight：用户拖动边缘缩小时允许的下限。
-        - ResizeMode=CanResize：允许调整尺寸；WindowChrome 的 ResizeBorderThickness 提供实际命中区域。
-        - WindowStyle=None：移除系统标题栏和标准最小化、最大化、关闭按钮，是自定义窗口外观的关键。
-        - ShowInTaskbar=False：Launcher 作为托盘面板，不显示独立任务栏按钮。
-        - Background：使用可在运行时更新的全局主题画刷。
-    -->
-    <!--
-        WindowChrome 附加到当前 Window，恢复被 WindowStyle=None 移除的系统窗口交互能力。
-        它不会绘制任何标题栏内容，只负责非客户区命中测试和与 Windows 窗口管理器协作。
-    -->
+        xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
+        Title="juju Toolbox" Icon="/Assets/juju.ico" Width="360" Height="395" MinWidth="340" MinHeight="350"
+        WindowStyle="None" ResizeMode="CanResize" ShowInTaskbar="False" Background="#F5F7FF"
+        FontFamily="Segoe UI Variable, Segoe UI, Microsoft YaHei UI" Foreground="{StaticResource ToolboxInk}">
     <shell:WindowChrome.WindowChrome>
-        <!--
-            CaptionHeight=44：窗口顶部 44 DIP 是标题区，与下方自绘 Grid 的 Height 保持一致。
-            ResizeBorderThickness=6：窗口四边各 6 DIP 可拖动调整尺寸；该区域通常不可见。
-            GlassFrameThickness=0：不把 DWM 玻璃效果延伸到客户区，整个背景由 WPF 绘制。
-            UseAeroCaptionButtons=False：不叠加 Windows 原生标题按钮；Launcher 本身也不显示这些按钮。
-        -->
-        <shell:WindowChrome CaptionHeight="44" ResizeBorderThickness="6" GlassFrameThickness="0"
+        <!-- CaptionHeight 要与顶部 Grid.Height 一致；按钮须标记 IsHitTestVisibleInChrome 才能点击。 -->
+        <shell:WindowChrome CaptionHeight="68" ResizeBorderThickness="6" GlassFrameThickness="0"
                             UseAeroCaptionButtons="False" />
     </shell:WindowChrome.WindowChrome>
-    <Window.Resources>
-        <!--
-            标题栏图标按钮样式：
-            - x:Key="LauncherAction" 是资源键，按钮用 Style="{StaticResource LauncherAction}" 引用。
-            - TargetType="Button" 限定该样式用于 Button，并让 Setter 的 Property 名按 Button 属性解析。
-            - 此样式位于 Window.Resources，只能被当前 LauncherWindow 及其子元素使用。
-        -->
-        <Style x:Key="LauncherAction" TargetType="Button">
-            <!-- Background=Transparent：默认背景完全透明，但控件仍保留完整命中区域。 -->
-            <Setter Property="Background" Value="Transparent" />
-            <!-- BorderBrush=Transparent：边框画刷透明；当前模板没有直接显示默认 Button 边框。 -->
-            <Setter Property="BorderBrush" Value="Transparent" />
-            <!-- BorderThickness=0：四边边框厚度均为 0，避免系统按钮边框影响标题栏外观。 -->
-            <Setter Property="BorderThickness" Value="0" />
-            <!-- HorizontalContentAlignment=Center：按钮内容在水平方向居中。 -->
-            <Setter Property="HorizontalContentAlignment" Value="Center" />
-            <!-- VerticalContentAlignment=Center：按钮内容在垂直方向居中。 -->
-            <Setter Property="VerticalContentAlignment" Value="Center" />
-            <!--
-                Template 属性的类型是 ControlTemplate，它是由 Border、ContentPresenter、Trigger 等对象
-                组成的复杂对象，不是数字、颜色这类可由 Value="..." 转换的简单值，所以必须使用：
-                <Setter Property="Template">
-                    <Setter.Value>复杂对象</Setter.Value>
-                </Setter>
-                这叫 XAML 属性元素语法。Setter.Value 表示“下面这个 ControlTemplate 对象就是 Value”。
-            -->
-            <Setter Property="Template">
-                <Setter.Value>
-                    <!--
-                        ControlTemplate 完全定义 Button 的视觉树，但 Button 本身仍保留 Click、Command、
-                        IsPressed 等行为。TargetType="Button" 告诉模板它服务于 Button，使 TemplateBinding
-                        和 Trigger 可以安全引用 Button 的 Background、Content、IsMouseOver 等属性。
-                    -->
-                    <ControlTemplate TargetType="Button">
-                        <!--
-                            Border 是按钮的可视表面。x:Name="Surface" 让 Trigger 能按名称修改它。
-                            TemplateBinding Background 把实际 Button.Background 单向传入 Border.Background，
-                            因而样式默认的 Transparent 和触发器设置的悬停色都能显示出来。
-                        -->
-                        <Border x:Name="Surface" Background="{TemplateBinding Background}">
-                            <!--
-                                ContentPresenter 是 Button.Content 的占位器。本按钮的 Content 就是下面声明的 Image。
-                                Content/ContentTemplate 显式转交按钮内容及其模板；两个 Alignment 通过 TemplateBinding
-                                使用上方 Setter 的 Center，因此 Image 控件在 44x44 按钮表面中居中。
-                            -->
-                            <ContentPresenter Content="{TemplateBinding Content}"
-                                              ContentTemplate="{TemplateBinding ContentTemplate}"
-                                              HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
-                                              VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
-                        </Border>
-                        <!-- 模板触发器根据 Button 状态改变视觉树，不需要在代码后置监听鼠标事件。 -->
-                        <ControlTemplate.Triggers>
-                            <!-- Property=IsMouseOver、Value=True：鼠标位于按钮范围内时条件成立。 -->
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <!-- TargetName=Surface 指定上面的 Border；#E5E7EB 是浅灰悬停背景色。 -->
-                                <Setter TargetName="Surface" Property="Background" Value="#E5E7EB" />
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-        <!-- 工具列表按钮样式；内容左对齐、内边距和窄圆角使它表现为整行可点击项目。 -->
-        <Style x:Key="LauncherTool" TargetType="Button">
-            <Setter Property="HorizontalContentAlignment" Value="Left" /><Setter Property="Padding" Value="16,10" />
-            <Setter Property="Margin" Value="0,2" /><Setter Property="Background" Value="Transparent" />
-            <Setter Property="BorderBrush" Value="Transparent" /><Setter Property="FontSize" Value="15" />
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <!-- ContentPresenter 的 Margin 绑定到按钮 Padding，因此各实例可调整内容留白。 -->
-                        <Border x:Name="Surface" Background="{TemplateBinding Background}" CornerRadius="3">
-                            <ContentPresenter Margin="{TemplateBinding Padding}" />
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <!-- 两个触发器分别为悬停与按下状态提供不同的蓝色反馈。 -->
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Surface" Property="Background" Value="#E8EEF9" />
-                            </Trigger>
-                            <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="Surface" Property="Background" Value="#D5E2F6" />
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-    </Window.Resources>
-    <!-- DockPanel 仍属于 Window 的客户区；它替代系统标题栏之后的整个可见窗口内容。 -->
-    <DockPanel>
-        <!--
-            这个 Grid 是“看得见的标题栏”：DockPanel.Dock=Top 固定在顶部，Height=44 与 CaptionHeight 对齐。
-            Background 负责实际颜色，也让 Grid 具有可命中的表面；MouseLeftButtonDown 连接代码后置的 DragMove。
-        -->
-        <Grid DockPanel.Dock="Top" Height="44" Background="#F4F6FA" MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
-            <Grid.ColumnDefinitions>
-                <!-- 图标列和设置按钮列固定，中间 * 列吸收空白以将设置按钮推到最右。 -->
-                <ColumnDefinition Width="52" /><ColumnDefinition Width="*" /><ColumnDefinition Width="44" />
-            </Grid.ColumnDefinitions>
-            <!-- 使用包内 ico 显示应用标识；Margin 使其在固定标题高度内居中。 -->
-            <Image Grid.Column="0" Width="28" Height="28" Margin="12,8" Source="/Assets/juju.ico" />
-            <!--
-                Grid.Column=2：将按钮放到第三列，即标题栏最右侧的 44 像素操作区。
-                Style：复用 LauncherAction 的透明背景、悬停反馈和居中 ContentPresenter 模板。
-                ToolTip：鼠标停留时显示“设置”；Click：点击后调用 Settings_Click 打开设置窗口。
-                IsHitTestVisibleInChrome=True：让 WindowChrome 的标题栏区域内按钮仍能接收鼠标事件。
-            -->
-            <Button Grid.Column="2" Style="{StaticResource LauncherAction}" ToolTip="设置"
-                    Click="Settings_Click" shell:WindowChrome.IsHitTestVisibleInChrome="True">
-                <!--
-                    Source：从 App.xaml 合并的 IconResources.xaml 中取得 SettingsIcon DrawingImage。
-                    Width/Height=18：图标在 44 像素标题栏中的显示尺寸；Stretch=Uniform：保持 SVG 原始宽高比。
-                    HorizontalAlignment/VerticalAlignment=Center：明确要求 Image 自身在父内容区域中居中；
-                    LauncherAction 的 ContentPresenter 也会把整个 Image 放在按钮中央。
-                    IsHitTestVisible=False：图标本身不截获点击，鼠标事件仍由外层 Button 接收。
-                -->
-                <Image Source="{StaticResource SettingsIcon}" Width="18" Height="18" Stretch="Uniform"
-                       HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False" />
-            </Button>
-        </Grid>
-        <!-- 工具数量超过窗口高度时自动显示垂直滚动条。 -->
-        <ScrollViewer VerticalScrollBarVisibility="Auto">
-            <!-- 纵向 StackPanel 以统一外边距逐项排列工具入口。 -->
-            <StackPanel Margin="12">
-                <!-- Tag 是代码后置识别工具的稳定标识；Content 是用户可见名称，Click 复用同一启动处理器。 -->
-                <Button Style="{StaticResource LauncherTool}" Tag="Json" Content="JSON" Click="Tool_Click" />
-                <Button Style="{StaticResource LauncherTool}" Tag="Toto" Content="Toto（日程提醒）" Click="Tool_Click" />
-                <Button Style="{StaticResource LauncherTool}" Tag="EchoHttp" Content="EchoHttp" Click="Tool_Click" />
-                <Button Style="{StaticResource LauncherTool}" Tag="Kairos" Content="Kairos" Click="Tool_Click" />
-            </StackPanel>
-        </ScrollViewer>
-    </DockPanel>
+
+    <!-- 外层圆角 Border 对应原型的白色浮窗；DockPanel 将标题、页脚固定在工具列表上下。 -->
+    <Border CornerRadius="16" Margin="5" Background="White" BorderBrush="#EDF0F7" BorderThickness="1">
+        <Border.Effect>
+            <!-- 阴影绘于留出的外边距里，模拟原型的悬浮卡片；仍由 Windows 原生 HWND 提供缩放。 -->
+            <DropShadowEffect Color="#5E6D9B" BlurRadius="16" ShadowDepth="3" Opacity="0.23"/>
+        </Border.Effect>
+        <DockPanel LastChildFill="True">
+            <!-- 自绘标题栏；空白区域通过代码后置 DragMove()，齿轮按钮保留点击事件。 -->
+            <Grid DockPanel.Dock="Top" Height="68" Background="Transparent"
+                  MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="58"/><ColumnDefinition Width="*"/><ColumnDefinition Width="50"/>
+                </Grid.ColumnDefinitions>
+                <Border Grid.Column="0" Width="34" Height="34" CornerRadius="11" Margin="19,0,0,0"
+                        Background="#6078E9" HorizontalAlignment="Left" VerticalAlignment="Center">
+                    <Image Source="{StaticResource ToolboxIcon}" Width="19" Height="19"/>
+                </Border>
+                <StackPanel Grid.Column="1" Margin="8,0,0,0" VerticalAlignment="Center"
+                            IsHitTestVisible="False">
+                    <TextBlock Text="Toolbox" FontSize="15" FontWeight="Bold" Foreground="#1F2A40"/>
+                    <TextBlock Text="你的快捷工具中心" FontSize="11" Foreground="{StaticResource ToolboxMuted}"
+                               Margin="0,3,0,0"/>
+                </StackPanel>
+                <Button Grid.Column="2" Style="{StaticResource ToolboxHeaderButton}" ToolTip="打开设置"
+                        Click="Settings_Click" shell:WindowChrome.IsHitTestVisibleInChrome="True">
+                    <Image Source="{StaticResource SettingsIcon}" Width="18" Height="18" IsHitTestVisible="False"/>
+                </Button>
+            </Grid>
+
+            <!-- 页脚分隔线、绿点和全局入口热键，热键文字在 ApplySettings 中实时刷新。 -->
+            <Border DockPanel.Dock="Bottom" BorderBrush="#EFF1F5" BorderThickness="0,1,0,0"
+                    Height="45" Margin="12,3,12,7">
+                <Grid Margin="11,0">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <Ellipse Width="6" Height="6" Fill="#4CBD91" Margin="0,0,7,0"/>
+                        <TextBlock Text="常驻系统托盘" FontSize="10" Foreground="{StaticResource ToolboxMuted}"/>
+                    </StackPanel>
+                    <TextBlock x:Name="ShortcutHint" Grid.Column="1" HorizontalAlignment="Right"
+                               VerticalAlignment="Center" FontSize="10" Foreground="#78849B"
+                               TextTrimming="CharacterEllipsis" ToolTip="工具入口的全局快捷键"
+                               Text="快捷键 Ctrl + Shift + Alt + Space"/>
+                </Grid>
+            </Border>
+
+            <DockPanel Margin="11,0,11,0">
+                <Grid DockPanel.Dock="Top" Height="28" Margin="11,0">
+                    <TextBlock Text="所有工具" VerticalAlignment="Center" FontSize="10" FontWeight="Bold"
+                               Foreground="#98A0AF"/>
+                    <TextBlock Text="单键快速启动" HorizontalAlignment="Right" VerticalAlignment="Center"
+                               FontSize="10" Foreground="#A7AEBC"/>
+                </Grid>
+                <!-- ScrollViewer 保证缩小窗口后各工具仍可到达；只为已实现工具展示单键。 -->
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel>
+                        <Button x:Name="JsonRow" Style="{StaticResource ToolboxToolRow}" Tag="Json" Click="Tool_Click"
+                                AutomationProperties.Name="打开 JSON 工具">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="46"/><ColumnDefinition Width="*"/><ColumnDefinition Width="29"/>
+                                </Grid.ColumnDefinitions>
+                                <Border Width="34" Height="34" Background="#EAF2FF" CornerRadius="10"
+                                        HorizontalAlignment="Left" VerticalAlignment="Center">
+                                    <Image Source="{StaticResource JsonToolIcon}" Width="19" Height="19"/>
+                                </Border>
+                                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                    <TextBlock Text="JSON 格式化" FontSize="12" FontWeight="SemiBold"/>
+                                    <TextBlock Text="格式化和压缩 JSON 数据" FontSize="10"
+                                               Foreground="{StaticResource ToolboxMuted}" Margin="0,3,0,0"/>
+                                </StackPanel>
+                                <Border Grid.Column="2" Width="25" Height="25" Background="White"
+                                        CornerRadius="6" BorderBrush="#E3E6ED" BorderThickness="1"
+                                        VerticalAlignment="Center">
+                                    <TextBlock Text="J" FontSize="10" FontWeight="Bold" Foreground="#747F92"
+                                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Border>
+                            </Grid>
+                        </Button>
+                        <Button x:Name="TotoRow" Style="{StaticResource ToolboxToolRow}" Tag="Toto" Click="Tool_Click"
+                                AutomationProperties.Name="打开 Toto 日程提醒">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="46"/><ColumnDefinition Width="*"/><ColumnDefinition Width="29"/>
+                                </Grid.ColumnDefinitions>
+                                <Border Width="34" Height="34" Background="#E7F8F3" CornerRadius="10"
+                                        HorizontalAlignment="Left" VerticalAlignment="Center">
+                                    <Image Source="{StaticResource TotoToolIcon}" Width="19" Height="19"/>
+                                </Border>
+                                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                    <TextBlock Text="Toto 日程提醒" FontSize="12" FontWeight="SemiBold"/>
+                                    <TextBlock Text="事项管理与到期自动提醒" FontSize="10"
+                                               Foreground="{StaticResource ToolboxMuted}" Margin="0,3,0,0"/>
+                                </StackPanel>
+                                <Border Grid.Column="2" Width="25" Height="25" Background="White"
+                                        CornerRadius="6" BorderBrush="#E3E6ED" BorderThickness="1"
+                                        VerticalAlignment="Center">
+                                    <TextBlock Text="T" FontSize="10" FontWeight="Bold" Foreground="#747F92"
+                                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Border>
+                            </Grid>
+                        </Button>
+                        <!-- 尚无实现的工具仍保留原有占位入口；点击时明确提示“正在开发中”。 -->
+                        <Button x:Name="EchoRow" Style="{StaticResource ToolboxToolRow}" Tag="EchoHttp" Click="Tool_Click">
+                            <Grid>
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="46"/><ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <Border Width="34" Height="34" Background="#FFF3E4" CornerRadius="10"
+                                        HorizontalAlignment="Left" VerticalAlignment="Center">
+                                    <TextBlock Text="⇄" FontSize="18" Foreground="#DF9952"
+                                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Border>
+                                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                    <TextBlock Text="EchoHttp" FontSize="12" FontWeight="SemiBold"/>
+                                    <TextBlock Text="HTTP 工具 · 正在开发中" FontSize="10"
+                                               Foreground="{StaticResource ToolboxMuted}" Margin="0,3,0,0"/>
+                                </StackPanel>
+                            </Grid>
+                        </Button>
+                        <Button x:Name="KairosRow" Style="{StaticResource ToolboxToolRow}" Tag="Kairos" Click="Tool_Click">
+                            <Grid>
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="46"/><ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <Border Width="34" Height="34" Background="#F0EEFF" CornerRadius="10"
+                                        HorizontalAlignment="Left" VerticalAlignment="Center">
+                                    <TextBlock Text="◷" FontSize="20" Foreground="#6B66DC"
+                                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Border>
+                                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                    <TextBlock Text="Kairos" FontSize="12" FontWeight="SemiBold"/>
+                                    <TextBlock Text="时间工具 · 正在开发中" FontSize="10"
+                                               Foreground="{StaticResource ToolboxMuted}" Margin="0,3,0,0"/>
+                                </StackPanel>
+                            </Grid>
+                        </Button>
+                    </StackPanel>
+                </ScrollViewer>
+            </DockPanel>
+        </DockPanel>
+    </Border>
 </Window>

@@ -17,6 +17,8 @@ public sealed class WindowStateService(IAtomicFileWriter writer)
             await File.ReadAllTextAsync(_path, cancellationToken)) ?? []
         : [];
 
+    public bool HasPlacement(string key) => _placements.ContainsKey(key);
+
     // 恢复前验证保存的矩形仍与任一工作区相交，避免显示器移除后窗口出现在屏幕外。
     public void Restore(Window window, string key)
     {
@@ -35,6 +37,15 @@ public sealed class WindowStateService(IAtomicFileWriter writer)
         window.WindowState = state.Maximized ? WindowState.Maximized : WindowState.Normal;
     }
 
+    // WPF 窗口真正关闭前先保留其几何信息；适用于 JSON 设置为“不复用窗口”的情况。
+    public void Remember(Window window, string key)
+    {
+        // 关闭后 Window 可能不再可读，先在 Closing 事件中把 RestoreBounds 捕获到内存。
+        var bounds = window.RestoreBounds;
+        _placements[key] = new WindowPlacement(bounds.Left, bounds.Top, bounds.Width, bounds.Height,
+            window.WindowState == WindowState.Maximized);
+    }
+
     // 值元组使调用点能紧凑地传递窗口键和值；相当于 Java 中临时的 Pair 记录。
     public async Task CaptureAsync(IEnumerable<(string Key, Window? Window)> windows,
         CancellationToken cancellationToken)
@@ -42,9 +53,7 @@ public sealed class WindowStateService(IAtomicFileWriter writer)
         foreach (var (key, window) in windows)
         {
             if (window is null) continue;
-            _placements[key] = new WindowPlacement(window.RestoreBounds.Left, window.RestoreBounds.Top,
-                window.RestoreBounds.Width,
-                window.RestoreBounds.Height, window.WindowState == WindowState.Maximized);
+            Remember(window, key);
         }
 
         await writer.WriteTextAsync(_path, JsonSerializer.Serialize(_placements), cancellationToken);

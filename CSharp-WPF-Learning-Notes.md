@@ -95,7 +95,10 @@ if (!firstInstance)
 ```csharp
 services.AddSingleton<ISettingsService>(settings);
 services.AddSingleton<ISettingsSection, SystemSettingsSection>();
-services.AddSingleton<ISettingsSection, JsonSettingsSection>();
+services.AddSingleton<ISettingsSection, ShortcutSettingsSection>();
+services.AddSingleton<ISettingsSection>(provider => new JsonSettingsSection(
+    provider.GetRequiredService<IJsonToolSettingsService>(),
+    tool => provider.GetRequiredService<IToolManager>().Open(tool)));
 services.AddSingleton<IWindowManager>(provider =>
     provider.GetRequiredService<DesktopWindowManager>());
 ```
@@ -128,18 +131,21 @@ services.AddSingleton<IWindowManager>(provider =>
 - `GlobalShortcutService.cs` 通过 Win32 `RegisterHotKey` 注册全局快捷键，`LauncherWindow.WindowProcedure` 接收 `WM_HOTKEY` 后调用 `Toggle()`。
 - `StartupService.cs` 写入当前用户的 `HKCU\...\Run` 注册表项，实现开机启动。
 
-Launcher 显示与隐藏的逻辑不是“重新打开页面”：`DesktopWindowManager.InitializeLauncher()` 创建一次窗口后立即 `Hide()`，后续 `ShowLauncher()` 复用同一个实例。这样全局快捷键的窗口句柄和窗口状态都能保留。
+Launcher 显示与隐藏不是“重新打开页面”：`DesktopWindowManager.InitializeLauncher()` 创建一次窗口；默认按“启动时仅显示托盘”隐藏，也可在常用设置中改为启动即显示。后续 `ShowLauncher()` 复用同一实例，保证全局快捷键的窗口句柄保持有效。
 
 ### 4.2 设置窗口
 
-`SettingsWindow.xaml` 将 UI 分为左侧 `TreeView` 与右侧 `ContentControl`。`SettingsWindow.xaml.cs` 接收 DI 注入的 `IEnumerable<ISettingsSection>`，构建“基础”和“工具”两层树；选择叶子节点时将 `section.View` 放到右侧。
+`SettingsWindow.xaml` 将 UI 分为左侧分组导航按钮和右侧 `ContentControl`。`SettingsWindow.xaml.cs` 接收 DI 注入的 `IEnumerable<ISettingsSection>`，左侧切换页和展开 JSON/Toto 子导航时将相应的 `section.View` 放到右侧。卡片式设置行由 `SettingsViewFactory.cs` 创建，配色和开关模板定义在 `Assets/ToolboxStyles.xaml`。
 
 设置页是插件式组合：
 
-- `SystemSettingsSection.cs`：开机启动、Launcher 全局快捷键、超时、主题。
-- `JsonSettingsSection.cs`：自动保存延迟、缩进、JSON 工具快捷键表格。
+- `SystemSettingsSection.cs`：开机启动、托盘提示、入口失焦隐藏、返回入口等常用设置。
+- `ShortcutSettingsSection.cs`：Launcher 与 JSON 的全局快捷键，Toto 的独立设置入口。
+- `StorageSettingsSection.cs`、`DisplaySettingsSection.cs`、`AboutSettingsSection.cs`：数据路径、主题与密度、版本信息。
+- `JsonSettingsSection.cs`：JSON 窗口行为、自动保存、缩进及快捷键表格。
+- `TotoSettingsSection.cs`：打开 Toto 与其已有的 WinForms 专属设置窗口。
 
-新增一个设置页的当前步骤是：实现 `ISettingsSection`，在 `App.xaml.cs` 注册为 `AddSingleton<ISettingsSection, XxxSettingsSection>()`。窗口本身无需添加 `switch` 分支。
+新增页面先实现 `ISettingsSection` 并在 `App.xaml.cs` 注册；如要显示在左侧导航，也需给 `SettingsWindow.xaml` 添加导航按钮并在 `SettingsWindow.xaml.cs` 的字典中登记其 Id。
 
 ### 4.3 JSON 文档管理
 
@@ -452,11 +458,11 @@ private static partial bool RegisterHotKey(IntPtr hWnd, int id, uint fsModifiers
 | `Grid` | 各窗口布局根节点 | CSS Grid 的列/行布局 |
 | `DockPanel` | JSON 窗口的标题栏和状态栏 | BorderLayout：Top/Bottom/Center |
 | `StackPanel` | Launcher 工具按钮、设置控件 | 垂直/水平 BoxLayout |
-| `TreeView`、`ListBox` | 设置导航、JSON 文档列表 | JavaFX TreeView/ListView |
-| `{Binding Name}` | `SettingsWindow.xaml`、文档项模板 | 数据绑定表达式，不是字符串插值 |
+| `ListBox` | JSON 文档列表 | JavaFX ListView |
+| `{Binding DisplayName}` | `JsonToolWindow.xaml` 的文档项模板 | 数据绑定表达式，不是字符串插值 |
 | `DataTemplate` | `JsonToolWindow.xaml` 的列表项 | JavaFX cell factory 的声明式版本 |
 | `Style` / `ControlTemplate` | Launcher/JSON 的自绘按钮 | CSS 主题 + 自定义组件渲染结构 |
-| `DynamicResource` | `LauncherWindow.xaml` 的背景 | 可运行时更新的主题变量 |
+| `DynamicResource` | `App.xaml` 的主题画刷及 `ThemeService` | 可运行时更新的主题变量 |
 | `WindowChrome` | Launcher/JSON 窗口 | 自绘标题栏，同时保留系统拖动、缩放、贴靠 |
 | 路由事件 | `Click`、`PreviewKeyDown` | 事件捕获/冒泡；`Preview*` 类似 capture 阶段 |
 

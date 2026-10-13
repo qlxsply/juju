@@ -68,7 +68,16 @@ public partial class App
         services.AddSingleton<ISettingsService>(settings);
         services.AddSingleton<IJsonToolSettingsService>(jsonSettings);
         services.AddSingleton<ISettingsSection, SystemSettingsSection>();
-        services.AddSingleton<ISettingsSection, JsonSettingsSection>();
+        services.AddSingleton<ISettingsSection, ShortcutSettingsSection>();
+        services.AddSingleton<ISettingsSection, StorageSettingsSection>();
+        services.AddSingleton<ISettingsSection, DisplaySettingsSection>();
+        services.AddSingleton<ISettingsSection, AboutSettingsSection>();
+        services.AddSingleton<ISettingsSection>(provider => new JsonSettingsSection(
+            provider.GetRequiredService<IJsonToolSettingsService>(),
+            tool => provider.GetRequiredService<IToolManager>().Open(tool)));
+        services.AddSingleton<ISettingsSection>(provider => new TotoSettingsSection(
+            provider.GetRequiredService<TotoToolHost>(),
+            tool => provider.GetRequiredService<IToolManager>().Open(tool)));
         services.AddSingleton(roots);
         services.AddSingleton<IStorageManager>(storage);
         services.AddSingleton(documents);
@@ -97,6 +106,7 @@ public partial class App
         // ExitAsync 自己负责完整关闭流程，而非在 UI 回调中阻塞线程。
         services.AddSingleton<TrayService>(provider => new TrayService(provider.GetRequiredService<IWindowManager>(),
             provider.GetRequiredService<IToolManager>(), provider.GetRequiredService<TotoToolHost>(),
+            provider.GetRequiredService<ISettingsService>(),
             () => _ = ExitAsync()));
         services.AddSingleton<IAppLifecycle, DesktopAppLifecycle>();
         _services = services.BuildServiceProvider();

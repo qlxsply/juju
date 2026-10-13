@@ -23,15 +23,20 @@ public sealed class DesktopWindowManager(
     private LauncherWindow? _launcher;
     private SettingsWindow? _settings;
     private JsonToolWindow? _json;
+    private bool _shuttingDown;
+
+    /// <summary>向唯一托盘报告工具隐藏事件，供设置中的状态提示开关控制气泡提示。</summary>
+    public event Action<ToolId>? ToolHidden;
 
     // 启动时先创建并完成 HWND 相关初始化，再隐藏；这样全局热键可在首次唤起前注册。
     public void InitializeLauncher()
     {
+        toto.MainWindowHidden += () => OnToolHidden(ToolId.Toto);
         _launcher ??= new LauncherWindow(this, settings, themes, toto);
         windowState.Restore(_launcher, "launcher");
         _launcher.ApplySettings(settings.Current);
         _launcher.Show();
-        _launcher.Hide();
+        if (settings.Current.StartMinimized) _launcher.Hide();
     }
 
     public void ShowLauncher() => _launcher?.Toggle();
@@ -39,14 +44,46 @@ public sealed class DesktopWindowManager(
     // SettingsWindow 首次请求时才构造，DI 注入的多个设置节也只在此时创建。
     public void ShowSettings()
     {
-        _settings ??= new SettingsWindow(settingsSections);
-        windowState.Restore(_settings, "settings");
+        if (_launcher is { IsVisible: false }) _launcher.Toggle();
+        _launcher?.SetSettingsOpen(true);
+        if (_settings is null)
+        {
+            _settings = new SettingsWindow(settingsSections);
+            var hasSavedPosition = windowState.HasPlacement("settings");
+            windowState.Restore(_settings, "settings");
+            // 原型将设置覆盖在 Launcher 右侧；Owner 令两个原生窗口保持同一前后层级。
+            if (_launcher is not null)
+            {
+                _settings.Owner = _launcher;
+                var bounds = System.Windows.Forms.Screen.FromPoint(
+                    new System.Drawing.Point((int)_launcher.Left, (int)_launcher.Top)).WorkingArea;
+                if (!hasSavedPosition)
+                {
+                    _settings.Left = Math.Clamp(_launcher.Left + _launcher.Width - 45, bounds.Left,
+                        Math.Max(bounds.Left, bounds.Right - _settings.Width));
+                    _settings.Top = Math.Clamp(_launcher.Top - 35, bounds.Top,
+                        Math.Max(bounds.Top, bounds.Bottom - _settings.Height));
+                }
+            }
+            _settings.IsVisibleChanged += (_, _) =>
+            {
+                if (!_settings.IsVisible) _launcher?.SetSettingsOpen(false);
+            };
+        }
+        _settings.NavigateToGeneral();
         Show(_settings);
     }
 
     // JSON 工具惰性创建。主题事件订阅只发生一次，因此不会随重复打开累计处理器。
     public void ShowTool(ToolId tool)
     {
+        if (tool is ToolId.Json or ToolId.Toto)
+        {
+            // 与 HTML openTool 一致：打开真实工具时退出设置叠层并收起入口。
+            if (_settings?.IsVisible == true) _settings.Hide();
+            _launcher?.SetSettingsOpen(false);
+            if (_launcher?.IsVisible == true) _launcher.Hide();
+        }
         if (tool == ToolId.Toto)
         {
             toto.ShowMain();
@@ -56,11 +93,27 @@ public sealed class DesktopWindowManager(
         if (_json is null)
         {
             _json = new JsonToolWindow(documents, jsonSettings) { FileClipboard = fileClipboard };
-            windowState.Restore(_json, "json");
-            themes.Changed += _json.ApplyTheme;
-            _json.ApplyTheme(themes.Current);
+            var window = _json;
+            if (jsonSettings.Current.RememberWindowPlacement) windowState.Restore(window, "json");
+            themes.Changed += window.ApplyTheme;
+            window.ApplyTheme(themes.Current);
+            window.Closing += (_, _) =>
+            {
+                if (jsonSettings.Current.RememberWindowPlacement) windowState.Remember(window, "json");
+            };
+            window.Closed += (_, _) =>
+            {
+                themes.Changed -= window.ApplyTheme;
+                if (ReferenceEquals(_json, window)) _json = null;
+            };
+            window.IsVisibleChanged += (_, _) =>
+            {
+                if (!window.IsVisible) OnToolHidden(ToolId.Json);
+            };
         }
 
+        if (!_json.IsVisible && jsonSettings.Current.OpenMaximized)
+            _json.WindowState = System.Windows.WindowState.Maximized;
         Show(_json);
     }
 
@@ -70,10 +123,24 @@ public sealed class DesktopWindowManager(
         _settings?.Close();
     }
 
+    private void OnToolHidden(ToolId tool)
+    {
+        if (_shuttingDown) return;
+        ToolHidden?.Invoke(tool);
+        if (settings.Current.ReturnToLauncherOnToolClose) ShowLauncherIfHidden();
+    }
+
+    private void ShowLauncherIfHidden()
+    {
+        if (_launcher is { IsVisible: false }) _launcher.Toggle();
+    }
+
     // 关闭顺序先捕获 RestoreBounds，再让工具刷新内容并关闭；用户点击关闭时的“隐藏”策略在这里被显式绕过。
     public async Task ShutdownAsync(WindowStateService states, CancellationToken cancellationToken)
     {
-        await states.CaptureAsync([("launcher", _launcher), ("settings", _settings), ("json", _json)],
+        _shuttingDown = true;
+        await states.CaptureAsync([("launcher", _launcher), ("settings", _settings),
+                ("json", jsonSettings.Current.RememberWindowPlacement ? _json : null)],
             cancellationToken);
         if (_json is not null) await _json.ShutdownAsync();
         if (_settings is not null)

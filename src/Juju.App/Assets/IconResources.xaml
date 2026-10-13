@@ -10,6 +10,42 @@
     -->
     <SolidColorBrush x:Key="IconForeground" Color="#1F2937" />
 
+    <!-- 与原型 app-mini 对应的白色工具箱轮廓，统一用于 Launcher 与设置标题栏。 -->
+    <DrawingImage x:Key="ToolboxIcon">
+        <DrawingImage.Drawing>
+            <DrawingGroup>
+                <GeometryDrawing Brush="Transparent" Geometry="M0,0 H24 V24 H0 Z" />
+                <GeometryDrawing Geometry="M3,7 H21 V21 H3 Z M8,7 V5 A2,2 0 0 1 10,3 H14 A2,2 0 0 1 16,5 V7 M3,12 H21 M11,11 V14 H13 V11">
+                    <GeometryDrawing.Pen><Pen Brush="White" Thickness="1.8" LineJoin="Round" /></GeometryDrawing.Pen>
+                </GeometryDrawing>
+            </DrawingGroup>
+        </DrawingImage.Drawing>
+    </DrawingImage>
+
+    <!-- JSON 工具的代码括号，使用 DrawingImage 可在不同尺寸下保持清晰。 -->
+    <DrawingImage x:Key="JsonToolIcon">
+        <DrawingImage.Drawing>
+            <DrawingGroup>
+                <GeometryDrawing Brush="Transparent" Geometry="M0,0 H24 V24 H0 Z" />
+                <GeometryDrawing Geometry="M8,8 L4,12 8,16 M16,8 L20,12 16,16 M14,5 L10,19">
+                    <GeometryDrawing.Pen><Pen Brush="#6189DF" Thickness="1.8" LineJoin="Round" /></GeometryDrawing.Pen>
+                </GeometryDrawing>
+            </DrawingGroup>
+        </DrawingImage.Drawing>
+    </DrawingImage>
+
+    <!-- Toto 的日历图标：外框、日期分隔线和两个日期标记。 -->
+    <DrawingImage x:Key="TotoToolIcon">
+        <DrawingImage.Drawing>
+            <DrawingGroup>
+                <GeometryDrawing Brush="Transparent" Geometry="M0,0 H24 V24 H0 Z" />
+                <GeometryDrawing Geometry="M5,5 H19 V21 H5 Z M8,3 V7 M16,3 V7 M5,10 H19 M9,14 H11 M14,14 H16 M9,18 H11">
+                    <GeometryDrawing.Pen><Pen Brush="#409C95" Thickness="1.8" LineJoin="Round" /></GeometryDrawing.Pen>
+                </GeometryDrawing>
+            </DrawingGroup>
+        </DrawingImage.Drawing>
+    </DrawingImage>
+
     <!--
         Lucide Settings 图标的 WPF 表示，来源为 viewBox="0 0 24 24" 的 SVG。
 

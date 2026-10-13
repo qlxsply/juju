@@ -7,6 +7,7 @@
             <!-- 合并集中图标字典后，所有窗口都可通过 {StaticResource SettingsIcon} 等键复用 DrawingImage。 -->
             <ResourceDictionary.MergedDictionaries>
                 <ResourceDictionary Source="Assets/IconResources.xaml" />
+                <ResourceDictionary Source="Assets/ToolboxStyles.xaml" />
             </ResourceDictionary.MergedDictionaries>
             <!-- 浅灰背景画刷；以键名提供给窗口和控件的 Background 属性。 -->
             <SolidColorBrush x:Key="JujuBackground" Color="#F5F5F5" />

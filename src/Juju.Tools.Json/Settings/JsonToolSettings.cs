@@ -181,7 +181,12 @@ public static class JsonToolShortcuts
 /// JSON 工具的持久化设置。record 主构造函数给出自动保存延迟和缩进默认值；<c>init</c> 属性仅能
 /// 在构造或 <c>with</c> 表达式中设置，类似 Java 不可变配置对象的构建阶段。
 /// </summary>
-public sealed record JsonToolSettings(int AutosaveDelayMilliseconds = 800, int IndentSize = 2)
+public sealed record JsonToolSettings(
+    int AutosaveDelayMilliseconds = 800,
+    int IndentSize = 2,
+    bool KeepWindowOnClose = true,
+    bool OpenMaximized = false,
+    bool RememberWindowPlacement = true)
 {
     /// <summary>每条命令的规范化快捷键；初始值使用全局默认映射。</summary>
     public IReadOnlyDictionary<JsonToolCommand, string> Shortcuts { get; init; } = JsonToolShortcuts.Defaults;
