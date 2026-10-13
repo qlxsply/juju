@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Juju.Core\Juju.Core.csproj" />
+    <!-- 原 Toto 图标供所有迁入的 WinForms 窗口复用，Juju 托盘仍使用 juju.ico。 -->
+    <EmbeddedResource Include="toto.ico" />
+  </ItemGroup>
+</Project>

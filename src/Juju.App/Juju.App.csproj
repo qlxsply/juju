@@ -10,6 +10,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Juju.Core\Juju.Core.csproj" />
     <ProjectReference Include="..\Juju.Tools.Json\Juju.Tools.Json.csproj" />
+    <ProjectReference Include="..\Juju.Tools.Toto\Juju.Tools.Toto.csproj" />
     <ProjectReference Include="..\Juju.Platform.Windows\Juju.Platform.Windows.csproj" />
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.3650.58" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.0" />
@@ -23,5 +24,14 @@
     <Exec Command="npm run build" WorkingDirectory="$(MSBuildProjectDirectory)\..\..\editor" />
     <ItemGroup><EditorAssets Include="$(MSBuildProjectDirectory)\..\..\editor\dist\**\*" /></ItemGroup>
     <Copy SourceFiles="@(EditorAssets)" DestinationFiles="@(EditorAssets->'$(OutDir)Editor\%(RecursiveDir)%(Filename)%(Extension)')" />
+  </Target>
+  <!-- Build 输出目录与 Publish 目录是两套清单；显式把本地 Monaco 资源纳入发布包。 -->
+  <Target Name="PublishEditor" BeforeTargets="ComputeFilesToPublish" DependsOnTargets="BuildEditor">
+    <ItemGroup>
+      <ResolvedFileToPublish Include="@(EditorAssets)">
+        <RelativePath>Editor\%(EditorAssets.RecursiveDir)%(EditorAssets.Filename)%(EditorAssets.Extension)</RelativePath>
+        <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      </ResolvedFileToPublish>
+    </ItemGroup>
   </Target>
 </Project>

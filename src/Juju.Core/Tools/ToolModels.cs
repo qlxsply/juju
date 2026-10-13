@@ -4,6 +4,7 @@ namespace Juju.Core.Tools;
 public enum ToolId
 {
     Json,
+    Toto,
     EchoHttp,
     Kairos
 }
@@ -74,6 +75,8 @@ public sealed class ToolRegistry : IToolRegistry
     private readonly IReadOnlyDictionary<ToolId, ToolDescriptor> _tools = new Dictionary<ToolId, ToolDescriptor>
     {
         [ToolId.Json] = new(ToolId.Json, "JSON", "1", BackgroundCapability.Unsupported, new("json", 900, 600),
+            StorageCapability.File),
+        [ToolId.Toto] = new(ToolId.Toto, "Toto", "2", BackgroundCapability.Required, new("toto", 850, 450),
             StorageCapability.File),
         [ToolId.EchoHttp] = new(ToolId.EchoHttp, "EchoHttp", "", BackgroundCapability.Unsupported,
             new("echo-http", 900, 600), StorageCapability.File),

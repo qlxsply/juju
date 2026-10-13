@@ -162,6 +162,7 @@
             <StackPanel Margin="12">
                 <!-- Tag 是代码后置识别工具的稳定标识；Content 是用户可见名称，Click 复用同一启动处理器。 -->
                 <Button Style="{StaticResource LauncherTool}" Tag="Json" Content="JSON" Click="Tool_Click" />
+                <Button Style="{StaticResource LauncherTool}" Tag="Toto" Content="Toto（日程提醒）" Click="Tool_Click" />
                 <Button Style="{StaticResource LauncherTool}" Tag="EchoHttp" Content="EchoHttp" Click="Tool_Click" />
                 <Button Style="{StaticResource LauncherTool}" Tag="Kairos" Content="Kairos" Click="Tool_Click" />
             </StackPanel>

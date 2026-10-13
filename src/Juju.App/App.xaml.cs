@@ -16,6 +16,7 @@ using Juju.Tools.Json.Documents;
 using Juju.Tools.Json.Metadata;
 using Juju.Tools.Json.Settings;
 using Juju.Tools.Json.Storage;
+using Toto.App;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Application = System.Windows.Application;
@@ -71,6 +72,14 @@ public partial class App
         services.AddSingleton(roots);
         services.AddSingleton<IStorageManager>(storage);
         services.AddSingleton(documents);
+        // 先创建 TotoToolHost 再显示 Launcher：提醒调度独立于 Toto 主窗口一直运行。
+        // WinForms 设置页的自启动开关转发到 Juju 的同一个注册表启动项和宿主配置。
+        services.AddSingleton(provider => new TotoToolHost(async enabled =>
+        {
+            var system = provider.GetRequiredService<ISettingsService>();
+            await system.SaveAsync(system.Current with { StartAtLogin = enabled });
+            provider.GetRequiredService<IStartupService>().SetEnabled(enabled);
+        }, () => provider.GetRequiredService<ISettingsService>().Current.StartAtLogin));
         services.AddSingleton<IToolRegistry, ToolRegistry>();
         services.AddSingleton<IRuntimeManager, RuntimeManager>();
         services.AddSingleton<DesktopWindowManager>();
@@ -87,7 +96,8 @@ public partial class App
         // 托盘菜单只能接收同步 Action；丢弃 Task 是有意的 fire-and-forget 适配，
         // ExitAsync 自己负责完整关闭流程，而非在 UI 回调中阻塞线程。
         services.AddSingleton<TrayService>(provider => new TrayService(provider.GetRequiredService<IWindowManager>(),
-            provider.GetRequiredService<IToolManager>(), () => _ = ExitAsync()));
+            provider.GetRequiredService<IToolManager>(), provider.GetRequiredService<TotoToolHost>(),
+            () => _ = ExitAsync()));
         services.AddSingleton<IAppLifecycle, DesktopAppLifecycle>();
         _services = services.BuildServiceProvider();
         _windows = _services.GetRequiredService<IWindowManager>();
@@ -95,6 +105,12 @@ public partial class App
         _lifecycle = _services.GetRequiredService<IAppLifecycle>();
         await _services.GetRequiredService<WindowStateService>().LoadAsync(_shutdown.Token);
         _services.GetRequiredService<ThemeService>().Apply(settings.Current.Theme);
+        var toto = _services.GetRequiredService<TotoToolHost>();
+        if (toto.MigratedAutoStartEnabled && !settings.Current.StartAtLogin)
+        {
+            await settings.SaveAsync(settings.Current with { StartAtLogin = true }, _shutdown.Token);
+            _services.GetRequiredService<IStartupService>().SetEnabled(true);
+        }
         _services.GetRequiredService<DesktopWindowManager>().InitializeLauncher();
         _ = _services.GetRequiredService<TrayService>();
         // 后台管道监听与 UI 生命周期并行运行；其取消令牌由退出流程统一触发。

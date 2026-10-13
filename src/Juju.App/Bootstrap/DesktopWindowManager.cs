@@ -5,6 +5,7 @@ using Juju.Tools.Json.Documents;
 using Juju.App.Settings;
 using Juju.App.Views;
 using Juju.Tools.Json.Settings;
+using Toto.App;
 
 namespace Juju.App.Bootstrap;
 
@@ -16,6 +17,7 @@ public sealed class DesktopWindowManager(
     ThemeService themes,
     IJsonFileClipboard fileClipboard,
     IJsonToolSettingsService jsonSettings,
+    TotoToolHost toto,
     IEnumerable<ISettingsSection> settingsSections) : IWindowManager
 {
     private LauncherWindow? _launcher;
@@ -25,7 +27,7 @@ public sealed class DesktopWindowManager(
     // 启动时先创建并完成 HWND 相关初始化，再隐藏；这样全局热键可在首次唤起前注册。
     public void InitializeLauncher()
     {
-        _launcher ??= new LauncherWindow(this, settings, themes);
+        _launcher ??= new LauncherWindow(this, settings, themes, toto);
         windowState.Restore(_launcher, "launcher");
         _launcher.ApplySettings(settings.Current);
         _launcher.Show();
@@ -45,6 +47,11 @@ public sealed class DesktopWindowManager(
     // JSON 工具惰性创建。主题事件订阅只发生一次，因此不会随重复打开累计处理器。
     public void ShowTool(ToolId tool)
     {
+        if (tool == ToolId.Toto)
+        {
+            toto.ShowMain();
+            return;
+        }
         if (tool != ToolId.Json) return;
         if (_json is null)
         {

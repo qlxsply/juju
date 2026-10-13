@@ -7,6 +7,7 @@ using Juju.Core.App;
 using Juju.Core.Settings;
 using Juju.Core.Tools;
 using Juju.Platform.Windows.HotKey;
+using Toto.App;
 using Button = System.Windows.Controls.Button;
 using FormsControl = System.Windows.Forms.Control;
 using FormsScreen = System.Windows.Forms.Screen;
@@ -21,14 +22,18 @@ public partial class LauncherWindow : Window
     private readonly IWindowManager _windows;
     private readonly ISettingsService _settings;
     private readonly GlobalShortcutService _shortcut = new();
+    private readonly GlobalShortcutService _jsonShortcut = new();
+    private readonly GlobalShortcutService _totoShortcut = new();
+    private readonly TotoToolHost _toto;
     private readonly DispatcherTimer _timeout = new();
     private bool _armed;
 
     // 构造函数依赖由窗口管理器传入；ThemeService 参数用于保持依赖图一致，主题资源由 WPF 全局资源解析。
-    public LauncherWindow(IWindowManager windows, ISettingsService settings, ThemeService themes)
+    public LauncherWindow(IWindowManager windows, ISettingsService settings, ThemeService themes, TotoToolHost toto)
     {
         _windows = windows;
         _settings = settings;
+        _toto = toto;
         InitializeComponent();
         // DispatcherTimer 在 WPF UI 线程触发，不需要额外 Dispatcher.Invoke 即可安全隐藏窗口。
         _timeout.Tick += (_, _) => Hide();
@@ -43,7 +48,11 @@ public partial class LauncherWindow : Window
             source.AddHook(WindowProcedure);
             if (!_shortcut.Register(source.Handle, settings.Current.LeaderShortcut))
                 Title = $"juju (快捷键错误 {_shortcut.LastError})";
+            RegisterToolHotkey(_jsonShortcut, settings.Current.JsonShortcut, "JSON");
+            RegisterToolHotkey(_totoShortcut, _toto.Hotkey, "Toto");
         };
+        _toto.HotkeyChanged += OnTotoHotkeyChanged;
+        _toto.HotkeyChanging += TryRegisterTotoHotkey;
         // 失焦自动隐藏使 Launcher 表现为临时命令面板，而不是常驻普通窗口。
         Deactivated += (_, _) => Hide();
     }
@@ -60,7 +69,20 @@ public partial class LauncherWindow : Window
             return false;
         }
 
-        return true;
+        return PresentationSource.FromVisual(this) is not HwndSource ||
+               RegisterToolHotkey(_jsonShortcut, settings.JsonShortcut, "JSON");
+    }
+
+    private bool TryRegisterTotoHotkey(string hotkey) => RegisterToolHotkey(_totoShortcut, hotkey, "Toto");
+    private void OnTotoHotkeyChanged(string hotkey) => RegisterToolHotkey(_totoShortcut, hotkey, "Toto");
+
+    private bool RegisterToolHotkey(GlobalShortcutService service, string hotkey, string name)
+    {
+        if (PresentationSource.FromVisual(this) is not HwndSource source) return false;
+        if (service.Register(source.Handle, hotkey)) return true;
+        MessageBox.Show($"{name} 全局快捷键 {hotkey} 无法注册（Windows 错误码 {service.LastError}），原快捷键仍然有效。",
+            "juju", MessageBoxButton.OK, MessageBoxImage.Warning);
+        return false;
     }
 
     // 显示前先按鼠标所在显示器定位，随后激活窗口以接收键盘预览事件。
@@ -85,6 +107,10 @@ public partial class LauncherWindow : Window
     protected override void OnClosed(EventArgs e)
     {
         _shortcut.Dispose();
+        _jsonShortcut.Dispose();
+        _totoShortcut.Dispose();
+        _toto.HotkeyChanged -= OnTotoHotkeyChanged;
+        _toto.HotkeyChanging -= TryRegisterTotoHotkey;
         base.OnClosed(e);
     }
 
@@ -120,9 +146,9 @@ public partial class LauncherWindow : Window
             return;
         }
 
-        if (e.Key == Key.D1)
+        if (e.Key == Key.D1 || e.Key == Key.D2)
         {
-            _windows.ShowTool(ToolId.Json);
+            _windows.ShowTool(e.Key == Key.D1 ? ToolId.Json : ToolId.Toto);
             Hide();
             e.Handled = true;
         }
@@ -162,7 +188,7 @@ public partial class LauncherWindow : Window
     {
         if (sender is not Button { Tag: string value } ||
             !Enum.TryParse<ToolId>(value, out var tool)) return;
-        if (tool == ToolId.Json)
+        if (tool is ToolId.Json or ToolId.Toto)
         {
             _windows.ShowTool(tool);
             Hide();
@@ -178,6 +204,16 @@ public partial class LauncherWindow : Window
         if (_shortcut.IsHotKeyMessage(message, wParam))
         {
             Toggle();
+            handled = true;
+        }
+        else if (_jsonShortcut.IsHotKeyMessage(message, wParam))
+        {
+            _windows.ShowTool(ToolId.Json);
+            handled = true;
+        }
+        else if (_totoShortcut.IsHotKeyMessage(message, wParam))
+        {
+            _windows.ShowTool(ToolId.Toto);
             handled = true;
         }
 

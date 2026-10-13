@@ -12,6 +12,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Juju.App", "src\Juju.App\Ju
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Juju.Tools.Json.Tests", "tests\Juju.Tools.Json.Tests\Juju.Tools.Json.Tests.csproj", "{D8752F8F-D519-45CF-98C2-1B1E14EED575}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Juju.Tools.Toto", "src\Juju.Tools.Toto\Juju.Tools.Toto.csproj", "{3420F7E9-E671-418B-AB19-9DEB5A76281E}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Juju.Tools.Toto.Tests", "tests\Juju.Tools.Toto.Tests\Juju.Tools.Toto.Tests.csproj", "{CF188F8C-966D-4A86-B6F7-EE409DF01C37}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -38,6 +42,14 @@ Global
 		{D8752F8F-D519-45CF-98C2-1B1E14EED575}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{D8752F8F-D519-45CF-98C2-1B1E14EED575}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{D8752F8F-D519-45CF-98C2-1B1E14EED575}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3420F7E9-E671-418B-AB19-9DEB5A76281E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3420F7E9-E671-418B-AB19-9DEB5A76281E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3420F7E9-E671-418B-AB19-9DEB5A76281E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3420F7E9-E671-418B-AB19-9DEB5A76281E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{CF188F8C-966D-4A86-B6F7-EE409DF01C37}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{CF188F8C-966D-4A86-B6F7-EE409DF01C37}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{CF188F8C-966D-4A86-B6F7-EE409DF01C37}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{CF188F8C-966D-4A86-B6F7-EE409DF01C37}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

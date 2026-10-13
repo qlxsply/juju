@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using System.Windows.Forms;
 
 namespace Juju.Platform.Windows.HotKey;
 
@@ -11,7 +12,9 @@ public sealed partial class GlobalShortcutService : IDisposable
     private const uint ModAlt = 0x0001;
     private const uint ModControl = 0x0002;
     private const uint ModShift = 0x0004;
-    private const int InitialId = 0x4A55;
+    private const uint ModWin = 0x0008;
+    // 多个工具在同一个 Launcher HWND 上注册快捷键时，每次注册都需要全进程唯一的 Win32 ID。
+    private static int _nextId = 0x4A54;
     private IntPtr _window;
     private int _id;
 
@@ -42,7 +45,7 @@ public sealed partial class GlobalShortcutService : IDisposable
             return true;
         }
 
-        var candidateId = _id == 0 ? InitialId : _id + 1;
+        var candidateId = Interlocked.Increment(ref _nextId);
         if (!RegisterHotKey(window, candidateId, modifiers, key))
         {
             LastError = Marshal.GetLastWin32Error();
@@ -73,13 +76,14 @@ public sealed partial class GlobalShortcutService : IDisposable
         modifiers = 0;
         key = 0;
         var parts = shortcut.Split('+', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
-        if (parts.Length < 2) return false;
+        if (parts.Length < 1) return false;
         foreach (var part in parts[..^1])
         {
             if (part.Equals("Alt", StringComparison.OrdinalIgnoreCase)) modifiers |= ModAlt;
             else if (part.Equals("Ctrl", StringComparison.OrdinalIgnoreCase) ||
                      part.Equals("Control", StringComparison.OrdinalIgnoreCase)) modifiers |= ModControl;
             else if (part.Equals("Shift", StringComparison.OrdinalIgnoreCase)) modifiers |= ModShift;
+            else if (part.Equals("Win", StringComparison.OrdinalIgnoreCase)) modifiers |= ModWin;
             else return false;
         }
 
@@ -87,16 +91,21 @@ public sealed partial class GlobalShortcutService : IDisposable
         if (value.Equals("Space", StringComparison.OrdinalIgnoreCase))
         {
             key = 0x20;
-            return modifiers != 0;
+            return true;
         }
 
         if (value.Length == 1 && char.IsLetterOrDigit(value[0]))
         {
             key = char.ToUpperInvariant(value[0]);
-            return modifiers != 0;
+            return true;
         }
 
-        return false;
+        // 原 Toto 使用 WinForms Keys 解析快捷键；兼容 F1、Enter、方向键等原有配置值。
+        if (value.Length == 1 && char.IsDigit(value[0])) value = "D" + value;
+        if (!Enum.TryParse<Keys>(value, true, out var parsed)) return false;
+        key = (uint)(parsed & Keys.KeyCode);
+        return key is >= 0x08 and <= 0xFE && key != (uint)Keys.ControlKey &&
+               key != (uint)Keys.ShiftKey && key != (uint)Keys.Menu;
     }
 
     /// <summary>

@@ -2,6 +2,7 @@ using Juju.Core.App;
 using Juju.Core.Settings;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Toto.App;
 
 namespace Juju.App.Bootstrap;
 
@@ -13,6 +14,7 @@ public sealed class DesktopAppLifecycle(
     ISettingsService settings,
     WindowStateService states,
     TrayService tray,
+    TotoToolHost toto,
     ILogger<DesktopAppLifecycle> log) : IAppLifecycle
 {
     private int _stopping;
@@ -27,6 +29,7 @@ public sealed class DesktopAppLifecycle(
             await windows.ShutdownAsync(states, cancellationToken);
             await settings.SaveAsync(settings.Current, cancellationToken);
             await runtimes.StopAllAsync(cancellationToken);
+            toto.Dispose();
             tray.Dispose();
             switch (services)
             {

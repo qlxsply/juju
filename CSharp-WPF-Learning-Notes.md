@@ -4,7 +4,7 @@
 
 ## 1. 先建立整体认知
 
-Juju 是一个 Windows 桌面工具箱。目前真正可用的工具是 JSON 编辑器；Launcher 中的 EchoHttp 与 Kairos 只有入口和“正在开发中”提示。
+Juju 是一个 Windows 桌面工具箱。目前真正可用的工具是 JSON 编辑器和 Toto 日程提醒；Launcher 中的 EchoHttp 与 Kairos 只有入口和“正在开发中”提示。
 
 与典型 Java Web 应用相比，最重要的变化是：
 
@@ -17,7 +17,7 @@ Juju 是一个 Windows 桌面工具箱。目前真正可用的工具是 JSON 编
 | Spring IoC 自动扫描常见 | `App.OnStartup` 显式 `AddSingleton` 注册依赖 |
 | 服务通常运行在服务端线程池 | UI 控件只能由 WPF Dispatcher/UI 线程访问 |
 
-本项目不是 MVVM 架构：窗口主要采用 **XAML + code-behind**。XAML 声明控件与布局，`*.xaml.cs` 保存事件处理、临时 UI 状态与对业务服务的调用。该写法对学习 WPF 很直观；如果 JSON 窗口继续增长，应逐步把状态和命令提取到 ViewModel。
+JSON/Launcher 窗口主要采用 **XAML + code-behind**；原 Toto 窗体保留 WinForms 实现并共享 Juju 的应用生命周期、托盘及工具入口。本项目不是纯 MVVM 架构。
 
 ## 2. 项目结构与依赖方向
 
@@ -25,9 +25,11 @@ Juju 是一个 Windows 桌面工具箱。目前真正可用的工具是 JSON 编
 Juju.App                  WPF 宿主、窗口、托盘、主题、UI 适配器
   ├─ Juju.Platform.Windows Windows 注册表、全局快捷键等平台能力
   ├─ Juju.Tools.Json       JSON 文档和工具业务逻辑
+  ├─ Juju.Tools.Toto       Toto WinForms 日程、CSV/INI、后台提醒
   └─ Juju.Core             跨工具契约、配置、存储、错误、日志
 
 tests/Juju.Tools.Json.Tests  JSON 领域服务的 xUnit 测试
+tests/Juju.Tools.Toto.Tests  Toto 数据并发及迁移测试
 editor/                      TypeScript + Monaco，打包后被 WebView2 加载
 ```
 
@@ -37,11 +39,12 @@ editor/                      TypeScript + Monaco，打包后被 WebView2 加载
 | --- | --- | --- |
 | `src/Juju.Core` | 不依赖 WPF 的通用业务基础设施和抽象接口 | `App/AppServices.cs`、`Storage/AtomicFileWriter.cs`、`Settings/SettingsService.cs` |
 | `src/Juju.Tools.Json` | JSON 文档的创建、保存、导入、重命名、排序、监听和设置 | `Documents/JsonDocumentService.cs`、`Metadata/JsonMetadataStore.cs` |
+| `src/Juju.Tools.Toto` | 原 Toto WinForms 窗口、日程、节假日下载、后台提醒及旧数据迁移 | `TotoToolHost.cs`、`Services/ReminderScheduler.cs`、`UI/MainForm.cs` |
 | `src/Juju.Platform.Windows` | 仅 Windows 才有的注册表与 Win32 API | `Startup/StartupService.cs`、`HotKey/GlobalShortcutService.cs` |
-| `src/Juju.App` | 唯一引用 WPF/WebView2 的桌面宿主，组装依赖并实现 UI | `App.xaml.cs`、`Views/*.xaml`、`Bootstrap/*.cs` |
+| `src/Juju.App` | WPF/WebView2 宿主，组装依赖并管理唯一托盘与工具入口 | `App.xaml.cs`、`Views/*.xaml`、`Bootstrap/*.cs` |
 | `editor` | Monaco 编辑器、编辑器快捷键和跨 WebView 消息协议 | `src/main.ts`、`src/editor.ts`、`src/bridge.ts` |
 
-这是一种由内向外的依赖设计：`Core` 不知道窗口是什么，`Tools.Json` 不知道 WPF 是什么；最外层的 `App` 才把服务和具体窗口连接起来。它对应 Java 中“domain/service 不依赖 Spring MVC”的分层思路。
+这是一种由内向外的依赖设计：`Core` 不知道窗口是什么，`Tools.Json` 不知道 WPF 是什么；最外层的 `App` 才把服务和具体窗口连接起来。Toto 保留原 WinForms UI，并由 `TotoToolHost` 适配到 Juju 宿主。
 
 ### 2.2 构建方式
 
@@ -53,6 +56,7 @@ editor/                      TypeScript + Monaco，打包后被 WebView2 加载
 ```powershell
 dotnet build "Juju.sln" --no-restore
 dotnet test "tests\Juju.Tools.Json.Tests\Juju.Tools.Json.Tests.csproj" --no-restore
+dotnet test "tests\Juju.Tools.Toto.Tests\Juju.Tools.Toto.Tests.csproj" --no-restore
 ```
 
 ## 3. 应用启动、单实例和退出
@@ -65,7 +69,7 @@ dotnet test "tests\Juju.Tools.Json.Tests\Juju.Tools.Json.Tests.csproj" --no-rest
 
 1. 用命名 `Mutex` 检查是否为第一个进程。
 2. 若已有实例，通过 `NamedPipeClientStream` 发出 `ActivateLauncher`，当前进程退出。
-3. 首实例加载设置、创建 `data` 根目录和 JSON 文档服务。
+3. 首实例加载设置、创建 `data` 根目录、JSON 文档服务和 Toto 后台提醒服务。
 4. 在 `ServiceCollection` 中注册单例，调用 `BuildServiceProvider()`。
 5. 加载窗口位置、应用主题、创建并隐藏 Launcher、创建托盘图标。
 6. 在后台循环监听命名管道；收到激活消息时经 `Dispatcher.Invoke` 显示 Launcher。
@@ -118,7 +122,7 @@ services.AddSingleton<IWindowManager>(provider =>
 
 ### 4.1 Launcher、托盘与全局快捷键
 
-- `LauncherWindow.xaml` 是小型工具启动面板，显示 JSON、EchoHttp、Kairos 与设置按钮。
+- `LauncherWindow.xaml` 是小型工具启动面板，显示 JSON、Toto、EchoHttp、Kairos 与设置按钮。
 - `LauncherWindow.xaml.cs` 处理工具按钮、按键、自动隐藏和窗口定位。
 - `TrayService.cs` 使用 WinForms 的 `NotifyIcon` 创建 Windows 托盘菜单；WPF 没有内置托盘控件，因此这里混用了 WinForms。
 - `GlobalShortcutService.cs` 通过 Win32 `RegisterHotKey` 注册全局快捷键，`LauncherWindow.WindowProcedure` 接收 `WM_HOTKEY` 后调用 `Toggle()`。
@@ -206,6 +210,22 @@ Monaco 文本变化
 ```
 
 菜单、快捷键和按钮最终都进入 `_commands` 字典和 `ExecuteAsync`，避免每种入口复制一套业务调用。Monaco 自己处理保存、格式化和折叠等编辑器命令；Juju 处理新建、复制文件、重命名、删除、对比等跨编辑器功能。
+
+### 4.5 Toto 日程提醒工具与 WinForms/WPF 共存
+
+原独立 Toto 被迁入 `src/Juju.Tools.Toto`，保留 WinForms 的事项编辑、详情、历史、提醒、
+工作日管理和设置窗体。Juju 的 `App.OnStartup` 创建 `TotoToolHost`，它负责初始化 CSV/INI、
+节假日日历和 `ReminderScheduler`；即使 Toto 主窗体隐藏，也有单次 Timer 在后台调度并自动弹出提醒。
+
+工具入口链：Launcher 的 Toto 按钮或专属热键 -> `DesktopWindowManager.ShowTool(ToolId.Toto)` ->
+`TotoToolHost.ShowMain()` -> 原 `MainForm`。设置页中修改 Toto 热键时先由 Launcher 所属的
+`GlobalShortcutService` 试注册，再保存 Toto 的 `config.ini`；Toto 内的“开机自启”路由到 Juju 的
+唯一启动项，进程只有一个 `TrayService` / `NotifyIcon`。
+
+数据写入 `<安装目录>/data/toto/`，迁移时从旧 `%USERPROFILE%/.toto/` 只复制缺失文件，
+保留源目录。若节假日日历下载失败，Toto 不采用不准确的周末替代规则，后台每五分钟重试，
+不会导致 Juju 和 JSON 无法启动。更详细的功能、文件和快捷键列表见
+`src/Juju.Tools.Toto/README.md`。
 
 ## 5. WPF UI 如何与业务逻辑交互
 
@@ -524,6 +544,8 @@ Launcher 没有重新创建标准标题按钮，因为它是失焦即隐藏的�
 - 原子写入在取消后保留旧文件。
 
 当前没有自动化 WPF UI 或 WebView2 端到端测试。因此 UI 修改后仍应手动验证：Launcher 全局快捷键、托盘菜单、设置保存/隐藏/再次打开、JSON 编辑器加载、自动保存、外部修改冲突、拖放导入和对比模式。
+Toto 的 CSV 并发写入与旧数据迁移在 `tests/Juju.Tools.Toto.Tests/ItemRepositoryTests.cs` 覆盖；
+WinForms 弹窗、系统会话切换和真实全局快捷键仍需在 Windows 桌面会话中手动验证。
 
 ## 10. 推荐阅读顺序
 

@@ -16,7 +16,8 @@ public sealed record AppSettings(
     bool StartAtLogin = false,
     string LeaderShortcut = "Ctrl+Shift+Alt+Space",
     int LauncherTimeoutMilliseconds = 2000,
-    ThemePreference Theme = ThemePreference.System)
+    ThemePreference Theme = ThemePreference.System,
+    string JsonShortcut = "Ctrl+Alt+J")
 {
     /// <summary>按构造函数默认值创建完整设置。</summary>
     public static AppSettings CreateDefault() => new();
