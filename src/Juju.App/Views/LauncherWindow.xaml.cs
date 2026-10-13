@@ -143,9 +143,12 @@ public partial class LauncherWindow : Window
         Top = Math.Clamp(area.Top + (area.Height - Height) / 2d, area.Top, area.Bottom - Height);
     }
 
-    // 自定义标题栏配合 XAML 的 WindowChrome：命中非控件标题区域时手动调用 DragMove。
+    // 自定义标题栏的 Grid 是普通 WPF 客户区控件，并不是 Windows 原生标题栏。
+    // DragMove 告诉 WPF/Win32：从当前鼠标位置开始执行系统窗口拖动，因此仍可获得贴靠等系统行为。
     private void TitleBar_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
+        // OriginalSource == sender 只允许标题栏空白处发起拖动，防止点击设置按钮或其他子控件时移动窗口。
+        // LeftButton 检查排除右键等其他鼠标输入；DragMove 必须在按住左键时调用。
         if (e.OriginalSource == sender && e.LeftButton == MouseButtonState.Pressed) DragMove();
     }
 

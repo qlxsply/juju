@@ -1,12 +1,38 @@
-<!-- 启动器窗口自绘标题栏；WindowStyle=None 移除系统标题栏，下面的 WindowChrome 再提供拖动、缩放和系统贴靠行为。 -->
+<!--
+    Launcher 自定义窗口的实现分为两步：
+    1. WindowStyle=None 删除 Windows 默认的非客户区（系统标题栏、边框和标题按钮）。
+    2. WindowChrome 为无边框窗口补回系统级的标题区、边缘缩放、贴靠和最大化等窗口行为。
+    顶部 Grid、应用图标和设置按钮都是普通 WPF 控件，因此外观完全由本文件控制。
+-->
 <Window x:Class="Juju.App.Views.LauncherWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework" Title=""
         Icon="/Assets/juju.ico" Width="380" Height="280" MinWidth="300" MinHeight="220" ResizeMode="CanResize"
         WindowStyle="None" ShowInTaskbar="False" Background="{DynamicResource JujuBackground}">
-    <!-- 初始/最小尺寸保持启动器紧凑但可用；ShowInTaskbar=False 使其作为托盘启动面板而非独立任务栏项。DynamicResource 支持运行时换主题。 -->
-    <!-- WindowChrome 将顶部 44 像素解释为标题区域，6 像素边缘用于调整大小；禁用原生标题按钮，改由下方按钮自绘。 -->
+    <!--
+        Window 根元素的关键属性：
+        - x:Class：把 XAML 与 LauncherWindow.xaml.cs 中的 partial class LauncherWindow 连接起来。
+        - xmlns:shell：为 System.Windows.Shell 命名空间取别名，下面才能使用 shell:WindowChrome。
+        - Title=""：窗口标题为空；WindowStyle=None 后不会显示系统标题文字。
+        - Icon：任务切换器等系统界面使用的窗口图标；标题栏内的 Image 仍需单独声明。
+        - Width/Height：首次创建时的尺寸，单位是与 DPI 无关的 WPF DIP，而不是固定物理像素。
+        - MinWidth/MinHeight：用户拖动边缘缩小时允许的下限。
+        - ResizeMode=CanResize：允许调整尺寸；WindowChrome 的 ResizeBorderThickness 提供实际命中区域。
+        - WindowStyle=None：移除系统标题栏和标准最小化、最大化、关闭按钮，是自定义窗口外观的关键。
+        - ShowInTaskbar=False：Launcher 作为托盘面板，不显示独立任务栏按钮。
+        - Background：使用可在运行时更新的全局主题画刷。
+    -->
+    <!--
+        WindowChrome 附加到当前 Window，恢复被 WindowStyle=None 移除的系统窗口交互能力。
+        它不会绘制任何标题栏内容，只负责非客户区命中测试和与 Windows 窗口管理器协作。
+    -->
     <shell:WindowChrome.WindowChrome>
+        <!--
+            CaptionHeight=44：窗口顶部 44 DIP 是标题区，与下方自绘 Grid 的 Height 保持一致。
+            ResizeBorderThickness=6：窗口四边各 6 DIP 可拖动调整尺寸；该区域通常不可见。
+            GlassFrameThickness=0：不把 DWM 玻璃效果延伸到客户区，整个背景由 WPF 绘制。
+            UseAeroCaptionButtons=False：不叠加 Windows 原生标题按钮；Launcher 本身也不显示这些按钮。
+        -->
         <shell:WindowChrome CaptionHeight="44" ResizeBorderThickness="6" GlassFrameThickness="0"
                             UseAeroCaptionButtons="False" />
     </shell:WindowChrome.WindowChrome>
@@ -98,9 +124,12 @@
             </Setter>
         </Style>
     </Window.Resources>
-    <!-- DockPanel 先固定自绘标题栏，工具列表自动占据剩余空间。 -->
+    <!-- DockPanel 仍属于 Window 的客户区；它替代系统标题栏之后的整个可见窗口内容。 -->
     <DockPanel>
-        <!-- 顶部 44 像素 Grid 同时是可拖动标题区；MouseLeftButtonDown 由代码后置处理窗口拖动。 -->
+        <!--
+            这个 Grid 是“看得见的标题栏”：DockPanel.Dock=Top 固定在顶部，Height=44 与 CaptionHeight 对齐。
+            Background 负责实际颜色，也让 Grid 具有可命中的表面；MouseLeftButtonDown 连接代码后置的 DragMove。
+        -->
         <Grid DockPanel.Dock="Top" Height="44" Background="#F4F6FA" MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
             <Grid.ColumnDefinitions>
                 <!-- 图标列和设置按钮列固定，中间 * 列吸收空白以将设置按钮推到最右。 -->

@@ -13,6 +13,13 @@ using Juju.Tools.Json.Minify;
 using Juju.Tools.Json.Settings;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.Wpf;
+using DataObject = System.Windows.DataObject;
+using DragDropEffects = System.Windows.DragDropEffects;
+using DragEventArgs = System.Windows.DragEventArgs;
+using KeyEventArgs = System.Windows.Input.KeyEventArgs;
+using MenuItem = System.Windows.Controls.MenuItem;
+using MouseEventArgs = System.Windows.Input.MouseEventArgs;
+using Point = System.Windows.Point;
 using WpfApplication = System.Windows.Application;
 using WpfButton = System.Windows.Controls.Button;
 using WpfClipboard = System.Windows.Clipboard;
@@ -60,7 +67,7 @@ public partial class JsonToolWindow : Window
     private int _generation;
     private int _request;
     private long _contentVersion;
-    private System.Windows.Point _dragStart;
+    private Point _dragStart;
     private bool _largeDocument;
     private string? _pendingShortcut;
     private DateTime _pendingShortcutAt;
@@ -603,32 +610,37 @@ public partial class JsonToolWindow : Window
     private void Documents_MouseDoubleClick(object sender, MouseButtonEventArgs e) =>
         _ = ExecuteAsync(JsonToolCommand.Rename);
 
-    private void Documents_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    private void Documents_PreviewKeyDown(object sender, KeyEventArgs e)
     {
         // List bindings are handled from the window preview route so they remain configurable.
     }
 
     private void MenuCommand_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is System.Windows.Controls.MenuItem { Tag: string name } &&
+        if (sender is MenuItem { Tag: string name } &&
             Enum.TryParse<JsonToolCommand>(name, out var command)) _ = ExecuteAsync(command);
     }
 
-    // WindowChrome 将自绘标题区保留在 WPF 视觉树；未被子控件命中的区域需要显式调用 DragMove。
+    // WindowStyle=None 后，标题栏 Grid 只是普通 WPF 客户区元素；DragMove 将空白区域的按下动作
+    // 转换为系统窗口移动操作，因此拖动时仍由 Windows 处理位置、屏幕边缘贴靠等行为。
     private void TitleBar_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
-        // Child controls opt into WindowChrome hit testing; the remaining title area drags the window.
+        // OriginalSource == sender 排除 Menu、Button、Image 等子控件，避免点击命令时误拖动窗口。
+        // WindowChrome.IsHitTestVisibleInChrome=True 还会让菜单和标题按钮在 CaptionHeight 区域接收输入。
         if (e.OriginalSource == sender && e.LeftButton == MouseButtonState.Pressed) DragMove();
     }
 
+    // WindowState 是 WPF 对原生窗口显示状态的封装；Minimized 表示缩入任务栏。
     private void Minimize_Click(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
 
+    // 同一按钮同时承担“最大化”和“还原”：已最大化时回到 Normal，否则进入 Maximized。
     private void Maximize_Click(object sender, RoutedEventArgs e) => WindowState =
         WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
 
+    // Close() 不会在这里直接销毁窗口：它先触发下方重写的 OnClosing，当前用户关闭策略会取消并隐藏。
     private void Close_Click(object sender, RoutedEventArgs e) => Close();
 
-    private async Task ImportDropAsync(System.Windows.DragEventArgs eventArgs)
+    private async Task ImportDropAsync(DragEventArgs eventArgs)
     {
         if (eventArgs.Data.GetData(WpfDataFormats.FileDrop) is not string[] paths) return;
         var jsonPaths = paths
@@ -642,18 +654,18 @@ public partial class JsonToolWindow : Window
     private void Documents_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e) =>
         _dragStart = e.GetPosition(Documents);
 
-    private void Documents_PreviewMouseMove(object sender, System.Windows.Input.MouseEventArgs e)
+    private void Documents_PreviewMouseMove(object sender, MouseEventArgs e)
     {
         if (e.LeftButton != MouseButtonState.Pressed || Documents.SelectedItem is not DocumentListItem item) return;
         var position = e.GetPosition(Documents);
         if (Math.Abs(position.X - _dragStart.X) < SystemParameters.MinimumHorizontalDragDistance &&
             Math.Abs(position.Y - _dragStart.Y) < SystemParameters.MinimumVerticalDragDistance) return;
-        DragDrop.DoDragDrop(Documents, new System.Windows.DataObject(typeof(DocumentListItem), item),
-            System.Windows.DragDropEffects.Move);
+        DragDrop.DoDragDrop(Documents, new DataObject(typeof(DocumentListItem), item),
+            DragDropEffects.Move);
     }
 
     // 拖放事件签名固定为 void；await 重排完成后才刷新绑定列表以保持显示顺序一致。
-    private async void Documents_Drop(object sender, System.Windows.DragEventArgs e)
+    private async void Documents_Drop(object sender, DragEventArgs e)
     {
         if (!e.Data.GetDataPresent(typeof(DocumentListItem)) ||
             e.Data.GetData(typeof(DocumentListItem)) is not DocumentListItem source) return;
@@ -727,15 +739,19 @@ public partial class JsonToolWindow : Window
         await EnsureEditorAsync();
     }
 
-    // 用户关闭改为“保存后隐藏”，使工具可被再次打开；ShutdownAsync 设置 _closing 后才允许真正关闭。
+    // 重写 Window.OnClosing，接管系统关闭请求和自绘关闭按钮调用 Close() 后的统一生命周期。
+    // 用户关闭改为“保存后隐藏”，使 DesktopWindowManager 下次可以 Show 同一实例；
+    // ShutdownAsync 先设置 _closing=true，应用退出时才允许基类完成真正关闭和窗口资源销毁。
     protected override void OnClosing(CancelEventArgs e)
     {
         if (_closing)
         {
+            // 显式应用关停路径：不取消 Closing，并让 Window 基类继续执行标准关闭逻辑。
             base.OnClosing(e);
             return;
         }
 
+        // 普通关闭路径：取消本次 Close，异步保存完成后改用 Hide；隐藏窗口仍然是可复用实例。
         e.Cancel = true;
         _ = CloseToHiddenAsync();
     }
@@ -799,7 +815,7 @@ public partial class JsonToolWindow : Window
         ValidationStatus.Text = _jsonValid ? "JSON: 有效" : "JSON: 格式错误";
     }
 
-    private void OnShortcut(object sender, System.Windows.Input.KeyEventArgs e)
+    private void OnShortcut(object sender, KeyEventArgs e)
     {
         if (e.IsRepeat || !TryGetShortcutStroke(e, out var stroke)) return;
         var context = _inDiffMode ? JsonToolShortcutContext.Diff :
@@ -842,7 +858,7 @@ public partial class JsonToolWindow : Window
         return true;
     }
 
-    private static bool TryGetShortcutStroke(System.Windows.Input.KeyEventArgs eventArgs, out string stroke)
+    private static bool TryGetShortcutStroke(KeyEventArgs eventArgs, out string stroke)
     {
         var key = eventArgs.Key == Key.System ? eventArgs.SystemKey : eventArgs.Key;
         var keyName = key switch

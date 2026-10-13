@@ -461,6 +461,34 @@ private static partial bool RegisterHotKey(IntPtr hWnd, int id, uint fsModifiers
 可在任意预览用 `Window`、`UserControl` 或实际按钮中放置引用该资源的 `Image`；运行应用的 Launcher
 就是当前最直接的预览入口。资源较多时可新增一个仅用于开发的图标画廊窗口，逐项显示资源键和图标。
 
+### 7.2 自定义 Windows 窗口框架
+
+普通 WPF `Window` 由 Windows 绘制非客户区，包括标题栏、边框以及最小化、最大化、关闭按钮。
+Launcher 和 JSON 工具使用以下组合替换默认外观：
+
+```xml
+<Window WindowStyle="None" ResizeMode="CanResize">
+    <shell:WindowChrome.WindowChrome>
+        <shell:WindowChrome CaptionHeight="48"
+                            ResizeBorderThickness="6"
+                            GlassFrameThickness="0"
+                            UseAeroCaptionButtons="False" />
+    </shell:WindowChrome.WindowChrome>
+</Window>
+```
+
+- `WindowStyle=None` 删除系统绘制的非客户区，使 WPF 内容覆盖整个窗口。
+- `WindowChrome` 不绘制标题栏，而是补回边缘缩放、标题区命中测试、系统贴靠和最大化等行为。
+- 顶部 `Grid` 是真正可见的标题栏，其高度必须与 `CaptionHeight` 保持一致。
+- 菜单和按钮设置 `WindowChrome.IsHitTestVisibleInChrome=True`，否则标题区输入可能被用于拖动窗口。
+- 标题栏空白处的 `MouseLeftButtonDown` 调用 `Window.DragMove()`，开始系统窗口移动操作。
+- JSON 窗口按钮通过 `WindowState.Minimized`、`WindowState.Maximized/Normal` 和 `Close()` 模拟标准标题按钮。
+- `JsonToolWindow.OnClosing` 会取消普通关闭并改为保存后 `Hide()`；应用退出时才真正关闭窗口。
+
+Launcher 没有重新创建标准标题按钮，因为它是失焦即隐藏的临时面板；JSON 工具是常规工作窗口，
+所以自行提供了最小化、最大化和关闭按钮。二者只替换了窗口视觉框架，底层仍然是 Windows HWND，
+不是在 WPF 中模拟出一个与操作系统无关的假窗口。
+
 ## 8. 从一次点击到一次保存：完整调用链
 
 以用户在 JSON 工具中选择文件并编辑为例：
