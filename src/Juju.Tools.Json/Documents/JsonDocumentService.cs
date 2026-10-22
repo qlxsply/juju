@@ -65,11 +65,11 @@ public sealed class JsonDocumentService : IJsonDocumentService, IAsyncDisposable
     private readonly IPerformanceTelemetry _telemetry;
 
     /// <summary>构造路径、协作者和文件观察器；未提供遥测时采用空对象，避免调用点判空。</summary>
-    public JsonDocumentService(string dataRoot, JsonMetadataStore metadata, IAtomicFileWriter writer,
+    public JsonDocumentService(string toolDirectory, JsonMetadataStore metadata, IAtomicFileWriter writer,
         DocumentRevisionService revisions, IPerformanceTelemetry? telemetry = null)
     {
-        _documents = Path.Combine(dataRoot, "json", "documents");
-        _trash = Path.Combine(dataRoot, "json", ".trash");
+        _documents = Path.Combine(toolDirectory, "documents");
+        _trash = Path.Combine(toolDirectory, ".trash");
         _metadata = metadata;
         _writer = writer;
         _revisions = revisions;

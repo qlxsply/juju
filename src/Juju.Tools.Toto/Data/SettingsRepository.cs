@@ -9,7 +9,7 @@ internal sealed class SettingsRepository(AppPaths paths)
 {
     private static readonly IReadOnlyDictionary<string, string> Defaults = new Dictionary<string, string>
     {
-        ["hotkey"] = "Ctrl+Alt+Space", ["shortcut_add"] = "Alt+A", ["shortcut_history"] = "Alt+Q",
+        ["hotkey"] = "None", ["shortcut_add"] = "Alt+A", ["shortcut_history"] = "Alt+Q",
         ["shortcut_settings"] = "Alt+S", ["shortcut_refresh"] = "Alt+R", ["shortcut_detail"] = "Alt+D",
         ["shortcut_edit"] = "Alt+E", ["shortcut_complete"] = "Alt+F", ["shortcut_cancel"] = "Alt+C",
         ["default_remind_minutes"] = "5", ["auto_start"] = "0", ["work_start_popup_enabled"] = "0",

@@ -13,11 +13,7 @@ internal sealed class MainForm : EscapeCloseForm
     /// <summary>用于读取快捷键等运行时设置的仓储。</summary>
     private readonly SettingsRepository settings;
     private readonly ReminderScheduler scheduler;
-    /// <summary>设置保存后重新注册全局快捷键的无参数委托。</summary>
-    private readonly Action settingsChanged;
-    private readonly Func<bool, Task> setStartup;
-    private readonly Func<bool> getStartup;
-    private readonly Func<string, bool> tryRegisterHotkey;
+    private readonly Action showUnifiedSettings;
     private readonly DataGridView grid = Grid();
     private readonly BindingSource binding = new();
     private readonly Label status = new() { AutoSize = true };
@@ -27,18 +23,14 @@ internal sealed class MainForm : EscapeCloseForm
     /// <param name="items">事项仓储。</param>
     /// <param name="settings">设置仓储。</param>
     /// <param name="scheduler">事项变更后要重新调度的服务。</param>
-    /// <param name="settingsChanged">设置保存后的应用级回调。</param>
+    /// <param name="showUnifiedSettings">进入 Juju 中统一的工具设置页面。</param>
     public MainForm(ItemRepository items, SettingsRepository settings, ReminderScheduler scheduler,
-        Action settingsChanged, Func<bool, Task> setStartup, Func<bool> getStartup,
-        Func<string, bool> tryRegisterHotkey)
+        Action showUnifiedSettings)
     {
         this.items = items;
         this.settings = settings;
         this.scheduler = scheduler;
-        this.settingsChanged = settingsChanged;
-        this.setStartup = setStartup;
-        this.getStartup = getStartup;
-        this.tryRegisterHotkey = tryRegisterHotkey;
+        this.showUnifiedSettings = showUnifiedSettings;
         Text = "toto - 进行中事项";
         StartPosition = FormStartPosition.CenterScreen;
         MinimumSize = new Size(850, 450);
@@ -170,9 +162,7 @@ internal sealed class MainForm : EscapeCloseForm
     /// <summary>显示设置对话框，并在保存后调用应用级设置变更委托。</summary>
     private void ShowSettings()
     {
-        var form = new SettingsForm(settings, scheduler, setStartup, getStartup, tryRegisterHotkey);
-        form.SettingsSaved += settingsChanged;
-        form.Show();
+        showUnifiedSettings();
     }
 
     /// <summary>统一处理新增、编辑或结束操作成功后的刷新和重新调度。</summary>
@@ -257,7 +247,11 @@ internal static class Hotkey
             else if (part.Equals("Alt", StringComparison.OrdinalIgnoreCase)) keys |= Keys.Alt;
             else if (part.Equals("Shift", StringComparison.OrdinalIgnoreCase)) keys |= Keys.Shift;
             else if (part.Equals("Win", StringComparison.OrdinalIgnoreCase)) keys |= Keys.LWin;
-            else if (!Enum.TryParse<Keys>(part, true, out var key)) return false;
+            else if (!Enum.TryParse<Keys>(part switch
+                     {
+                         "Backspace" => "Back", "Escape" => "Escape", "PageUp" => "Prior", "PageDown" => "Next",
+                         _ => part
+                     }, true, out var key)) return false;
             else keys |= key;
         }
 

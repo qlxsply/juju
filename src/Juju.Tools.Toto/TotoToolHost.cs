@@ -3,6 +3,7 @@ using Toto.App.Data;
 using Toto.App.Domain;
 using Toto.App.Services;
 using Toto.App.UI;
+using Juju.Core.Tools;
 
 namespace Toto.App;
 
@@ -19,8 +20,7 @@ public sealed class TotoToolHost : IDisposable
     private readonly WorkCalendarService calendar;
     private readonly ReminderScheduler scheduler;
     private readonly AppLog log;
-    private readonly Func<bool, Task> setStartup;
-    private readonly Func<bool> getStartup;
+    private readonly Action showUnifiedSettings;
     private readonly List<ReminderForm> reminders = [];
     private readonly List<Form> auxiliaryForms = [];
     private readonly SynchronizationContext ui;
@@ -35,14 +35,71 @@ public sealed class TotoToolHost : IDisposable
     public event Action? MainWindowHidden;
     // 宿主先尝试注册候选热键；失败时设置页不落盘，避免下次启动丢失旧快捷键。
     public event Func<string, bool>? HotkeyChanging;
-    public string Hotkey => settings.Load().GetValueOrDefault("hotkey", "Ctrl+Alt+Space");
+    public string Hotkey => settings.Load().GetValueOrDefault("hotkey", GlobalHotkeyPolicy.None);
+    public bool IsValidWindowShortcut(string value) => Toto.App.UI.Hotkey.TryParse(value, out _);
     public bool MigratedAutoStartEnabled { get; }
+    public bool CalendarReady => ready;
+    public IReadOnlyDictionary<string, string> ToolSettings => settings.Load();
     private bool TryRegisterHotkey(string candidate) => HotkeyChanging?.Invoke(candidate) ?? true;
 
-    public TotoToolHost(Func<bool, Task> setStartup, Func<bool> getStartup)
+    /// <summary>统一设置窗口保存 Toto INI，并更新后台提醒；不再创建第二个设置窗口。</summary>
+    public void SaveToolSettings(IReadOnlyDictionary<string, string> values)
     {
-        this.setStartup = setStartup;
-        this.getStartup = getStartup;
+        if (!int.TryParse(values.GetValueOrDefault("default_remind_minutes"), out var minutes) || minutes < 0 ||
+            !TimeOnly.TryParse(values.GetValueOrDefault("work_start_time"), out _) ||
+            !TimeOnly.TryParse(values.GetValueOrDefault("work_end_time"), out _))
+            throw new InvalidOperationException("提醒分钟必须为非负整数，上下班时间必须有效。");
+        var shortcuts = values.Where(item => item.Key.StartsWith("shortcut_", StringComparison.Ordinal))
+            .Select(item => item.Value).ToArray();
+        if (shortcuts.Length != 8 || shortcuts.Any(value => !Toto.App.UI.Hotkey.TryParse(value, out _)) ||
+            shortcuts.Distinct(StringComparer.OrdinalIgnoreCase).Count() != shortcuts.Length)
+            throw new InvalidOperationException("Toto 的八个窗口内快捷键必须有效且不能重复。");
+        var newHotkey = GlobalHotkeyPolicy.Normalize(values.GetValueOrDefault("hotkey"), optional: true);
+        var previous = settings.Load();
+        if (!TryRegisterHotkey(newHotkey)) throw new InvalidOperationException("Toto 全局直达热键无效或已占用。");
+        try
+        {
+            var next = values.ToDictionary(item => item.Key, item => item.Value);
+            next["hotkey"] = newHotkey;
+            settings.Save(next);
+            if (ready) scheduler.Reschedule();
+            HotkeyChanged?.Invoke(newHotkey);
+        }
+        catch
+        {
+            TryRegisterHotkey(previous.GetValueOrDefault("hotkey", GlobalHotkeyPolicy.None));
+            throw;
+        }
+    }
+
+    public int LatestCalendarYear => DateTime.Today >= new DateTime(DateTime.Today.Year, 12, 1)
+        ? DateTime.Today.Year + 1 : DateTime.Today.Year;
+
+    public IReadOnlyList<TotoHoliday> GetHolidays(int year) => repository.GetYear(year)
+        .Select(day => new TotoHoliday(day.Name, day.Date, day.IsOffDay)).ToArray();
+
+    public async Task DownloadHolidaysAsync(int year)
+    {
+        if (year > LatestCalendarYear) throw new InvalidOperationException("该年份的节假日尚未开放下载。");
+        await Task.Run(() => repository.Download(year));
+        if (ready) scheduler.Reschedule();
+    }
+
+    public void SaveHoliday(TotoHoliday holiday)
+    {
+        repository.Upsert(new HolidayCalendarDay(holiday.Name, holiday.Date, holiday.IsOffDay));
+        if (ready) scheduler.Reschedule();
+    }
+
+    public void DeleteHoliday(DateOnly date)
+    {
+        repository.Delete(date);
+        if (ready) scheduler.Reschedule();
+    }
+
+    public TotoToolHost(Action showUnifiedSettings)
+    {
+        this.showUnifiedSettings = showUnifiedSettings;
         ui = SynchronizationContext.Current ?? new WindowsFormsSynchronizationContext();
         var paths = new AppPaths();
         log = new AppLog(paths.LogDirectory);
@@ -51,6 +108,15 @@ public sealed class TotoToolHost : IDisposable
         settings = new SettingsRepository(paths);
         items.EnsureFiles();
         settings.EnsureExists();
+        // 旧版自动写入的 Ctrl+Alt+Space 与新的工具箱默认入口冲突，迁移为“无直达热键”。
+        var legacyHotkey = settings.Load();
+        if (string.Equals(legacyHotkey.GetValueOrDefault("hotkey")?.Replace(" ", ""),
+                "Ctrl+Alt+Space", StringComparison.OrdinalIgnoreCase))
+        {
+            var migrated = legacyHotkey.ToDictionary(pair => pair.Key, pair => pair.Value);
+            migrated["hotkey"] = GlobalHotkeyPolicy.None;
+            settings.Save(migrated);
+        }
         MigratedAutoStartEnabled = importedSettings && settings.Load().GetValueOrDefault("auto_start") == "1";
         if (importedSettings) RemoveLegacyStartupShortcut();
         repository = new WorkCalendarRepository(new HolidayCalendarDownloadService(paths));
@@ -109,8 +175,7 @@ public sealed class TotoToolHost : IDisposable
         }
         if (main is null || main.IsDisposed)
         {
-            main = new MainForm(items, settings, scheduler, OnSettingsSaved, setStartup, getStartup,
-                TryRegisterHotkey);
+            main = new MainForm(items, settings, scheduler, showUnifiedSettings);
             main.FormClosed += (_, _) => main = null;
             main.VisibleChanged += (_, _) =>
             {
@@ -132,15 +197,11 @@ public sealed class TotoToolHost : IDisposable
     }
     public void ShowSettings()
     {
-        if (!TryStart()) { ShowMain(); return; }
-        var form = new SettingsForm(settings, scheduler, setStartup, getStartup, TryRegisterHotkey);
-        form.SettingsSaved += OnSettingsSaved;
-        ShowAuxiliary(form);
+        showUnifiedSettings();
     }
     public void ShowCalendar()
     {
-        if (TryStart()) ShowAuxiliary(new WorkCalendarForm(repository, settings));
-        else ShowMain();
+        showUnifiedSettings();
     }
 
     private void ShowAuxiliary(Form form, Form? owner = null)
@@ -252,3 +313,6 @@ public sealed class TotoToolHost : IDisposable
         main?.Dispose();
     }
 }
+
+/// <summary>把原 Toto 内部领域记录作为 WPF 设置页可读的公共只读快照。</summary>
+public sealed record TotoHoliday(string Name, DateOnly Date, bool IsOffDay);

@@ -140,24 +140,25 @@ Launcher 显示与隐藏不是“重新打开页面”：`DesktopWindowManager.I
 设置页是插件式组合：
 
 - `SystemSettingsSection.cs`：开机启动、托盘提示、入口失焦隐藏、返回入口等常用设置。
-- `ShortcutSettingsSection.cs`：Launcher 与 JSON 的全局快捷键，Toto 的独立设置入口。
-- `StorageSettingsSection.cs`、`DisplaySettingsSection.cs`、`AboutSettingsSection.cs`：数据路径、主题与密度、版本信息。
+- `ShortcutSettingsSection.cs`：仅配置 Launcher 的入口全局快捷键；各工具热键由工具设置页管理。
+- `StorageSettingsSection.cs`、`DisplaySettingsSection.cs`、`AboutSettingsSection.cs`：工具箱数据根、主题与密度、版本信息。
 - `JsonSettingsSection.cs`：JSON 窗口行为、自动保存、缩进及快捷键表格。
-- `TotoSettingsSection.cs`：打开 Toto 与其已有的 WinForms 专属设置窗口。
+- `TotoSettingsSection.cs`：在 Juju 内配置 Toto 的热键、提醒、窗口内快捷键和节假日。
 
 新增页面先实现 `ISettingsSection` 并在 `App.xaml.cs` 注册；如要显示在左侧导航，也需给 `SettingsWindow.xaml` 添加导航按钮并在 `SettingsWindow.xaml.cs` 的字典中登记其 Id。
 
 ### 4.3 JSON 文档管理
 
-用户文件与元数据位于安装目录下：
+用户文件与元数据默认位于 `<安装目录>/data`，也可在设置中选择新的数据根目录：
 
 ```text
-<应用目录>/config.json                 宿主设置
-<应用目录>/data/app/window-state.json  窗口位置
-<应用目录>/data/json/settings.json     JSON 工具设置
-<应用目录>/data/json/metadata.json     文档元数据
-<应用目录>/data/json/documents/*.json  文档内容
-<应用目录>/data/json/.trash/           删除后的回收目录
+<数据根>/config.json                    宿主设置
+<数据根>/app/window-state.json           窗口位置
+<数据根>/tools/json/settings.json        JSON 工具设置
+<数据根>/tools/json/metadata.json        文档元数据
+<数据根>/tools/json/documents/*.json     文档内容
+<数据根>/tools/json/.trash/              删除后的回收目录
+<数据根>/tools/toto/config.ini           Toto 工具设置
 ```
 
 `JsonDocumentService` 是 JSON 工具的应用服务。它实现：
@@ -228,7 +229,7 @@ Monaco 文本变化
 `GlobalShortcutService` 试注册，再保存 Toto 的 `config.ini`；Toto 内的“开机自启”路由到 Juju 的
 唯一启动项，进程只有一个 `TrayService` / `NotifyIcon`。
 
-数据写入 `<安装目录>/data/toto/`，迁移时从旧 `%USERPROFILE%/.toto/` 只复制缺失文件，
+数据写入 `<数据根>/tools/toto/`，迁移时从旧 `%USERPROFILE%/.toto/` 只复制缺失文件，
 保留源目录。若节假日日历下载失败，Toto 不采用不准确的周末替代规则，后台每五分钟重试，
 不会导致 Juju 和 JSON 无法启动。更详细的功能、文件和快捷键列表见
 `src/Juju.Tools.Toto/README.md`。
@@ -490,14 +491,14 @@ private static partial bool RegisterHotKey(IntPtr hWnd, int id, uint fsModifiers
 ### 7.2 自定义 Windows 窗口框架
 
 普通 WPF `Window` 由 Windows 绘制非客户区，包括标题栏、边框以及最小化、最大化、关闭按钮。
-Launcher 和 JSON 工具使用以下组合替换默认外观：
+可缩放的 JSON 工具窗口使用以下组合替换默认外观：
 
 ```xml
 <Window WindowStyle="None" ResizeMode="CanResize">
     <shell:WindowChrome.WindowChrome>
         <shell:WindowChrome CaptionHeight="48"
                             ResizeBorderThickness="6"
-                            GlassFrameThickness="0"
+                            GlassFrameThickness="1"
                             UseAeroCaptionButtons="False" />
     </shell:WindowChrome.WindowChrome>
 </Window>
@@ -505,6 +506,10 @@ Launcher 和 JSON 工具使用以下组合替换默认外观：
 
 - `WindowStyle=None` 删除系统绘制的非客户区，使 WPF 内容覆盖整个窗口。
 - `WindowChrome` 不绘制标题栏，而是补回边缘缩放、标题区命中测试、系统贴靠和最大化等行为。
+- Launcher 使用同一种自绘标题栏，但设置 `ResizeMode=NoResize`、`ResizeBorderThickness=0`，
+  `Width=750` 和 `SizeToContent=Height`：它只能通过标题栏移动，最多长到 `MaxHeight=900`；
+  工具数超过可视高度时 `ScrollViewer.VerticalScrollBarVisibility=Hidden` 允许滚轮滚动而不显示轨道。
+- `GlassFrameThickness=1` 只在外沿保留极薄的 DWM 框架区域；Windows 11 另通过 `WindowAppearance.UseSystemCorners` 请求原生圆角。没有在客户区里再留一圈用于模拟阴影的空白。
 - 顶部 `Grid` 是真正可见的标题栏，其高度必须与 `CaptionHeight` 保持一致。
 - 菜单和按钮设置 `WindowChrome.IsHitTestVisibleInChrome=True`，否则标题区输入可能被用于拖动窗口。
 - 标题栏空白处的 `MouseLeftButtonDown` 调用 `Window.DragMove()`，开始系统窗口移动操作。

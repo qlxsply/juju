@@ -12,4 +12,7 @@ public interface ISettingsSection
 
     // 异步保存允许文件 I/O 不阻塞 WPF Dispatcher/UI 线程。
     Task SaveAsync();
+
+    /// <summary>只应用触发事件的独立设置，不能顺带提交其他输入框中的未完成草稿。</summary>
+    Task SaveImmediateAsync(FrameworkElement source) => SaveAsync();
 }

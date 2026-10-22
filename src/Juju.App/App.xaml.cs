@@ -29,6 +29,7 @@ public partial class App
 {
     private const string InstanceName = "juju-single-instance-v1";
     private Mutex? _mutex;
+    private bool _ownsMutex;
     private CancellationTokenSource? _shutdown;
     private ServiceProvider? _services;
     private IWindowManager? _windows;
@@ -42,6 +43,7 @@ public partial class App
         base.OnStartup(e);
         // 命名 Mutex 由操作系统跨进程共享，作用相当于 Java 中基于文件锁实现的单实例守卫。
         _mutex = new Mutex(true, InstanceName, out var firstInstance);
+        _ownsMutex = firstInstance;
         if (!firstInstance)
         {
             await ActivateExistingInstanceAsync();
@@ -51,16 +53,25 @@ public partial class App
 
         _shutdown = new CancellationTokenSource();
         var writer = new AtomicFileWriter();
+        await new DataRootService(writer).EnsureInitializedAsync(ApplicationPaths.DataRoot, _shutdown.Token);
+        await DataLayoutMigration.ImportLegacyAsync(writer, _shutdown.Token);
         var settings = new SettingsService(writer);
         await settings.LoadAsync(_shutdown.Token);
-        await new DataRootService(writer).EnsureInitializedAsync(ApplicationPaths.DataRoot, _shutdown.Token);
+        ApplicationPaths.ConfigureToolDirectories(settings.Current.ToolDataDirectories);
+        Directory.CreateDirectory(Path.Combine(ApplicationPaths.ToolDataDirectory("json"), "documents"));
+        Directory.CreateDirectory(Path.Combine(ApplicationPaths.ToolDataDirectory("json"), ".trash"));
         var roots = new DataRootService(writer);
         var storage = new StorageManager(roots, writer);
         await storage.InitializeAsync(ApplicationPaths.DataRoot, _shutdown.Token);
         var jsonSettings = new JsonToolSettingsService(writer);
         await jsonSettings.LoadAsync(_shutdown.Token);
-        var documents = new JsonDocumentService(ApplicationPaths.DataRoot,
-            new JsonMetadataStore(ApplicationPaths.DataRoot, writer), writer, new DocumentRevisionService());
+        if (settings.LegacyJsonShortcut is { } oldJsonHotkey &&
+            !oldJsonHotkey.Equals("Ctrl+Alt+J", StringComparison.OrdinalIgnoreCase) &&
+            jsonSettings.Current.GlobalShortcut == GlobalHotkeyPolicy.None)
+            await jsonSettings.SaveAsync(jsonSettings.Current with { GlobalShortcut = oldJsonHotkey }, _shutdown.Token);
+        var documents = new JsonDocumentService(ApplicationPaths.ToolDataDirectory("json"),
+            new JsonMetadataStore(ApplicationPaths.ToolDataDirectory("json"), writer), writer,
+            new DocumentRevisionService());
         // Composition Root：唯一集中组装依赖的地方。界面和业务代码只声明构造函数依赖，
         // 而不自行 new 基础设施对象，类似 Java 的 Spring 容器配置，但这里是显式注册。
         var services = new ServiceCollection();
@@ -68,31 +79,44 @@ public partial class App
         services.AddSingleton<ISettingsService>(settings);
         services.AddSingleton<IJsonToolSettingsService>(jsonSettings);
         services.AddSingleton<ISettingsSection, SystemSettingsSection>();
-        services.AddSingleton<ISettingsSection, ShortcutSettingsSection>();
-        services.AddSingleton<ISettingsSection, StorageSettingsSection>();
+        services.AddSingleton<ISettingsSection>(provider => new ShortcutSettingsSection(
+            provider.GetRequiredService<ISettingsService>(), provider.GetRequiredService<SettingsDialogService>(),
+            provider.GetRequiredService<IJsonToolSettingsService>(), provider.GetRequiredService<TotoToolHost>()));
+        services.AddSingleton<ISettingsSection>(provider => new StorageSettingsSection(
+            provider.GetRequiredService<DataDirectoryChangeService>(),
+            provider.GetRequiredService<SettingsDialogService>(), provider.GetRequiredService<ISettingsService>()));
         services.AddSingleton<ISettingsSection, DisplaySettingsSection>();
         services.AddSingleton<ISettingsSection, AboutSettingsSection>();
         services.AddSingleton<ISettingsSection>(provider => new JsonSettingsSection(
-            provider.GetRequiredService<IJsonToolSettingsService>(),
-            tool => provider.GetRequiredService<IToolManager>().Open(tool)));
-        services.AddSingleton<ISettingsSection>(provider => new TotoSettingsSection(
-            provider.GetRequiredService<TotoToolHost>(),
-            tool => provider.GetRequiredService<IToolManager>().Open(tool)));
+            provider.GetRequiredService<IJsonToolSettingsService>(), provider.GetRequiredService<ISettingsService>(),
+            provider.GetRequiredService<DataDirectoryChangeService>(),
+            (tool, shortcut) => provider.GetRequiredService<DesktopWindowManager>().TryRegisterToolHotkey(tool, shortcut),
+            provider.GetRequiredService<SettingsDialogService>(),
+            provider.GetRequiredService<TotoToolHost>()));
+        services.AddSingleton<ISettingsSection, TotoSettingsSection>();
+        services.AddSingleton<ISettingsSection>(provider => new PlaceholderToolSettingsSection(ToolId.EchoHttp,
+            provider.GetRequiredService<ISettingsService>(), provider.GetRequiredService<DataDirectoryChangeService>(),
+            (tool, shortcut) => provider.GetRequiredService<DesktopWindowManager>().TryRegisterToolHotkey(tool, shortcut),
+            provider.GetRequiredService<SettingsDialogService>(), provider.GetRequiredService<IJsonToolSettingsService>(),
+            provider.GetRequiredService<TotoToolHost>()));
+        services.AddSingleton<ISettingsSection>(provider => new PlaceholderToolSettingsSection(ToolId.Kairos,
+            provider.GetRequiredService<ISettingsService>(), provider.GetRequiredService<DataDirectoryChangeService>(),
+            (tool, shortcut) => provider.GetRequiredService<DesktopWindowManager>().TryRegisterToolHotkey(tool, shortcut),
+            provider.GetRequiredService<SettingsDialogService>(), provider.GetRequiredService<IJsonToolSettingsService>(),
+            provider.GetRequiredService<TotoToolHost>()));
         services.AddSingleton(roots);
+        services.AddSingleton<DataDirectoryChangeService>();
         services.AddSingleton<IStorageManager>(storage);
         services.AddSingleton(documents);
         // 先创建 TotoToolHost 再显示 Launcher：提醒调度独立于 Toto 主窗口一直运行。
         // WinForms 设置页的自启动开关转发到 Juju 的同一个注册表启动项和宿主配置。
-        services.AddSingleton(provider => new TotoToolHost(async enabled =>
-        {
-            var system = provider.GetRequiredService<ISettingsService>();
-            await system.SaveAsync(system.Current with { StartAtLogin = enabled });
-            provider.GetRequiredService<IStartupService>().SetEnabled(enabled);
-        }, () => provider.GetRequiredService<ISettingsService>().Current.StartAtLogin));
+        services.AddSingleton(provider => new TotoToolHost(
+            () => provider.GetRequiredService<DesktopWindowManager>().ShowToolSettings(ToolId.Toto)));
         services.AddSingleton<IToolRegistry, ToolRegistry>();
         services.AddSingleton<IRuntimeManager, RuntimeManager>();
         services.AddSingleton<DesktopWindowManager>();
         services.AddSingleton<WindowStateService>();
+        services.AddSingleton<SettingsDialogService>();
         services.AddSingleton<ThemeService>();
         services.AddSingleton<IJsonFileClipboard, JsonFileClipboard>();
         services.AddSingleton<IStartupService, StartupService>();
@@ -104,12 +128,12 @@ public partial class App
                 new RollingFileLoggerProvider(Path.Combine(ApplicationPaths.ApplicationDataDirectory, "logs"))));
         // 托盘菜单只能接收同步 Action；丢弃 Task 是有意的 fire-and-forget 适配，
         // ExitAsync 自己负责完整关闭流程，而非在 UI 回调中阻塞线程。
-        services.AddSingleton<TrayService>(provider => new TrayService(provider.GetRequiredService<IWindowManager>(),
-            provider.GetRequiredService<IToolManager>(), provider.GetRequiredService<TotoToolHost>(),
-            provider.GetRequiredService<ISettingsService>(),
-            () => _ = ExitAsync()));
+        services.AddSingleton<TrayService>(provider => new TrayService(
+            provider.GetRequiredService<IWindowManager>(), () => _ = ExitAsync()));
         services.AddSingleton<IAppLifecycle, DesktopAppLifecycle>();
         _services = services.BuildServiceProvider();
+        _services.GetRequiredService<DataDirectoryChangeService>().LoadPending(
+            settings.Current.PendingDataRoot, settings.Current.PendingToolDataDirectories);
         _windows = _services.GetRequiredService<IWindowManager>();
         _tools = _services.GetRequiredService<IToolManager>();
         _lifecycle = _services.GetRequiredService<IAppLifecycle>();
@@ -140,7 +164,7 @@ public partial class App
     protected override void OnExit(ExitEventArgs e)
     {
         _shutdown?.Cancel();
-        _mutex?.ReleaseMutex();
+        if (_ownsMutex) _mutex?.ReleaseMutex();
         _mutex?.Dispose();
         base.OnExit(e);
     }

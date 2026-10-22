@@ -1,48 +1,62 @@
 using System.Windows;
 using Juju.App.Views;
 using Juju.Core.Settings;
+using Juju.Core.Tools;
+using Juju.Tools.Json.Settings;
 using Toto.App;
 
 namespace Juju.App.Settings;
 
-/// <summary>把原型的应用热键与各工具直达热键放在一页，实际注册由 Launcher 的 Win32 HWND 承担。</summary>
+/// <summary>应用级页面只配置工具箱入口；工具直达键由各工具设置页分别管理。</summary>
 public sealed class ShortcutSettingsSection : ISettingsSection
 {
     private readonly ISettingsService _settings;
-    private readonly System.Windows.Controls.TextBox _launcher;
-    private readonly System.Windows.Controls.TextBox _json;
+    private readonly SettingsDialogService _dialogs;
+    private readonly IJsonToolSettingsService _json;
+    private readonly TotoToolHost _toto;
+    private readonly Action<string> _render;
     public string Id => "shortcut";
     public string DisplayName => "快捷键";
     public FrameworkElement View { get; }
 
-    public ShortcutSettingsSection(ISettingsService settings, TotoToolHost toto)
+    public ShortcutSettingsSection(ISettingsService settings, SettingsDialogService dialogs,
+        IJsonToolSettingsService json, TotoToolHost toto)
     {
         _settings = settings;
-        var page = SettingsViewFactory.Page("APPLICATION / SHORTCUT", "快捷键",
-            "入口热键显示工具列表；工具专属热键无需经过入口，可直接打开对应窗口。");
-        var entry = SettingsViewFactory.Group(page, "工具箱热键");
-        _launcher = SettingsViewFactory.Input(settings.Current.LeaderShortcut);
-        SettingsViewFactory.Row(entry, "唤出 / 收起工具入口", "全局有效，默认 Ctrl+Shift+Alt+Space。", _launcher);
-        var tools = SettingsViewFactory.Group(page, "工具直达热键");
-        _json = SettingsViewFactory.Input(settings.Current.JsonShortcut);
-        SettingsViewFactory.Row(tools, "JSON 格式化", "直接打开 JSON 编辑窗口，默认 Ctrl+Alt+J。", _json);
-        SettingsViewFactory.Row(tools, "Toto 日程提醒", "当前 " + toto.Hotkey + "；在 Toto 设置中修改。",
-            SettingsViewFactory.SoftButton("打开 Toto 设置", (_, _) => toto.ShowSettings()));
-        SettingsViewFactory.Note(page,
-            "工具列表可见且未打开设置时，按 J / T 可快速启动 JSON / Toto；单键不会在其他窗口全局生效。");
+        _dialogs = dialogs;
+        _json = json;
+        _toto = toto;
+        var page = SettingsViewFactory.Page();
+        _render = SettingsViewFactory.ShortcutGroup(page, "全局快捷键",
+            [("launcher", "显示 / 隐藏主界面", settings.Current.LeaderShortcut, (Action)EditLauncherHotkey)])[
+            "launcher"];
         View = page;
     }
 
-    public async Task SaveAsync()
+    private void EditLauncherHotkey() => _dialogs.EditShortcut("编辑快捷键 · 显示 / 隐藏主界面",
+        _settings.Current.LeaderShortcut, allowNone: false, allowSingle: false, allowSequence: false,
+        validate: value =>
+        {
+            try
+            {
+                GlobalHotkeyPolicy.EnsureDistinct(value,
+                    new[] { _json.Current.GlobalShortcut, _toto.Hotkey }
+                        .Concat(_settings.Current.ToolGlobalShortcuts.Values).ToArray());
+                return null;
+            }
+            catch (InvalidOperationException ex) { return ex.Message; }
+        }, commit: SaveLauncherHotkeyAsync, defaultValue: "Ctrl+Alt+Space");
+
+    private async Task SaveLauncherHotkeyAsync(string shortcut)
     {
         var previous = _settings.Current;
-        var value = previous with { LeaderShortcut = _launcher.Text.Trim(), JsonShortcut = _json.Text.Trim() };
+        var value = previous with { LeaderShortcut = GlobalHotkeyPolicy.Normalize(shortcut) };
         var launcher = System.Windows.Application.Current.Windows.OfType<LauncherWindow>().FirstOrDefault();
         // Win32 注册成功后才落盘；避免用户输入被占用的组合键后重启丢失旧热键。
         if (launcher is not null && !launcher.ApplySettings(value))
         {
             launcher.ApplySettings(previous);
-            throw new InvalidOperationException("热键格式无效或已被其他程序占用。");
+            throw new InvalidOperationException("热键格式无效或已被其他程序占用");
         }
         try { await _settings.SaveAsync(value); }
         catch
@@ -50,5 +64,8 @@ public sealed class ShortcutSettingsSection : ISettingsSection
             launcher?.ApplySettings(previous);
             throw;
         }
+        _render(value.LeaderShortcut);
     }
+
+    public Task SaveAsync() => Task.CompletedTask;
 }

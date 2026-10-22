@@ -74,13 +74,13 @@ public sealed class ToolRegistry : IToolRegistry
 {
     private readonly IReadOnlyDictionary<ToolId, ToolDescriptor> _tools = new Dictionary<ToolId, ToolDescriptor>
     {
-        [ToolId.Json] = new(ToolId.Json, "JSON", "1", BackgroundCapability.Unsupported, new("json", 900, 600),
+        [ToolId.Json] = new(ToolId.Json, "JSON", ToolLaunchKeys.Json.ToString(), BackgroundCapability.Unsupported, new("json", 900, 600),
             StorageCapability.File),
-        [ToolId.Toto] = new(ToolId.Toto, "Toto", "2", BackgroundCapability.Required, new("toto", 850, 450),
+        [ToolId.Toto] = new(ToolId.Toto, "Toto", ToolLaunchKeys.Toto.ToString(), BackgroundCapability.Required, new("toto", 850, 450),
             StorageCapability.File),
-        [ToolId.EchoHttp] = new(ToolId.EchoHttp, "EchoHttp", "", BackgroundCapability.Unsupported,
+        [ToolId.EchoHttp] = new(ToolId.EchoHttp, "EchoHttp", ToolLaunchKeys.EchoHttp.ToString(), BackgroundCapability.Unsupported,
             new("echo-http", 900, 600), StorageCapability.File),
-        [ToolId.Kairos] = new(ToolId.Kairos, "Kairos", "", BackgroundCapability.Unsupported, new("kairos", 900, 600),
+        [ToolId.Kairos] = new(ToolId.Kairos, "Kairos", ToolLaunchKeys.Kairos.ToString(), BackgroundCapability.Unsupported, new("kairos", 900, 600),
             StorageCapability.File)
     };
 

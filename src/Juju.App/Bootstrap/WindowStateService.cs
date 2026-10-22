@@ -19,6 +19,18 @@ public sealed class WindowStateService(IAtomicFileWriter writer)
 
     public bool HasPlacement(string key) => _placements.ContainsKey(key);
 
+    // Launcher 的宽高随工具列表布局而定，只恢复曾拖动的位置；旧版宽高不能覆盖新设计。
+    public void RestorePosition(Window window, string key)
+    {
+        if (!_placements.TryGetValue(key, out var state)) return;
+        var area = Screen.AllScreens.Select(screen => screen.WorkingArea).FirstOrDefault(screen =>
+            screen.IntersectsWith(new Rectangle((int)state.Left, (int)state.Top,
+                Math.Max(1, (int)window.ActualWidth), Math.Max(1, (int)window.ActualHeight))));
+        if (area == default) return;
+        window.Left = Math.Clamp(state.Left, area.Left, Math.Max(area.Left, area.Right - window.ActualWidth));
+        window.Top = Math.Clamp(state.Top, area.Top, Math.Max(area.Top, area.Bottom - window.ActualHeight));
+    }
+
     // 恢复前验证保存的矩形仍与任一工作区相交，避免显示器移除后窗口出现在屏幕外。
     public void Restore(Window window, string key)
     {
@@ -32,8 +44,9 @@ public sealed class WindowStateService(IAtomicFileWriter writer)
         if (visible.Width < 80 || visible.Height < 80) return;
         window.Left = state.Left;
         window.Top = state.Top;
-        window.Width = Math.Max(window.MinWidth, state.Width);
-        window.Height = Math.Max(window.MinHeight, state.Height);
+        // 普通窗口仍恢复宽高；若它指定 Min/Max 则遵守约束（Launcher 只调用 RestorePosition）。
+        window.Width = Math.Clamp(state.Width, window.MinWidth, window.MaxWidth);
+        window.Height = Math.Clamp(state.Height, window.MinHeight, window.MaxHeight);
         window.WindowState = state.Maximized ? WindowState.Maximized : WindowState.Normal;
     }
 

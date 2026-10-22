@@ -6,6 +6,9 @@ using Juju.Tools.Json.Metadata;
 using Juju.Tools.Json.Minify;
 using Juju.Tools.Json.Settings;
 using Juju.Tools.Json.Storage;
+using Juju.Core.Tools;
+using Juju.Core.Settings;
+using System.Text.Json;
 
 namespace Juju.Tools.Json.Tests;
 
@@ -14,6 +17,7 @@ public sealed class JsonDocumentServiceTests : IAsyncLifetime
 {
     // 每个实例使用带随机 GUID 的临时目录，避免并行测试、历史残留或本机文件互相干扰。
     private readonly string _root = Path.Combine(Path.GetTempPath(), "juju-tests", Guid.NewGuid().ToString("N"));
+    private string JsonRoot => Path.Combine(_root, "tools", "json");
 
     // 初始化阶段构造服务；null! 仅告诉可空性分析器该字段会在每个测试执行前赋值。
     private JsonDocumentService _documents = null!;
@@ -23,7 +27,7 @@ public sealed class JsonDocumentServiceTests : IAsyncLifetime
     {
         var writer = new AtomicFileWriter();
         await new DataRootService(writer).EnsureInitializedAsync(_root);
-        _documents = new JsonDocumentService(_root, new JsonMetadataStore(_root, writer), writer,
+        _documents = new JsonDocumentService(JsonRoot, new JsonMetadataStore(JsonRoot, writer), writer,
             new DocumentRevisionService());
     }
 
@@ -51,7 +55,7 @@ public sealed class JsonDocumentServiceTests : IAsyncLifetime
         // 保存前读取版本；随后绕过服务直接改写文件，模拟其他程序修改同一文档。
         var created = await _documents.CreateAsync();
         var opened = await _documents.OpenAsync(created.Id);
-        var path = Path.Combine(_root, "json", "documents", created.FileName);
+        var path = Path.Combine(JsonRoot, "documents", created.FileName);
         await File.WriteAllTextAsync(path, "{\"external\":true}");
         // 旧 Revision 保存必须抛出领域异常，不能静默覆盖外部改动。
         var error = await Assert.ThrowsAsync<JujuException>(() =>
@@ -70,7 +74,7 @@ public sealed class JsonDocumentServiceTests : IAsyncLifetime
         // 删除后列表不再包含文档，但物理文件应转移到回收目录而非直接丢失。
         await _documents.DeleteAsync(created.Id);
         Assert.Empty(await _documents.ListAsync());
-        Assert.Single(Directory.EnumerateFiles(Path.Combine(_root, "json", ".trash")));
+        Assert.Single(Directory.EnumerateFiles(Path.Combine(JsonRoot, ".trash")));
     }
 
     [Fact]
@@ -86,8 +90,8 @@ public sealed class JsonDocumentServiceTests : IAsyncLifetime
         Assert.Equal(0, ordered[0].Order);
         Assert.Equal(1, ordered[1].Order);
         // 重排不得重命名或删除已有的文档文件。
-        Assert.True(File.Exists(Path.Combine(_root, "json", "documents", first.FileName)));
-        Assert.True(File.Exists(Path.Combine(_root, "json", "documents", second.FileName)));
+        Assert.True(File.Exists(Path.Combine(JsonRoot, "documents", first.FileName)));
+        Assert.True(File.Exists(Path.Combine(JsonRoot, "documents", second.FileName)));
     }
 
     [Fact]
@@ -132,6 +136,158 @@ public sealed class JsonDocumentServiceTests : IAsyncLifetime
     }
 
     [Fact]
+    public void Tool_entry_keys_have_distinct_defaults_and_reject_cross_tool_duplicates()
+    {
+        var keys = ToolLaunchKeys.Normalize(null);
+        Assert.Equal(4, keys.Values.Distinct().Count());
+        keys[nameof(ToolId.Toto)] = keys[nameof(ToolId.Json)];
+        Assert.Throws<InvalidOperationException>(() => ToolLaunchKeys.Normalize(keys));
+        keys[nameof(ToolId.Toto)] = "S";
+        Assert.Equal("S", ToolLaunchKeys.Normalize(keys)[nameof(ToolId.Toto)]);
+    }
+
+    [Fact]
+    public void Global_hotkeys_default_to_none_and_detect_permuted_modifier_conflicts()
+    {
+        Assert.Equal("None", GlobalHotkeyPolicy.Normalize(null, optional: true));
+        Assert.Equal(GlobalHotkeyPolicy.None, new JsonToolSettings().GlobalShortcut);
+        Assert.Equal("Ctrl+Alt+Space", GlobalHotkeyPolicy.Normalize("alt+ctrl+space"));
+        Assert.Throws<InvalidOperationException>(() => GlobalHotkeyPolicy.EnsureDistinct(
+            "Ctrl+Alt+Space", "alt+ctrl+space", "None"));
+        Assert.Equal("Ctrl+Alt+Space", AppSettings.CreateDefault().LeaderShortcut);
+    }
+
+    [Fact]
+    public async Task Legacy_file_copy_keeps_source_and_does_not_overwrite_existing_target()
+    {
+        var old = Path.Combine(_root, "legacy");
+        var target = Path.Combine(_root, "next", "tools", "json");
+        Directory.CreateDirectory(Path.Combine(old, "documents"));
+        Directory.CreateDirectory(Path.Combine(target, "documents"));
+        await File.WriteAllTextAsync(Path.Combine(old, "documents", "original.json"), "{\"old\":true}");
+        await File.WriteAllTextAsync(Path.Combine(old, "documents", "keep.json"), "old");
+        await File.WriteAllTextAsync(Path.Combine(target, "documents", "keep.json"), "new");
+
+        await DataLayoutMigration.CopyMissingAsync(old, target);
+
+        Assert.Equal("{\"old\":true}", await File.ReadAllTextAsync(Path.Combine(target, "documents", "original.json")));
+        Assert.Equal("new", await File.ReadAllTextAsync(Path.Combine(target, "documents", "keep.json")));
+        Assert.True(File.Exists(Path.Combine(old, "documents", "original.json")));
+    }
+
+    [Fact]
+    public async Task Changing_root_and_tool_directory_commits_verified_data_and_configuration_on_shutdown()
+    {
+        var writer = new AtomicFileWriter();
+        var targetRoot = _root + "-next-root";
+        var targetTool = _root + "-next-tool";
+        var pointer = Path.Combine(_root, "data-location.json");
+        var settings = new LocalSettings(_root, writer);
+        try
+        {
+            await settings.SaveAsync(new AppSettings());
+            await File.WriteAllTextAsync(Path.Combine(JsonRoot, "documents", "saved.json"), "{\"value\":1}");
+            var changes = new DataDirectoryChangeService(new DataRootService(writer), writer, _root, pointer);
+            changes.StageRoot(targetRoot);
+            changes.StageTool("json", targetTool);
+            Assert.False(File.Exists(pointer));
+
+            await changes.CommitAsync(settings, CancellationToken.None);
+
+            Assert.Equal("{\"value\":1}", await File.ReadAllTextAsync(Path.Combine(targetTool, "documents", "saved.json")));
+            Assert.Equal(targetTool, settings.Current.ToolDataDirectories["json"]);
+            Assert.Equal(targetTool, JsonSerializer.Deserialize<AppSettings>(
+                await File.ReadAllTextAsync(Path.Combine(targetRoot, "config.json")))!.ToolDataDirectories["json"]);
+            Assert.True(File.Exists(Path.Combine(JsonRoot, "documents", "saved.json")));
+            Assert.True(File.Exists(pointer));
+        }
+        finally
+        {
+            if (Directory.Exists(targetRoot)) Directory.Delete(targetRoot, true);
+            if (Directory.Exists(targetTool)) Directory.Delete(targetTool, true);
+        }
+    }
+
+    [Fact]
+    public async Task Persisted_directory_request_is_restored_and_committed_after_restart()
+    {
+        var writer = new AtomicFileWriter();
+        await new DataRootService(writer).EnsureInitializedAsync(_root);
+        await File.WriteAllTextAsync(Path.Combine(_root, "config.json"), JsonSerializer.Serialize(
+            new AppSettings { PendingDataRoot = _root + "-after-restart" }));
+        var settings = new LocalSettings(_root, writer);
+        await settings.LoadAsync();
+        var target = _root + "-after-restart";
+        var pointer = Path.Combine(_root, "data-location.json");
+        var changes = new DataDirectoryChangeService(new DataRootService(writer), writer, _root, pointer);
+        changes.LoadPending(settings.Current.PendingDataRoot, settings.Current.PendingToolDataDirectories);
+
+        await changes.CommitAsync(settings, CancellationToken.None);
+
+        Assert.True(File.Exists(pointer));
+        Assert.Equal(target, JsonSerializer.Deserialize<ApplicationPaths.DataRootPointer>(
+            await File.ReadAllTextAsync(pointer))!.DataRoot);
+        Assert.Null(settings.Current.PendingDataRoot);
+        Assert.True(File.Exists(Path.Combine(target, "config.json")));
+        Assert.True(Directory.Exists(_root));
+        if (Directory.Exists(target)) Directory.Delete(target, true);
+    }
+
+    [Fact]
+    public async Task Old_installation_layout_is_copied_into_root_config_and_tools_without_removing_originals()
+    {
+        var install = Path.Combine(_root, "old-install");
+        var destination = Path.Combine(_root, "new-data");
+        Directory.CreateDirectory(Path.Combine(install, "data", "json", "documents"));
+        Directory.CreateDirectory(Path.Combine(install, "data", "toto"));
+        await new DataRootService(new AtomicFileWriter()).EnsureInitializedAsync(destination);
+        await File.WriteAllTextAsync(Path.Combine(install, "config.json"), "{\"theme\":1}");
+        await File.WriteAllTextAsync(Path.Combine(install, "data", "json", "documents", "draft.json"), "{}");
+        await File.WriteAllTextAsync(Path.Combine(install, "data", "toto", "config.ini"), "[General]");
+
+        await DataLayoutMigration.ImportLegacyAsync(new AtomicFileWriter(), default, install, destination);
+
+        Assert.Equal("{\"theme\":1}", await File.ReadAllTextAsync(Path.Combine(destination, "config.json")));
+        Assert.Equal("{}", await File.ReadAllTextAsync(Path.Combine(destination, "tools", "json", "documents", "draft.json")));
+        Assert.True(File.Exists(Path.Combine(destination, "tools", "toto", "config.ini")));
+        Assert.True(File.Exists(Path.Combine(install, "config.json")));
+        File.Delete(Path.Combine(destination, "tools", "json", "documents", "draft.json"));
+        await DataLayoutMigration.ImportLegacyAsync(new AtomicFileWriter(), default, install, destination);
+        Assert.False(File.Exists(Path.Combine(destination, "tools", "json", "documents", "draft.json")));
+    }
+
+    [Fact]
+    public void Tool_directory_validation_keeps_pending_changes_isolated_and_rejects_collisions()
+    {
+        var writer = new AtomicFileWriter();
+        var changes = new DataDirectoryChangeService(new DataRootService(writer), writer, _root,
+            Path.Combine(_root, "pointer.json"));
+        var shared = _root + "-shared";
+        var separate = _root + "-separate";
+        changes.StageTool("json", shared);
+        changes.ValidateTool("toto", separate);
+        Assert.Equal(Path.Combine(_root, "tools", "toto"), changes.DisplayToolDirectory("toto"));
+        Assert.Throws<InvalidOperationException>(() => changes.StageTool("toto", shared));
+        Assert.Throws<InvalidOperationException>(() => changes.StageRoot(shared));
+    }
+
+    private sealed class LocalSettings(string root, IAtomicFileWriter writer) : ISettingsService
+    {
+        public AppSettings Current { get; private set; } = new();
+        public async Task LoadAsync(CancellationToken token = default)
+        {
+            var path = Path.Combine(root, "config.json");
+            if (File.Exists(path)) Current = JsonSerializer.Deserialize<AppSettings>(
+                await File.ReadAllTextAsync(path, token)) ?? new AppSettings();
+        }
+        public async Task SaveAsync(AppSettings value, CancellationToken token = default)
+        {
+            await writer.WriteTextAsync(Path.Combine(root, "config.json"), JsonSerializer.Serialize(value), token);
+            Current = value;
+        }
+    }
+
+    [Fact]
     public void Json_shortcuts_normalize_combinations_and_allow_cross_context_duplicates()
     {
         // 同一按键组合在不同上下文可共存；输入中的大小写与额外空白会被标准化。
@@ -151,6 +307,7 @@ public sealed class JsonDocumentServiceTests : IAsyncLifetime
     [InlineData(JsonToolCommand.New, "Ctrl+S")]
     [InlineData(JsonToolCommand.New, "Alt+F4")]
     [InlineData(JsonToolCommand.New, "Ctrl+Alt+Delete")]
+    [InlineData(JsonToolCommand.New, "Ctrl+Alt+Space")]
     [InlineData(JsonToolCommand.New, "Ctrl+Shift+Alt+Space")]
     [InlineData(JsonToolCommand.New, "Ctrl++N")]
     public void Json_shortcuts_reject_duplicate_reserved_or_invalid_combinations(JsonToolCommand command,
@@ -191,14 +348,14 @@ public sealed class JsonDocumentServiceTests : IAsyncLifetime
     {
         // 损坏元数据文件，同时保留真实文档文件，验证列表加载触发恢复路径。
         var first = await _documents.CreateAsync();
-        var documentPath = Path.Combine(_root, "json", "documents", first.FileName);
-        await File.WriteAllTextAsync(Path.Combine(_root, "json", "metadata.json"), "not metadata");
+        var documentPath = Path.Combine(JsonRoot, "documents", first.FileName);
+        await File.WriteAllTextAsync(Path.Combine(JsonRoot, "metadata.json"), "not metadata");
         var recovered = await _documents.ListAsync();
         // 恢复后文档应可见且原文件保持存在，损坏的元数据另存为带 .corrupt- 前缀的备份。
         Assert.Single(recovered);
         Assert.Equal(first.FileName, recovered[0].FileName);
         Assert.True(File.Exists(documentPath));
-        Assert.NotEmpty(Directory.EnumerateFiles(Path.Combine(_root, "json"), "metadata.json.corrupt-*"));
+        Assert.NotEmpty(Directory.EnumerateFiles(JsonRoot, "metadata.json.corrupt-*"));
     }
 
     [Fact]
@@ -206,8 +363,8 @@ public sealed class JsonDocumentServiceTests : IAsyncLifetime
     {
         // 删除已登记文件并手工加入未登记文件，模拟文件系统与元数据双向不一致。
         var first = await _documents.CreateAsync();
-        File.Delete(Path.Combine(_root, "json", "documents", first.FileName));
-        await File.WriteAllTextAsync(Path.Combine(_root, "json", "documents", "external.json"), "{\"external\":true}");
+        File.Delete(Path.Combine(JsonRoot, "documents", first.FileName));
+        await File.WriteAllTextAsync(Path.Combine(JsonRoot, "documents", "external.json"), "{\"external\":true}");
         var list = await _documents.ListAsync();
         // 协调结果应移除失效条目、发现外部文件，并标记其来源为 recovered。
         Assert.Single(list);
@@ -236,9 +393,9 @@ public sealed class JsonDocumentServiceTests : IAsyncLifetime
         Assert.Equal(["import-2.json", "import-3.json"], imported.Select(item => item.FileName));
         Assert.Equal("{}", (await _documents.OpenAsync(existing.Id)).Content);
         Assert.Equal("{\"first\":true}",
-            await File.ReadAllTextAsync(Path.Combine(_root, "json", "documents", "import-2.json")));
+            await File.ReadAllTextAsync(Path.Combine(JsonRoot, "documents", "import-2.json")));
         Assert.Equal("{\"second\":true}",
-            await File.ReadAllTextAsync(Path.Combine(_root, "json", "documents", "import-3.json")));
+            await File.ReadAllTextAsync(Path.Combine(JsonRoot, "documents", "import-3.json")));
         // 导入元数据记录来源类型和原始文件名，便于 UI 追溯文档来源。
         Assert.All(imported, item => Assert.Equal("imported", item.Source.Kind));
         Assert.All(imported, item => Assert.Equal("import.json", item.Source.OriginalFileName));
@@ -265,12 +422,12 @@ public sealed class JsonDocumentServiceTests : IAsyncLifetime
         {
             await using var storage = new StorageManager(new DataRootService(writer), writer);
             await storage.InitializeAsync(_root);
-            await storage.WriteTextAsync(Path.Combine("json", "documents", "migrate.json"), "{} ");
+            await storage.WriteTextAsync(Path.Combine("tools", "json", "documents", "migrate.json"), "{} ");
             await storage.MigrateToAsync(destination);
             // 管理器切换到规范化后的新根目录，但新旧根中的文件均需存在。
             Assert.Equal(Path.GetFullPath(destination), storage.DataRoot);
-            Assert.True(File.Exists(Path.Combine(_root, "json", "documents", "migrate.json")));
-            Assert.True(File.Exists(Path.Combine(destination, "json", "documents", "migrate.json")));
+            Assert.True(File.Exists(Path.Combine(JsonRoot, "documents", "migrate.json")));
+            Assert.True(File.Exists(Path.Combine(destination, "tools", "json", "documents", "migrate.json")));
         }
         finally
         {
@@ -294,7 +451,7 @@ public sealed class JsonDocumentServiceTests : IAsyncLifetime
         await Task.Delay(400);
         // 服务自身保存产生的文件事件必须被过滤，避免 UI 误报外部修改。
         Assert.False(observed.Task.IsCompleted);
-        await File.WriteAllTextAsync(Path.Combine(_root, "json", "documents", created.FileName), "{\"external\":true}");
+        await File.WriteAllTextAsync(Path.Combine(JsonRoot, "documents", created.FileName), "{\"external\":true}");
         var change = await observed.Task.WaitAsync(TimeSpan.FromSeconds(5));
         // 真实外部写入应在超时内发出事件，并携带正确文档 Id 和 Changed 类型。
         Assert.Equal(created.Id, change.DocumentId);
@@ -322,7 +479,7 @@ public sealed class JsonDocumentServiceTests : IAsyncLifetime
         var telemetry = new RecordingTelemetry();
         await _documents.DisposeAsync();
         var writer = new AtomicFileWriter();
-        _documents = new JsonDocumentService(_root, new JsonMetadataStore(_root, writer), writer,
+        _documents = new JsonDocumentService(JsonRoot, new JsonMetadataStore(JsonRoot, writer), writer,
             new DocumentRevisionService(), telemetry);
         var created = await _documents.CreateAsync();
 

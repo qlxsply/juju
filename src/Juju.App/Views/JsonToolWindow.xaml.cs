@@ -109,6 +109,7 @@ public partial class JsonToolWindow : Window
             await SaveCurrentAsync(_editorContent);
         };
         _documents.ExternalChanged += OnExternalDocumentChanged;
+        _settings.Changed += OnSettingsChanged;
     }
 
     // 在窗口管理器注册 Core 所有的快照实现前保持可选，视图不自行创建跨层基础设施。
@@ -134,6 +135,7 @@ public partial class JsonToolWindow : Window
         finally
         {
             _documents.ExternalChanged -= OnExternalDocumentChanged;
+            _settings.Changed -= OnSettingsChanged;
             _closing = false;
             _lifetime.Cancel();
         }
@@ -758,6 +760,31 @@ public partial class JsonToolWindow : Window
         _ = CloseToolAsync();
     }
 
+    private void OnSettingsChanged(JsonToolSettings settings)
+    {
+        void Apply()
+        {
+            _autosave.Interval = TimeSpan.FromMilliseconds(settings.AutosaveDelayMilliseconds);
+            if (_editorReady && !_closing) _ = RefreshEditorConfigurationAsync();
+        }
+        if (Dispatcher.CheckAccess()) Apply();
+        else Dispatcher.BeginInvoke(Apply);
+    }
+
+    private async Task RefreshEditorConfigurationAsync()
+    {
+        try
+        {
+            if (!await FlushCurrentAsync()) return;
+            DestroyEditor();
+            await EnsureEditorAsync();
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            SaveStateStatus.Text = "编辑器设置应用失败：" + ex.Message;
+        }
+    }
+
     private async Task CloseToolAsync()
     {
         _closing = true;
@@ -770,6 +797,7 @@ public partial class JsonToolWindow : Window
             {
                 // 不保留窗口时真正关闭；窗口管理器的 Closed 回调会清空缓存，下一次重新创建。
                 _documents.ExternalChanged -= OnExternalDocumentChanged;
+                _settings.Changed -= OnSettingsChanged;
                 _lifetime.Cancel();
                 Close();
             }

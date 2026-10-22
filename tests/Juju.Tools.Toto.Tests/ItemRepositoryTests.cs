@@ -1,5 +1,6 @@
 using Toto.App.Data;
 using Toto.App.Domain;
+using Toto.App.Services;
 using Xunit;
 
 namespace Toto.App.Tests;
@@ -122,6 +123,28 @@ public sealed class ItemRepositoryTests : IDisposable
     public void Toto_window_icon_is_embedded_in_the_integrated_tool()
     {
         Assert.Contains("Juju.Tools.Toto.toto.ico", typeof(TotoToolHost).Assembly.GetManifestResourceNames());
+    }
+
+    [Fact]
+    public void Work_calendar_retains_upserted_and_removed_holidays()
+    {
+        var downloader = new HolidayCalendarDownloadService(new AppPaths(dataDirectory));
+        var calendar = new WorkCalendarRepository(downloader);
+        var year = DateTime.Today.Year;
+        downloader.SaveLocal(year, []);
+        var holiday = new HolidayCalendarDay("测试休息日", new DateOnly(year, 6, 1), true);
+        calendar.Upsert(holiday);
+        Assert.Equal(holiday, calendar.Get(holiday.Date));
+        calendar.Delete(holiday.Date);
+        Assert.Null(calendar.Get(holiday.Date));
+    }
+
+    [Fact]
+    public void Toto_global_direct_hotkey_defaults_to_none()
+    {
+        var repository = new SettingsRepository(new AppPaths(Path.Combine(dataDirectory, "settings")));
+        repository.EnsureExists();
+        Assert.Equal("None", repository.Load()["hotkey"]);
     }
 
     private static TodoItem Item(string id, string content, DateTime? remindAt = null) =>

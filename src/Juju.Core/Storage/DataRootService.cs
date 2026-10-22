@@ -55,8 +55,8 @@ public sealed class DataRootService(IAtomicFileWriter writer)
                 }
             }
 
-            Directory.CreateDirectory(Path.Combine(root, "json", "documents"));
-            Directory.CreateDirectory(Path.Combine(root, "json", ".trash"));
+            Directory.CreateDirectory(Path.Combine(root, "tools", "json", "documents"));
+            Directory.CreateDirectory(Path.Combine(root, "tools", "json", ".trash"));
             return new DataRootValidationResult(root, true, false, null);
         }
         catch (OperationCanceledException)

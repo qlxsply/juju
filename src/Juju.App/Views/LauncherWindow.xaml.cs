@@ -6,11 +6,11 @@ using Juju.App.Bootstrap;
 using Juju.Core.App;
 using Juju.Core.Settings;
 using Juju.Core.Tools;
+using Juju.Tools.Json.Settings;
 using Juju.Platform.Windows.HotKey;
+using Juju.Platform.Windows;
 using Toto.App;
 using Button = System.Windows.Controls.Button;
-using FormsControl = System.Windows.Forms.Control;
-using FormsScreen = System.Windows.Forms.Screen;
 using KeyEventArgs = System.Windows.Input.KeyEventArgs;
 using MessageBox = System.Windows.MessageBox;
 
@@ -24,18 +24,26 @@ public partial class LauncherWindow : Window
     private readonly GlobalShortcutService _shortcut = new();
     private readonly GlobalShortcutService _jsonShortcut = new();
     private readonly GlobalShortcutService _totoShortcut = new();
+    private readonly Dictionary<ToolId, GlobalShortcutService> _extraShortcuts = new()
+    {
+        [ToolId.EchoHttp] = new(), [ToolId.Kairos] = new()
+    };
     private readonly TotoToolHost _toto;
+    private readonly IJsonToolSettingsService _jsonSettings;
     private readonly DispatcherTimer _timeout = new();
     private bool _armed;
     private bool _settingsOpen;
     private bool _compact;
+    private int _shortcutCaptureDepth;
 
     // 构造函数依赖由窗口管理器传入；ThemeService 参数用于保持依赖图一致，主题资源由 WPF 全局资源解析。
-    public LauncherWindow(IWindowManager windows, ISettingsService settings, ThemeService themes, TotoToolHost toto)
+    public LauncherWindow(IWindowManager windows, ISettingsService settings, ThemeService themes, TotoToolHost toto,
+        IJsonToolSettingsService jsonSettings)
     {
         _windows = windows;
         _settings = settings;
         _toto = toto;
+        _jsonSettings = jsonSettings;
         InitializeComponent();
         // DispatcherTimer 在 WPF UI 线程触发，不需要额外 Dispatcher.Invoke 即可安全隐藏窗口。
         _timeout.Tick += (_, _) => { if (!_settingsOpen) Hide(); };
@@ -47,11 +55,15 @@ public partial class LauncherWindow : Window
         SourceInitialized += (_, _) =>
         {
             var source = (HwndSource)PresentationSource.FromVisual(this)!;
+            WindowAppearance.UseSystemCorners(source.Handle);
             source.AddHook(WindowProcedure);
             if (!_shortcut.Register(source.Handle, settings.Current.LeaderShortcut))
                 Title = $"juju (快捷键错误 {_shortcut.LastError})";
-            RegisterToolHotkey(_jsonShortcut, settings.Current.JsonShortcut, "JSON");
-            RegisterToolHotkey(_totoShortcut, _toto.Hotkey, "Toto");
+            TryRegisterToolHotkey(ToolId.Json, _jsonSettings.Current.GlobalShortcut);
+            TryRegisterToolHotkey(ToolId.Toto, _toto.Hotkey);
+            foreach (var (tool, _) in _extraShortcuts)
+                TryRegisterToolHotkey(tool, settings.Current.ToolGlobalShortcuts.GetValueOrDefault(tool.ToString(),
+                    GlobalHotkeyPolicy.None));
         };
         _toto.HotkeyChanged += OnTotoHotkeyChanged;
         _toto.HotkeyChanging += TryRegisterTotoHotkey;
@@ -65,29 +77,46 @@ public partial class LauncherWindow : Window
     // 重注册失败时保留旧热键，避免一次无效配置让用户完全失去唤起入口。
     public bool ApplySettings(AppSettings settings)
     {
+        var keys = ToolLaunchKeys.Normalize(settings.ToolKeys);
+        try
+        {
+            GlobalHotkeyPolicy.EnsureDistinct(settings.LeaderShortcut,
+                new[] { _jsonSettings.Current.GlobalShortcut, _toto.Hotkey }
+                    .Concat(_extraShortcuts.Keys.Select(tool =>
+                        settings.ToolGlobalShortcuts.GetValueOrDefault(tool.ToString()))).ToArray());
+        }
+        catch (InvalidOperationException ex)
+        {
+            MessageBox.Show(ex.Message, "juju", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return false;
+        }
+        var source = PresentationSource.FromVisual(this) as HwndSource;
+        var registered = source is null || (_shortcutCaptureDepth > 0
+            ? RegisterTransient(_shortcut, source.Handle, settings.LeaderShortcut)
+            : _shortcut.Register(source.Handle, settings.LeaderShortcut));
+        if (!registered)
+        {
+            MessageBox.Show($"无法注册快捷键（Windows 错误码 {_shortcut.LastError}）。旧快捷键仍然有效。", "juju",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+            return false;
+        }
+        // 只有所有验证/注册都成功后才更新屏幕状态；失败时界面与持久化值保持一致。
         _timeout.Interval = TimeSpan.FromMilliseconds(Math.Clamp(settings.LauncherTimeoutMilliseconds, 250, 30000));
         if (_compact != settings.CompactLauncher)
         {
             _compact = settings.CompactLauncher;
             foreach (var row in new[] { JsonRow, TotoRow, EchoRow, KairosRow })
                 row.Height = _compact ? 45 : 53;
-            Height += _compact ? -32 : 32;
         }
-        ShortcutHint.Text = "快捷键 " + settings.LeaderShortcut.Replace("+", " + ");
-        if (PresentationSource.FromVisual(this) is HwndSource source &&
-            !_shortcut.Register(source.Handle, settings.LeaderShortcut))
-        {
-            MessageBox.Show($"无法注册快捷键（Windows 错误码 {_shortcut.LastError}）。旧快捷键仍然有效。", "juju",
-                MessageBoxButton.OK, MessageBoxImage.Warning);
-            return false;
-        }
-
-        return PresentationSource.FromVisual(this) is not HwndSource ||
-               RegisterToolHotkey(_jsonShortcut, settings.JsonShortcut, "JSON");
+        JsonKey.Text = keys[nameof(ToolId.Json)];
+        TotoKey.Text = keys[nameof(ToolId.Toto)];
+        EchoKey.Text = keys[nameof(ToolId.EchoHttp)];
+        KairosKey.Text = keys[nameof(ToolId.Kairos)];
+        return true;
     }
 
-    private bool TryRegisterTotoHotkey(string hotkey) => RegisterToolHotkey(_totoShortcut, hotkey, "Toto");
-    private void OnTotoHotkeyChanged(string hotkey) => RegisterToolHotkey(_totoShortcut, hotkey, "Toto");
+    private bool TryRegisterTotoHotkey(string hotkey) => TryRegisterToolHotkey(ToolId.Toto, hotkey);
+    private void OnTotoHotkeyChanged(string hotkey) => TryRegisterToolHotkey(ToolId.Toto, hotkey);
 
     /// <summary>设置对话框盖在 Launcher 上时禁止失焦、组合键残留与超时将入口隐藏。</summary>
     public void SetSettingsOpen(bool value)
@@ -96,16 +125,82 @@ public partial class LauncherWindow : Window
         if (value) _timeout.Stop();
     }
 
-    private bool RegisterToolHotkey(GlobalShortcutService service, string hotkey, string name)
+    /// <summary>录制快捷键期间暂时注销操作系统热键，避免 WM_HOTKEY 抢走用户正在录制的按键。</summary>
+    public void SetShortcutCapture(bool capturing)
     {
+        if (capturing)
+        {
+            if (_shortcutCaptureDepth++ == 0) ClearAllGlobalHotkeys();
+            return;
+        }
+        if (_shortcutCaptureDepth == 0) return;
+        if (--_shortcutCaptureDepth == 0) RestoreAllGlobalHotkeys();
+    }
+
+    private void ClearAllGlobalHotkeys()
+    {
+        _shortcut.Clear();
+        _jsonShortcut.Clear();
+        _totoShortcut.Clear();
+        foreach (var service in _extraShortcuts.Values) service.Clear();
+    }
+
+    private void RestoreAllGlobalHotkeys()
+    {
+        var source = PresentationSource.FromVisual(this) as HwndSource;
+        if (source is null) return;
+        if (!_shortcut.Register(source.Handle, _settings.Current.LeaderShortcut))
+            MessageBox.Show($"工具箱入口热键无法恢复（Windows 错误码 {_shortcut.LastError}）。", "juju",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+        TryRegisterToolHotkey(ToolId.Json, _jsonSettings.Current.GlobalShortcut);
+        TryRegisterToolHotkey(ToolId.Toto, _toto.Hotkey);
+        foreach (var tool in _extraShortcuts.Keys)
+            TryRegisterToolHotkey(tool, _settings.Current.ToolGlobalShortcuts.GetValueOrDefault(
+                tool.ToString(), GlobalHotkeyPolicy.None));
+    }
+
+    private static bool RegisterTransient(GlobalShortcutService service, IntPtr hwnd, string shortcut)
+    {
+        var registered = service.Register(hwnd, shortcut);
+        service.Clear();
+        return registered;
+    }
+
+    public bool TryRegisterToolHotkey(ToolId tool, string hotkey)
+    {
+        var name = tool.ToString();
+        var service = tool switch
+        {
+            ToolId.Json => _jsonShortcut, ToolId.Toto => _totoShortcut,
+            _ when _extraShortcuts.TryGetValue(tool, out var extra) => extra,
+            _ => null
+        };
+        if (service is null) return false;
+        string normalized;
+        try
+        {
+            normalized = GlobalHotkeyPolicy.Normalize(hotkey, optional: true);
+            GlobalHotkeyPolicy.EnsureDistinct(_settings.Current.LeaderShortcut,
+                new[] { tool == ToolId.Json ? normalized : _jsonSettings.Current.GlobalShortcut,
+                        tool == ToolId.Toto ? normalized : _toto.Hotkey }
+                    .Concat(_extraShortcuts.Keys.Select(item => item == tool ? normalized :
+                        _settings.Current.ToolGlobalShortcuts.GetValueOrDefault(item.ToString()))).ToArray());
+        }
+        catch (InvalidOperationException ex)
+        {
+            MessageBox.Show(ex.Message, "juju", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return false;
+        }
+        if (normalized == GlobalHotkeyPolicy.None) { service.Clear(); return true; }
         if (PresentationSource.FromVisual(this) is not HwndSource source) return false;
-        if (service.Register(source.Handle, hotkey)) return true;
-        MessageBox.Show($"{name} 全局快捷键 {hotkey} 无法注册（Windows 错误码 {service.LastError}），原快捷键仍然有效。",
+        if (_shortcutCaptureDepth > 0) return RegisterTransient(service, source.Handle, normalized);
+        if (service.Register(source.Handle, normalized)) return true;
+        MessageBox.Show($"{name} 全局快捷键 {normalized} 无法注册（Windows 错误码 {service.LastError}），原快捷键仍然有效。",
             "juju", MessageBoxButton.OK, MessageBoxImage.Warning);
         return false;
     }
 
-    // 显示前先按鼠标所在显示器定位，随后激活窗口以接收键盘预览事件。
+    // 显示时保留用户拖动过的位置；首次启动由 XAML 的 CenterScreen 决定默认位置。
     public void Toggle()
     {
         // 与原型 toggleLauncher 一致：设置盖在入口上时，唤醒键先收起设置而不是隐藏整个入口。
@@ -121,7 +216,6 @@ public partial class LauncherWindow : Window
             return;
         }
 
-        PlaceOnPointerMonitor();
         _armed = Keyboard.Modifiers == ModifierKeys.None;
         ApplySettings(_settings.Current);
         Show();
@@ -136,6 +230,7 @@ public partial class LauncherWindow : Window
         _shortcut.Dispose();
         _jsonShortcut.Dispose();
         _totoShortcut.Dispose();
+        foreach (var service in _extraShortcuts.Values) service.Dispose();
         _toto.HotkeyChanged -= OnTotoHotkeyChanged;
         _toto.HotkeyChanging -= TryRegisterTotoHotkey;
         base.OnClosed(e);
@@ -173,35 +268,27 @@ public partial class LauncherWindow : Window
             return;
         }
 
-        if (e.Key is Key.J or Key.T or Key.D1 or Key.D2)
+        if (Keyboard.Modifiers == ModifierKeys.None &&
+            e.Key is >= Key.A and <= Key.Z or >= Key.D0 and <= Key.D9)
         {
-            _windows.ShowTool(e.Key is Key.J or Key.D1 ? ToolId.Json : ToolId.Toto);
-            Hide();
-            e.Handled = true;
-        }
-        else if (e.Key == Key.S)
-        {
-            _windows.ShowSettings();
-            e.Handled = true;
+            var pressed = e.Key is >= Key.D0 and <= Key.D9 ? e.Key.ToString()[1..] : e.Key.ToString();
+            var match = _settings.Current.ToolKeys.FirstOrDefault(entry =>
+                string.Equals(entry.Value, pressed, StringComparison.OrdinalIgnoreCase));
+            if (Enum.TryParse<ToolId>(match.Key, out var tool))
+            {
+                OpenTool(tool);
+                e.Handled = true;
+            }
         }
 
         base.OnPreviewKeyDown(e);
     }
 
-    private void PlaceOnPointerMonitor()
-    {
-        var area = FormsScreen.FromPoint(FormsControl.MousePosition).WorkingArea;
-        Left = Math.Clamp(area.Left + (area.Width - Width) / 2d, area.Left, area.Right - Width);
-        Top = Math.Clamp(area.Top + (area.Height - Height) / 2d, area.Top, area.Bottom - Height);
-    }
-
-    // 自定义标题栏的 Grid 是普通 WPF 客户区控件，并不是 Windows 原生标题栏。
-    // DragMove 告诉 WPF/Win32：从当前鼠标位置开始执行系统窗口拖动，因此仍可获得贴靠等系统行为。
+    // 自定义标题栏的 Grid 是普通 WPF 客户区控件；DragMove 使用系统窗口移动操作。
     private void TitleBar_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
-        // OriginalSource == sender 只允许标题栏空白处发起拖动，防止点击设置按钮或其他子控件时移动窗口。
-        // LeftButton 检查排除右键等其他鼠标输入；DragMove 必须在按住左键时调用。
-        if (e.OriginalSource == sender && e.LeftButton == MouseButtonState.Pressed) DragMove();
+        // 标题、图标和空白区域均可拖动，唯独设置按钮应接收自己的点击事件。
+        if (e.LeftButton == MouseButtonState.Pressed && !SettingsButton.IsMouseOver) DragMove();
     }
 
     private void Settings_Click(object sender, RoutedEventArgs e)
@@ -213,14 +300,18 @@ public partial class LauncherWindow : Window
     {
         if (sender is not Button { Tag: string value } ||
             !Enum.TryParse<ToolId>(value, out var tool)) return;
+        OpenTool(tool);
+    }
+
+    private void OpenTool(ToolId tool)
+    {
         if (tool is ToolId.Json or ToolId.Toto)
         {
             _windows.ShowTool(tool);
             Hide();
             return;
         }
-
-        MessageBox.Show($"{value} 正在开发中。", "juju", MessageBoxButton.OK, MessageBoxImage.Information);
+        MessageBox.Show($"{tool} 正在开发中。", "juju", MessageBoxButton.OK, MessageBoxImage.Information);
     }
 
     // HwndSourceHook 是 WPF 到原生 Win32 消息循环的桥梁；处理热键消息后标记 handled 阻止继续分发。
@@ -241,6 +332,14 @@ public partial class LauncherWindow : Window
             _windows.ShowTool(ToolId.Toto);
             handled = true;
         }
+        else
+            foreach (var (tool, service) in _extraShortcuts)
+                if (service.IsHotKeyMessage(message, wParam))
+                {
+                    OpenTool(tool);
+                    handled = true;
+                    break;
+                }
 
         return IntPtr.Zero;
     }

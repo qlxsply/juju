@@ -1,5 +1,6 @@
 using Juju.Core.App;
 using Juju.Core.Settings;
+using Juju.Core.Storage;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Toto.App;
@@ -15,6 +16,7 @@ public sealed class DesktopAppLifecycle(
     WindowStateService states,
     TrayService tray,
     TotoToolHost toto,
+    DataDirectoryChangeService dataChanges,
     ILogger<DesktopAppLifecycle> log) : IAppLifecycle
 {
     private int _stopping;
@@ -31,6 +33,8 @@ public sealed class DesktopAppLifecycle(
             await runtimes.StopAllAsync(cancellationToken);
             toto.Dispose();
             tray.Dispose();
+            // JSON 窗口已写盘、Toto 调度器已停止；此时复制并提交下一次启动的数据目录。
+            await dataChanges.CommitAsync(settings, cancellationToken);
             switch (services)
             {
                 // 优先异步释放 DI 容器，以便其内部资源完成异步清理；否则退回标准 IDisposable 模式。

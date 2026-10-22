@@ -1,7 +1,7 @@
 namespace Toto.App;
 
 /// <summary>
-/// 集中计算 Juju 安装目录下 data/toto 的文件路径；旧用户主目录数据由 TotoToolHost 首次复制迁移。
+/// 集中计算 Juju 数据根目录下 tools/toto 的文件路径；旧用户主目录数据由 TotoToolHost 首次复制迁移。
 /// 对 Java 开发者而言，它类似于保存应用配置目录的不可继承值对象；<c>sealed</c> 禁止继承。
 /// </summary>
 internal sealed class AppPaths

@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Juju.Core.Storage;
+using Juju.Core.Tools;
 
 namespace Juju.Core.Settings;
 
@@ -24,6 +25,7 @@ public sealed class SettingsService(IAtomicFileWriter writer) : ISettingsService
 
     private readonly string _path = ApplicationPaths.ConfigurationFile;
     public AppSettings Current { get; private set; } = AppSettings.CreateDefault();
+    public string? LegacyJsonShortcut { get; private set; }
 
     /// <summary>异步读取配置；不存在时写入默认值，取消令牌贯穿读取和首次保存。</summary>
     public async Task LoadAsync(CancellationToken cancellationToken = default)
@@ -34,15 +36,35 @@ public sealed class SettingsService(IAtomicFileWriter writer) : ISettingsService
             return;
         }
 
-        var loaded =
-            JsonSerializer.Deserialize<AppSettings>(await File.ReadAllTextAsync(_path, cancellationToken), Options);
-        if (loaded is not null) Current = loaded;
+        var json = await File.ReadAllTextAsync(_path, cancellationToken);
+        using var document = JsonDocument.Parse(json);
+        if (document.RootElement.TryGetProperty("jsonShortcut", out var legacy) && legacy.ValueKind == JsonValueKind.String)
+            LegacyJsonShortcut = legacy.GetString();
+        var loaded = JsonSerializer.Deserialize<AppSettings>(json, Options);
+        if (loaded is not null) Current = loaded with
+        {
+            ToolKeys = ToolLaunchKeys.Normalize(loaded.ToolKeys),
+            LeaderShortcut = GlobalHotkeyPolicy.Normalize(loaded.LeaderShortcut),
+            ToolGlobalShortcuts = NormalizeExtraShortcuts(loaded.ToolGlobalShortcuts)
+        };
     }
 
     /// <summary>先更新当前快照，再委托原子写入器避免磁盘上出现部分 JSON。</summary>
     public async Task SaveAsync(AppSettings settings, CancellationToken cancellationToken = default)
     {
-        Current = settings;
-        await writer.WriteTextAsync(_path, JsonSerializer.Serialize(settings, Options), cancellationToken);
+        var normalized = settings with
+        {
+            ToolKeys = ToolLaunchKeys.Normalize(settings.ToolKeys),
+            LeaderShortcut = GlobalHotkeyPolicy.Normalize(settings.LeaderShortcut),
+            ToolGlobalShortcuts = NormalizeExtraShortcuts(settings.ToolGlobalShortcuts)
+        };
+        await writer.WriteTextAsync(_path, JsonSerializer.Serialize(normalized, Options), cancellationToken);
+        Current = normalized;
     }
+
+    private static Dictionary<string, string> NormalizeExtraShortcuts(IReadOnlyDictionary<string, string>? values) =>
+        new[] { Juju.Core.Tools.ToolId.EchoHttp, Juju.Core.Tools.ToolId.Kairos }
+            .ToDictionary(tool => tool.ToString(), tool => GlobalHotkeyPolicy.Normalize(
+                values is not null && values.TryGetValue(tool.ToString(), out var key) ? key : null,
+                optional: true), StringComparer.OrdinalIgnoreCase);
 }

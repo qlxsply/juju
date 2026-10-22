@@ -22,7 +22,7 @@ public sealed partial class GlobalShortcutService : IDisposable
     public int LastError { get; private set; }
 
     /// <summary>当前已注册的规范化快捷键文本。</summary>
-    public string Shortcut { get; private set; } = "Ctrl+Shift+Alt+Space";
+    public string Shortcut { get; private set; } = "Ctrl+Alt+Space";
 
     /// <summary>以当前 <see cref="Shortcut"/> 注册指定窗口。</summary>
     public bool Register(IntPtr window) => Register(window, Shortcut);
@@ -64,11 +64,16 @@ public sealed partial class GlobalShortcutService : IDisposable
     public bool IsHotKeyMessage(int message, IntPtr wParam) => message == 0x0312 && wParam.ToInt32() == _id;
 
     /// <summary>注销当前快捷键；同步 Win32 资源无需 <see cref="IAsyncDisposable"/>。</summary>
-    public void Dispose()
+    public void Clear()
     {
         if (_window != IntPtr.Zero && _id != 0) UnregisterHotKey(_window, _id);
         _id = 0;
+        _window = IntPtr.Zero;
+        Shortcut = string.Empty;
+        LastError = 0;
     }
+
+    public void Dispose() => Clear();
 
     /// <summary>把用户文本转换为 Win32 修饰键位掩码和虚拟键码，只接受已有的受控格式。</summary>
     private static bool TryParse(string shortcut, out uint modifiers, out uint key)
@@ -101,6 +106,11 @@ public sealed partial class GlobalShortcutService : IDisposable
         }
 
         // 原 Toto 使用 WinForms Keys 解析快捷键；兼容 F1、Enter、方向键等原有配置值。
+        value = value switch
+        {
+            "Backspace" => "Back", "PageUp" => "Prior", "PageDown" => "Next",
+            _ => value
+        };
         if (value.Length == 1 && char.IsDigit(value[0])) value = "D" + value;
         if (!Enum.TryParse<Keys>(value, true, out var parsed)) return false;
         key = (uint)(parsed & Keys.KeyCode);

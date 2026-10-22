@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using Juju.Core.Storage;
+using Juju.Core.Tools;
 
 namespace Juju.Tools.Json.Settings;
 
@@ -174,7 +175,7 @@ public static class JsonToolShortcuts
 
     /// <summary>标记会被系统或启动器保留、不能安全交给 JSON 工具的组合键。</summary>
     private static bool IsReserved(string shortcut) =>
-        shortcut is "Alt+F4" or "Ctrl+Alt+Delete" or "Ctrl+Alt+Shift+Space";
+        shortcut is "Alt+F4" or "Ctrl+Alt+Delete" or "Ctrl+Alt+Space" or "Ctrl+Alt+Shift+Space";
 }
 
 /// <summary>
@@ -188,6 +189,8 @@ public sealed record JsonToolSettings(
     bool OpenMaximized = false,
     bool RememberWindowPlacement = true)
 {
+    /// <summary>直接打开 JSON 的可选全局热键；None 表示只通过工具箱入口打开。</summary>
+    public string GlobalShortcut { get; init; } = GlobalHotkeyPolicy.None;
     /// <summary>每条命令的规范化快捷键；初始值使用全局默认映射。</summary>
     public IReadOnlyDictionary<JsonToolCommand, string> Shortcuts { get; init; } = JsonToolShortcuts.Defaults;
 }
@@ -195,6 +198,8 @@ public sealed record JsonToolSettings(
 /// <summary>JSON 工具设置的当前快照与异步磁盘读写契约。</summary>
 public interface IJsonToolSettingsService
 {
+    /// <summary>保存并规范化设置后通知活跃编辑器刷新快捷键和自动保存参数。</summary>
+    event Action<JsonToolSettings>? Changed;
     /// <summary>内存中的当前设置。</summary>
     JsonToolSettings Current { get; }
 
@@ -216,6 +221,7 @@ public sealed class JsonToolSettingsService(IAtomicFileWriter writer) : IJsonToo
 
     private readonly string _path = Path.Combine(ApplicationPaths.ToolDataDirectory("json"), "settings.json");
     public JsonToolSettings Current { get; private set; } = new();
+    public event Action<JsonToolSettings>? Changed;
 
     /// <summary>异步加载设置并用 <see cref="JsonToolShortcuts.Normalize"/> 修复缺失或非规范快捷键。</summary>
     public async Task LoadAsync(CancellationToken cancellationToken = default)
@@ -234,13 +240,16 @@ public sealed class JsonToolSettingsService(IAtomicFileWriter writer) : IJsonToo
     /// <summary>先建立规范化当前快照，再委托原子写入器保存完整 JSON。</summary>
     public async Task SaveAsync(JsonToolSettings settings, CancellationToken cancellationToken = default)
     {
-        Current = Normalize(settings);
-        await writer.WriteTextAsync(_path, JsonSerializer.Serialize(Current, Options), cancellationToken);
+        var normalized = Normalize(settings);
+        await writer.WriteTextAsync(_path, JsonSerializer.Serialize(normalized, Options), cancellationToken);
+        Current = normalized;
+        Changed?.Invoke(Current);
     }
 
     /// <summary>使用 record 的 <c>with</c> 复制语法仅替换快捷键属性，不修改调用方传入的实例。</summary>
     private static JsonToolSettings Normalize(JsonToolSettings settings) => settings with
     {
-        Shortcuts = JsonToolShortcuts.Normalize(settings.Shortcuts)
+        Shortcuts = JsonToolShortcuts.Normalize(settings.Shortcuts),
+        GlobalShortcut = GlobalHotkeyPolicy.Normalize(settings.GlobalShortcut, optional: true)
     };
 }

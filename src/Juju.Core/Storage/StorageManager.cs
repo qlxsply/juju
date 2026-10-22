@@ -179,7 +179,10 @@ public sealed class StorageManager(DataRootService roots, IAtomicFileWriter writ
             _watcher?.Dispose();
             DataRoot = validated.Path!;
             IsAvailable = true;
-            var documents = GetPath("json", "documents");
+            var documents = string.Equals(root, ApplicationPaths.DataRoot, StringComparison.OrdinalIgnoreCase)
+                ? Path.Combine(ApplicationPaths.ToolDataDirectory("json"), "documents")
+                : GetPath("tools", "json", "documents");
+            Directory.CreateDirectory(documents);
             _watcher = new FileSystemWatcher(documents, "*.json")
             {
                 NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite | NotifyFilters.Size,

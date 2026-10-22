@@ -9,14 +9,14 @@ namespace Juju.Tools.Json.Metadata;
 /// 读写 JSON 文档元数据文件的存储边界。主构造函数把数据根目录和原子写入器固定在实例上，
 /// 避免服务通过全局路径工作。
 /// </summary>
-public sealed class JsonMetadataStore(string dataRoot, IAtomicFileWriter writer)
+public sealed class JsonMetadataStore(string toolDirectory, IAtomicFileWriter writer)
 {
     private static readonly JsonSerializerOptions Options = new()
         { PropertyNamingPolicy = JsonNamingPolicy.CamelCase, WriteIndented = true };
 
     // 元数据“读-修改-写”必须作为整体串行化；SemaphoreSlim 可在 await 之间安全持有。
     private readonly SemaphoreSlim _gate = new(1, 1);
-    private string Path => System.IO.Path.Combine(dataRoot, "json", "metadata.json");
+    private string Path => System.IO.Path.Combine(toolDirectory, "metadata.json");
 
     /// <summary>
     /// 异步读取并验证 schemaVersion。损坏或无法读取时会尽力保留带时间戳的副本，再抛出

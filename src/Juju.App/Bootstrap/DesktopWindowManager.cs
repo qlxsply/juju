@@ -17,6 +17,7 @@ public sealed class DesktopWindowManager(
     ThemeService themes,
     IJsonFileClipboard fileClipboard,
     IJsonToolSettingsService jsonSettings,
+    SettingsDialogService dialogs,
     TotoToolHost toto,
     IEnumerable<ISettingsSection> settingsSections) : IWindowManager
 {
@@ -32,12 +33,17 @@ public sealed class DesktopWindowManager(
     public void InitializeLauncher()
     {
         toto.MainWindowHidden += () => OnToolHidden(ToolId.Toto);
-        _launcher ??= new LauncherWindow(this, settings, themes, toto);
-        windowState.Restore(_launcher, "launcher");
+        _launcher ??= new LauncherWindow(this, settings, themes, toto, jsonSettings);
+
+        // Loaded 时 SizeToContent 已经算出真实高度；仅恢复拖动位置，不从旧配置覆盖自适应宽高。
+        _launcher.Loaded += (_, _) => windowState.RestorePosition(_launcher, "launcher");
         _launcher.ApplySettings(settings.Current);
         _launcher.Show();
         if (settings.Current.StartMinimized) _launcher.Hide();
     }
+
+    public bool TryRegisterToolHotkey(ToolId tool, string shortcut) =>
+        _launcher?.TryRegisterToolHotkey(tool, shortcut) ?? false;
 
     public void ShowLauncher() => _launcher?.Toggle();
 
@@ -48,7 +54,7 @@ public sealed class DesktopWindowManager(
         _launcher?.SetSettingsOpen(true);
         if (_settings is null)
         {
-            _settings = new SettingsWindow(settingsSections);
+            _settings = new SettingsWindow(settingsSections, dialogs);
             var hasSavedPosition = windowState.HasPlacement("settings");
             windowState.Restore(_settings, "settings");
             // 原型将设置覆盖在 Launcher 右侧；Owner 令两个原生窗口保持同一前后层级。
@@ -72,6 +78,15 @@ public sealed class DesktopWindowManager(
         }
         _settings.NavigateToGeneral();
         Show(_settings);
+    }
+
+    public void ShowToolSettings(ToolId tool)
+    {
+        ShowSettings();
+        _settings?.NavigateToTool(tool switch
+        {
+            ToolId.Json => "json", ToolId.Toto => "toto", ToolId.EchoHttp => "echo-http", _ => "kairos"
+        });
     }
 
     // JSON 工具惰性创建。主题事件订阅只发生一次，因此不会随重复打开累计处理器。

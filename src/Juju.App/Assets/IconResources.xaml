@@ -10,6 +10,21 @@
     -->
     <SolidColorBrush x:Key="IconForeground" Color="#1F2937" />
 
+    <!-- 设置窗口使用透明底图标；图形本身取品牌色，不额外套蓝色实心徽章。 -->
+    <DrawingImage x:Key="ToolboxOutlineIcon">
+        <DrawingImage.Drawing>
+            <DrawingGroup>
+                <GeometryDrawing Brush="Transparent" Geometry="M0,0 H24 V24 H0 Z" />
+                <GeometryDrawing Geometry="M3.5,7 H20.5 V20 H3.5 Z M8,7 V5.5 A2,2 0 0 1 10,3.5 H14 A2,2 0 0 1 16,5.5 V7 M3.5,12.5 H20.5 M10,12.5 V15 H14 V12.5">
+                    <GeometryDrawing.Pen>
+                        <Pen Brush="#4878ED" Thickness="1.7" StartLineCap="Round" EndLineCap="Round"
+                             LineJoin="Round" />
+                    </GeometryDrawing.Pen>
+                </GeometryDrawing>
+            </DrawingGroup>
+        </DrawingImage.Drawing>
+    </DrawingImage>
+
     <!-- 与原型 app-mini 对应的白色工具箱轮廓，统一用于 Launcher 与设置标题栏。 -->
     <DrawingImage x:Key="ToolboxIcon">
         <DrawingImage.Drawing>

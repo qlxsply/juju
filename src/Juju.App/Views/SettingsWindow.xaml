@@ -7,31 +7,53 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
         Title="Toolbox 设置" Icon="/Assets/juju.ico" Width="860" Height="590" MinWidth="670" MinHeight="470"
-        WindowStyle="None" ResizeMode="CanResize" Background="#F5F7FF"
+        WindowStyle="None" ResizeMode="CanResize" Background="White"
         FontFamily="Segoe UI Variable, Segoe UI, Microsoft YaHei UI">
     <shell:WindowChrome.WindowChrome>
-        <shell:WindowChrome CaptionHeight="58" ResizeBorderThickness="6" GlassFrameThickness="0"
+        <shell:WindowChrome CaptionHeight="48" ResizeBorderThickness="6" GlassFrameThickness="1"
                             UseAeroCaptionButtons="False" />
     </shell:WindowChrome.WindowChrome>
-    <Border Background="White" BorderBrush="#E8EBF2" BorderThickness="1" CornerRadius="16" Margin="5">
-        <Border.Effect>
-            <DropShadowEffect Color="#52618E" BlurRadius="19" ShadowDepth="4" Opacity="0.22"/>
-        </Border.Effect>
+    <Window.Resources>
+        <!-- 仅设置窗口滚动条收窄为 6 DIP；滚轮与拖拽仍由 WPF 原生 ScrollBar 保持。 -->
+        <Style x:Key="AppSectionIcon" TargetType="Path">
+            <Setter Property="Width" Value="16" />
+            <Setter Property="Height" Value="16" />
+            <Setter Property="Stretch" Value="Uniform" />
+            <Setter Property="Stroke" Value="#607086" />
+            <Setter Property="StrokeThickness" Value="1.5" />
+            <Setter Property="StrokeLineJoin" Value="Round" />
+            <Setter Property="StrokeStartLineCap" Value="Round" />
+            <Setter Property="StrokeEndLineCap" Value="Round" />
+            <Setter Property="HorizontalAlignment" Value="Center" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style TargetType="ScrollBar">
+            <Setter Property="Width" Value="6" />
+            <Setter Property="MinWidth" Value="6" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+        </Style>
+    </Window.Resources>
+    <!-- 无内部留边和 DropShadowEffect：窗口由 Windows 自己处理外轮廓，内容只负责布局。 -->
+    <Border Background="White" BorderBrush="#D5DCE8" BorderThickness="1" CornerRadius="3">
+        <Grid>
         <DockPanel LastChildFill="True">
             <!-- 标题栏的背景与底线模拟 demo 的 window-head；按钮需允许 Chrome 内命中测试。 -->
-            <Grid DockPanel.Dock="Top" Height="58" Background="#FBFCFE"
+            <Grid DockPanel.Dock="Top" Height="48" Background="#FBFCFE"
                   MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
-                <Grid.ColumnDefinitions><ColumnDefinition Width="60"/><ColumnDefinition Width="*"/><ColumnDefinition Width="56"/></Grid.ColumnDefinitions>
-                <Border Width="30" Height="30" Margin="20,0,0,0" CornerRadius="10" Background="#6078E9"
-                        VerticalAlignment="Center" HorizontalAlignment="Left">
-                    <Image Source="{StaticResource ToolboxIcon}" Width="18" Height="18"/>
-                </Border>
-                <TextBlock Grid.Column="1" Text="Toolbox 设置" FontWeight="Bold" FontSize="14"
-                           Foreground="{StaticResource ToolboxInk}" VerticalAlignment="Center"
-                           IsHitTestVisible="False"/>
-                <Button Grid.Column="2" Style="{StaticResource ToolboxHeaderButton}" ToolTip="关闭设置"
+                <Grid.ColumnDefinitions><ColumnDefinition Width="43"/><ColumnDefinition Width="*"/><ColumnDefinition Width="48"/></Grid.ColumnDefinitions>
+                <Image Source="{StaticResource ToolboxOutlineIcon}" Width="19" Height="19"
+                       Margin="17,0,0,0" HorizontalAlignment="Left" VerticalAlignment="Center"
+                       IsHitTestVisible="False" />
+                <TextBlock Grid.Column="1" Text="Toolbox 设置" FontWeight="SemiBold" FontSize="13"
+                           Foreground="{StaticResource ToolboxInk}" VerticalAlignment="Center" IsHitTestVisible="False"/>
+                <!-- 唯一标题按钮：32×32 DIP，标题栏高 48、右侧留 8 DIP，关闭笔画由模板居中。 -->
+                <Button Grid.Column="2" Width="32" Height="32" HorizontalAlignment="Center"
+                        VerticalAlignment="Center" Style="{StaticResource ToolboxHeaderButton}" ToolTip="关闭设置"
                         Click="Close_Click" shell:WindowChrome.IsHitTestVisibleInChrome="True">
-                    <TextBlock Text="×" FontSize="22" Foreground="#606E88"/>
+                    <Path Data="M6,6 L18,18 M18,6 L6,18" Width="12" Height="12" Stretch="Fill"
+                          Stroke="#354154" StrokeThickness="1.5" StrokeStartLineCap="Round"
+                          StrokeEndLineCap="Round" IsHitTestVisible="False"/>
                 </Button>
                 <Border BorderBrush="{StaticResource ToolboxLine}" BorderThickness="0,0,0,1"
                         VerticalAlignment="Bottom" Height="1" IsHitTestVisible="False"/>
@@ -44,47 +66,69 @@
                         BorderBrush="{StaticResource ToolboxLine}" BorderThickness="0,0,1,0">
                     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                         <StackPanel Margin="12,19,12,22">
-                            <TextBlock Text="应用设置" FontSize="10" FontWeight="Bold" Foreground="#A2A9B8"
-                                       Margin="12,0,0,10"/>
-                            <Button x:Name="NavGeneral" Style="{StaticResource ToolboxNavItem}"
-                                    CommandParameter="system" Click="Navigate_Click">
-                                <StackPanel Orientation="Horizontal"><TextBlock Text="☷" Width="27" FontSize="16"/>
-                                    <TextBlock Text="常用设置" VerticalAlignment="Center" FontSize="12"/></StackPanel>
+                            <!-- 一级分组按钮只切换自己的展开状态；点击其子项才改变右侧页面。 -->
+                            <Button x:Name="NavAppGroup" Style="{StaticResource ToolboxNavItem}"
+                                    Click="AppGroup_Click" AutomationProperties.Name="展开或收起应用设置">
+                                <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="27"/><ColumnDefinition Width="*"/><ColumnDefinition Width="20"/></Grid.ColumnDefinitions>
+                                    <TextBlock Text="⚙" FontSize="15" VerticalAlignment="Center"/>
+                                    <TextBlock Grid.Column="1" Text="应用设置" VerticalAlignment="Center" FontSize="12" FontWeight="SemiBold"/>
+                                    <Path x:Name="AppChevron" Grid.Column="2" Data="M6,9 L12,15 18,9"
+                                          Width="12" Height="12" Stretch="Uniform" Stroke="#66748B"
+                                          StrokeThickness="1.5" StrokeLineJoin="Round" RenderTransformOrigin="0.5,0.5"
+                                          HorizontalAlignment="Center" VerticalAlignment="Center">
+                                        <Path.RenderTransform><RotateTransform Angle="180"/></Path.RenderTransform>
+                                    </Path>
+                                </Grid>
                             </Button>
-                            <Button x:Name="NavShortcut" Style="{StaticResource ToolboxNavItem}"
-                                    CommandParameter="shortcut" Click="Navigate_Click">
-                                <StackPanel Orientation="Horizontal"><TextBlock Text="⌨" Width="27" FontSize="15"/>
-                                    <TextBlock Text="快捷键" VerticalAlignment="Center" FontSize="12"/></StackPanel>
-                            </Button>
-                            <Button x:Name="NavStorage" Style="{StaticResource ToolboxNavItem}"
-                                    CommandParameter="storage" Click="Navigate_Click">
-                                <StackPanel Orientation="Horizontal"><TextBlock Text="▤" Width="27" FontSize="15"/>
-                                    <TextBlock Text="存储设置" VerticalAlignment="Center" FontSize="12"/></StackPanel>
-                            </Button>
-                            <Button x:Name="NavDisplay" Style="{StaticResource ToolboxNavItem}"
-                                    CommandParameter="display" Click="Navigate_Click">
-                                <StackPanel Orientation="Horizontal"><TextBlock Text="▣" Width="27" FontSize="15"/>
-                                    <TextBlock Text="显示设置" VerticalAlignment="Center" FontSize="12"/></StackPanel>
-                            </Button>
-                            <Button x:Name="NavAbout" Style="{StaticResource ToolboxNavItem}"
-                                    CommandParameter="about" Click="Navigate_Click">
-                                <StackPanel Orientation="Horizontal"><TextBlock Text="↻" Width="27" FontSize="15"/>
-                                    <TextBlock Text="更新与版本" VerticalAlignment="Center" FontSize="12"/></StackPanel>
-                            </Button>
+                            <StackPanel x:Name="AppChildren">
+                                <Button x:Name="NavGeneral" Style="{StaticResource ToolboxNavItem}"
+                                        CommandParameter="system" Click="Navigate_Click">
+                                    <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="27"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                        <Path Style="{StaticResource AppSectionIcon}" Data="M4,5 H8 M11,5 H20 M4,12 H8 M11,12 H20 M4,19 H8 M11,19 H20"/>
+                                        <TextBlock Grid.Column="1" Text="常用设置" VerticalAlignment="Center" FontSize="12"/></Grid>
+                                </Button>
+                                <Button x:Name="NavShortcut" Style="{StaticResource ToolboxNavItem}"
+                                        CommandParameter="shortcut" Click="Navigate_Click">
+                                    <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="27"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                        <Path Style="{StaticResource AppSectionIcon}" Data="M3,5 H21 V19 H3 Z M6,8 H8 M10,8 H12 M14,8 H16 M18,8 H19 M6,11 H8 M10,11 H12 M14,11 H16 M18,11 H19 M7,15 H17"/>
+                                        <TextBlock Grid.Column="1" Text="快捷键" VerticalAlignment="Center" FontSize="12"/></Grid>
+                                </Button>
+                                <Button x:Name="NavStorage" Style="{StaticResource ToolboxNavItem}"
+                                        CommandParameter="storage" Click="Navigate_Click">
+                                    <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="27"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                        <Path Style="{StaticResource AppSectionIcon}" Data="M5,3 H15 L19,7 V21 H5 Z M15,3 V7 H19 M8,11 H16 M8,15 H16 M8,18 H14"/>
+                                        <TextBlock Grid.Column="1" Text="存储设置" VerticalAlignment="Center" FontSize="12"/></Grid>
+                                </Button>
+                                <Button x:Name="NavDisplay" Style="{StaticResource ToolboxNavItem}"
+                                        CommandParameter="display" Click="Navigate_Click">
+                                    <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="27"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                        <Path Style="{StaticResource AppSectionIcon}" Data="M3,4 H21 V17 H3 Z M8,21 H16 M12,17 V21"/>
+                                        <TextBlock Grid.Column="1" Text="显示设置" VerticalAlignment="Center" FontSize="12"/></Grid>
+                                </Button>
+                                <Button x:Name="NavAbout" Style="{StaticResource ToolboxNavItem}"
+                                        CommandParameter="about" Click="Navigate_Click">
+                                    <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="27"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                        <Path Style="{StaticResource AppSectionIcon}" Data="M20,8 A8,8 0 1 0 20,15 M20,4 V8 H16"/>
+                                        <TextBlock Grid.Column="1" Text="更新与版本" VerticalAlignment="Center" FontSize="12"/></Grid>
+                                </Button>
+                            </StackPanel>
 
-                            <Border Height="1" Background="{StaticResource ToolboxLine}" Margin="11,17,11,18"/>
-                            <TextBlock Text="扩展能力" FontSize="10" FontWeight="Bold" Foreground="#A2A9B8"
-                                       Margin="12,0,0,10"/>
-                            <!-- 工具组按钮只负责展开；点击子项才切换设置页面。 -->
-                            <Button x:Name="NavTools" Style="{StaticResource ToolboxNavItem}" Click="ToolGroup_Click">
+                            <!-- 工具设置是与应用设置相同样式的一级分组。 -->
+                            <Button x:Name="NavTools" Margin="0,14,0,2"
+                                    Style="{StaticResource ToolboxNavItem}" Click="ToolGroup_Click">
                                 <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="27"/><ColumnDefinition Width="*"/><ColumnDefinition Width="20"/></Grid.ColumnDefinitions>
                                     <TextBlock Text="▢" FontSize="17"/>
                                     <TextBlock Grid.Column="1" Text="工具设置" VerticalAlignment="Center" FontSize="12"/>
-                                    <TextBlock x:Name="ToolChevron" Grid.Column="2" Text="›" FontSize="19"
-                                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    <!-- 同一矢量箭头旋转 90°，展开/收起尺寸和水平/垂直居中保持完全一致。 -->
+                                    <Path x:Name="ToolChevron" Grid.Column="2" Data="M6,9 L12,15 18,9"
+                                          Width="16" Height="16" Stretch="Uniform" Stroke="#6078E9"
+                                          StrokeThickness="2" StrokeLineJoin="Round" RenderTransformOrigin="0.5,0.5"
+                                          HorizontalAlignment="Center" VerticalAlignment="Center">
+                                          <Path.RenderTransform><RotateTransform Angle="180"/></Path.RenderTransform>
+                                    </Path>
                                 </Grid>
                             </Button>
-                            <StackPanel x:Name="ToolChildren" Visibility="Collapsed" Margin="0,4,0,0">
+                            <StackPanel x:Name="ToolChildren" Margin="0,4,0,0">
                                 <Button x:Name="NavJson" Style="{StaticResource ToolboxSubItem}"
                                         CommandParameter="json" Click="Navigate_Click">
                                     <StackPanel Orientation="Horizontal">
@@ -99,25 +143,26 @@
                                         <TextBlock Text="Toto 日程提醒" FontSize="11" VerticalAlignment="Center"/>
                                     </StackPanel>
                                 </Button>
+                                <Button x:Name="NavEcho" Style="{StaticResource ToolboxSubItem}"
+                                        CommandParameter="echo-http" Click="Navigate_Click">
+                                    <StackPanel Orientation="Horizontal">
+                                        <Ellipse Width="8" Height="8" Fill="#ED9848" Margin="0,0,10,0"/>
+                                        <TextBlock Text="EchoHttp" FontSize="11" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </Button>
+                                <Button x:Name="NavKairos" Style="{StaticResource ToolboxSubItem}"
+                                        CommandParameter="kairos" Click="Navigate_Click">
+                                    <StackPanel Orientation="Horizontal">
+                                        <Ellipse Width="8" Height="8" Fill="#8066D9" Margin="0,0,10,0"/>
+                                        <TextBlock Text="Kairos" FontSize="11" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </Button>
                             </StackPanel>
-                            <TextBlock Text="juju Toolbox&#x0a;Windows 桌面工具" FontSize="10" LineHeight="17"
-                                       Foreground="#AAB2BF" Margin="12,24,0,0"/>
                         </StackPanel>
                     </ScrollViewer>
                 </Border>
 
                 <DockPanel Grid.Column="1">
-                    <!-- 显式保存保证文本热键输到一半时不注册无效键；勾选/下拉可立即保存。 -->
-                    <Border DockPanel.Dock="Bottom" Height="58" BorderBrush="{StaticResource ToolboxLine}"
-                            BorderThickness="0,1,0,0" Background="White">
-                        <Grid Margin="37,0">
-                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                            <TextBlock x:Name="Status" FontSize="11" Foreground="{StaticResource ToolboxMuted}"
-                                       Text="更改开关后自动保存；文本输入请点击保存" VerticalAlignment="Center"/>
-                            <Button x:Name="SaveButton" Grid.Column="1" Content="保存更改" Click="Save_Click"
-                                    Style="{StaticResource ToolboxSoftButton}" VerticalAlignment="Center"/>
-                        </Grid>
-                    </Border>
                     <ScrollViewer x:Name="ContentScroll" VerticalScrollBarVisibility="Auto"
                                   HorizontalScrollBarVisibility="Disabled">
                         <!-- 每个 ISettingsSection.View 是一个真实 WPF 页面；不注入 HTML/WebView2。 -->
@@ -126,5 +171,36 @@
                 </DockPanel>
             </Grid>
         </DockPanel>
+        <!-- 居中模态遮罩覆盖整个设置窗口；弹窗内编辑的值仅为草稿，提交前不会修改设置页。 -->
+        <Border x:Name="ModalOverlay" Panel.ZIndex="20" Visibility="Collapsed"
+                Background="#5C14213B" Focusable="True" PreviewKeyDown="ModalOverlay_PreviewKeyDown">
+            <Border x:Name="ModalDialog" Width="460" MaxHeight="680" Background="White"
+                    BorderBrush="#CCD6E6" BorderThickness="1" CornerRadius="3"
+                    HorizontalAlignment="Center" VerticalAlignment="Center">
+                <DockPanel LastChildFill="True">
+                    <Border DockPanel.Dock="Bottom" Background="#F7F9FC" BorderBrush="#E7EBF3"
+                            BorderThickness="0,1,0,0" Padding="22,13">
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                            <Button x:Name="ModalCancel" Content="取消" Margin="0,0,9,0" Style="{StaticResource ToolboxSoftButton}"
+                                    Click="CancelModal_Click"/>
+                            <Button x:Name="ModalSave" Content="保存" Style="{StaticResource ToolboxSoftButton}"
+                                    Click="SaveModal_Click"/>
+                        </StackPanel>
+                    </Border>
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                        <StackPanel>
+                            <StackPanel Margin="24,20,24,0">
+                                <TextBlock x:Name="ModalTitle" FontSize="16" FontWeight="SemiBold"
+                                           Foreground="{StaticResource ToolboxInk}"/>
+                                <TextBlock x:Name="ModalDescription" Margin="0,8,0,0" FontSize="12"
+                                           Foreground="{StaticResource ToolboxMuted}" TextWrapping="Wrap"/>
+                            </StackPanel>
+                            <ContentControl x:Name="ModalBody" Margin="24,17,24,24"/>
+                        </StackPanel>
+                    </ScrollViewer>
+                </DockPanel>
+            </Border>
+        </Border>
+        </Grid>
     </Border>
 </Window>
