@@ -50,6 +50,22 @@ public sealed class JsonDocumentServiceTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Create_inserts_new_document_first_and_persists_existing_order()
+    {
+        var first = await _documents.CreateAsync();
+        var second = await _documents.CreateAsync();
+        var third = await _documents.CreateAsync();
+
+        var ordered = await _documents.ListAsync();
+        Assert.Equal([third.Id, second.Id, first.Id], ordered.Select(item => item.Id));
+        Assert.Equal([0, 1, 2], ordered.Select(item => item.Order));
+
+        var writer = new AtomicFileWriter();
+        var persisted = await new JsonMetadataStore(JsonRoot, writer).ReadAsync();
+        Assert.Equal([third.Id, second.Id, first.Id], persisted.Documents.OrderBy(item => item.Order).Select(item => item.Id));
+    }
+
+    [Fact]
     public async Task Save_rejects_external_revision_change()
     {
         // 保存前读取版本；随后绕过服务直接改写文件，模拟其他程序修改同一文档。
@@ -80,13 +96,13 @@ public sealed class JsonDocumentServiceTests : IAsyncLifetime
     [Fact]
     public async Task Reorder_persists_metadata_order_without_renaming_files()
     {
-        // 将第二项移动到索引 0，验证顺序是元数据属性而不是文件名排序结果。
+        // 新建项默认排第一；将原先的第一项移回索引 0，验证显式重排仍持久化。
         var first = await _documents.CreateAsync();
         var second = await _documents.CreateAsync();
-        await _documents.ReorderAsync(second.Id, 0);
+        await _documents.ReorderAsync(first.Id, 0);
         var ordered = await _documents.ListAsync();
         // 同时断言列表顺序及每个持久化 Order 值，避免仅显示顺序正确但元数据错误。
-        Assert.Equal([second.Id, first.Id], ordered.Select(item => item.Id));
+        Assert.Equal([first.Id, second.Id], ordered.Select(item => item.Id));
         Assert.Equal(0, ordered[0].Order);
         Assert.Equal(1, ordered[1].Order);
         // 重排不得重命名或删除已有的文档文件。
@@ -133,6 +149,20 @@ public sealed class JsonDocumentServiceTests : IAsyncLifetime
         Assert.Equal("Escape", shortcuts[JsonToolCommand.ExitDiff]);
         Assert.Equal(JsonToolShortcutSource.Monaco, JsonToolShortcuts.GetDefinition(JsonToolCommand.Save).Source);
         Assert.Equal(JsonToolShortcutContext.List, JsonToolShortcuts.GetDefinition(JsonToolCommand.Rename).Context);
+    }
+
+    [Fact]
+    public void Side_by_side_diff_aligns_insertions_and_deletions_without_shifting_unchanged_lines()
+    {
+        var lines = JsonLineDiff.Compare("first\nremoved\nlast", "first\nlast\nadded");
+        Assert.Equal(JsonDiffKind.Same, lines[0].LeftKind);
+        Assert.Equal(JsonDiffKind.Removed, lines[1].LeftKind);
+        Assert.Equal(JsonDiffKind.Empty, lines[1].RightKind);
+        Assert.Equal("last", lines[2].LeftText);
+        Assert.Equal("last", lines[2].RightText);
+        Assert.Equal(JsonDiffKind.Empty, lines[3].LeftKind);
+        Assert.Equal(JsonDiffKind.Added, lines[3].RightKind);
+        Assert.Equal(3, lines[3].RightNumber);
     }
 
     [Fact]

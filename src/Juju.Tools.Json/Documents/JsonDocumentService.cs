@@ -132,7 +132,7 @@ public sealed class JsonDocumentService : IJsonDocumentService, IAsyncDisposable
 
             var sequence = next - 1;
             var now = DateTimeOffset.UtcNow;
-            var document = new JsonDocumentMetadata(JsonDocumentId.New(), fileName, metadata.Documents.Count, now, now,
+            var document = new JsonDocumentMetadata(JsonDocumentId.New(), fileName, 0, now, now,
                 new("created"));
             var path = DocumentPath(fileName);
             _watcher.MarkSelfWrite(path);
@@ -140,7 +140,12 @@ public sealed class JsonDocumentService : IJsonDocumentService, IAsyncDisposable
             try
             {
                 await _metadata.SaveAsync(
-                    metadata with { Sequence = new(today, sequence), Documents = [.. metadata.Documents, document] },
+                    metadata with
+                    {
+                        Sequence = new(today, sequence),
+                        Documents = [document, .. metadata.Documents.OrderBy(item => item.Order)
+                            .Select((item, index) => item with { Order = index + 1 })]
+                    },
                     cancellationToken);
             }
             catch

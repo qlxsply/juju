@@ -130,6 +130,7 @@ public sealed class DesktopWindowManager(
         if (!_json.IsVisible && jsonSettings.Current.OpenMaximized)
             _json.WindowState = System.Windows.WindowState.Maximized;
         Show(_json);
+        _json.FocusForShortcuts();
     }
 
     public void CloseAllTools()
