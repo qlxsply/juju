@@ -37,6 +37,7 @@ public partial class TotoHistoryWindow : Window
             e.Handled = true;
             Close();
         };
+        Loaded += (_, _) => FocusHistoryRows();
         LoadPage();
     }
 
@@ -55,8 +56,22 @@ public partial class TotoHistoryWindow : Window
         }
         _historyItems.Clear();
         foreach (var item in page.Items) _historyItems.Add(new TotoHistoryRow(item));
+        History.SelectedItem = _historyItems.FirstOrDefault();
+        if (History.SelectedItem is { } first && History.Columns.Count > 0)
+        {
+            History.CurrentCell = new DataGridCellInfo(first, History.Columns[0]);
+            History.ScrollIntoView(first);
+        }
+        FocusHistoryRows();
         PageLabel.Text = $"共 {_total} 条，第 {_page}/{MaxPage} 页";
         ToolWindowChrome.SetStatusLeft(this, $"历史事项：{_total} 条");
+    }
+
+    private void FocusHistoryRows()
+    {
+        if (!IsVisible || History.SelectedItem is null) return;
+        History.Focus();
+        Keyboard.Focus(History);
     }
 
     private void Search_Click(object sender, RoutedEventArgs e)
@@ -149,6 +164,37 @@ public partial class TotoHistoryWindow : Window
         if (e.Key != Key.Enter) return;
         e.Handled = true;
         Search_Click(sender, e);
+    }
+
+    private void History_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (Keyboard.Modifiers != ModifierKeys.None) return;
+        if (e.Key is Key.Left or Key.Right)
+        {
+            e.Handled = true;
+            return;
+        }
+        if (e.Key is Key.Up or Key.Down)
+        {
+            if (_historyItems.Count == 0) return;
+            var index = History.SelectedIndex;
+            var next = index < 0 ? (e.Key == Key.Down ? 0 : _historyItems.Count - 1) :
+                e.Key == Key.Down ? (index + 1) % _historyItems.Count :
+                (index - 1 + _historyItems.Count) % _historyItems.Count;
+            History.SelectedIndex = next;
+            if (History.SelectedItem is { } selected)
+            {
+                History.CurrentCell = new DataGridCellInfo(selected, History.Columns[0]);
+                History.ScrollIntoView(selected, History.Columns[0]);
+            }
+            e.Handled = true;
+            return;
+        }
+        if (e.Key == Key.Enter && History.SelectedItem is TotoHistoryRow row)
+        {
+            e.Handled = true;
+            new TotoItemWindow(_host, TotoItemWindowMode.Detail, row.Item) { Owner = this }.ShowDialog();
+        }
     }
 
     private void First_Click(object sender, RoutedEventArgs e) { _page = 1; LoadPage(); }

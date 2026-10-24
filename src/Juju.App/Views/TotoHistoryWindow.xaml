@@ -60,7 +60,8 @@
             </Grid>
         </Border>
         <DataGrid Grid.Row="1" x:Name="History" Style="{StaticResource TotoGrid}"
-                  ItemsSource="{Binding HistoryItems}" MouseDoubleClick="History_MouseDoubleClick">
+                  ItemsSource="{Binding HistoryItems}" MouseDoubleClick="History_MouseDoubleClick"
+                  PreviewKeyDown="History_PreviewKeyDown">
             <DataGrid.Resources><Style TargetType="ScrollBar" BasedOn="{StaticResource TotoScrollBar}" /></DataGrid.Resources>
             <DataGrid.Columns>
                 <DataGridTextColumn Header="事项内容" Binding="{Binding Content}" Width="260"

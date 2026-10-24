@@ -143,7 +143,7 @@ public sealed class DesktopWindowManager : IWindowManager
             }
             _toto.RefreshItems();
             Show(_toto);
-            _toto.Focus();
+            _toto.FocusItems();
             return;
         }
         if (tool != ToolId.Json) return;

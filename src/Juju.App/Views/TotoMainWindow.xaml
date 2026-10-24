@@ -15,7 +15,7 @@
                             UseAeroCaptionButtons="False" />
     </shell:WindowChrome.WindowChrome>
     <DataGrid x:Name="Tasks" Style="{StaticResource TotoGrid}" ItemsSource="{Binding ActiveItems}"
-              MouseDoubleClick="Tasks_MouseDoubleClick">
+              MouseDoubleClick="Tasks_MouseDoubleClick" PreviewKeyDown="Tasks_PreviewKeyDown">
         <DataGrid.Resources>
             <Style TargetType="ScrollBar" BasedOn="{StaticResource TotoScrollBar}" />
         </DataGrid.Resources>

@@ -29,14 +29,21 @@ public partial class TotoMainWindow : Window
         InitializeComponent();
         DataContext = this;
         PreviewKeyDown += HandleShortcut;
-        Activated += (_, _) => RefreshItems();
+        Activated += (_, _) => { RefreshItems(); FocusItems(); };
         SourceInitialized += (_, _) => WindowAppearance.UseSystemCorners(new System.Windows.Interop.WindowInteropHelper(this).Handle);
         RefreshItems();
+        Loaded += (_, _) => FocusItems();
     }
 
     public ObservableCollection<TotoItemRow> ActiveItems => _activeItems;
 
     public void AllowShutdown() => _allowClose = true;
+
+    public void FocusItems()
+    {
+        Tasks.Focus();
+        Keyboard.Focus(Tasks);
+    }
 
     protected override void OnClosing(CancelEventArgs e)
     {
@@ -54,7 +61,13 @@ public partial class TotoMainWindow : Window
         var selectedId = (Tasks.SelectedItem as TotoItemRow)?.Item.Id;
         _activeItems.Clear();
         foreach (var item in _host.Items.GetActive()) _activeItems.Add(new TotoItemRow(item));
-        Tasks.SelectedItem = _activeItems.FirstOrDefault(item => item.Item.Id == selectedId) ?? _activeItems.FirstOrDefault();
+        var selected = _activeItems.FirstOrDefault(item => item.Item.Id == selectedId) ?? _activeItems.FirstOrDefault();
+        Tasks.SelectedItem = selected;
+        if (selected is not null && Tasks.Columns.Count > 0)
+        {
+            Tasks.CurrentCell = new DataGridCellInfo(selected, Tasks.Columns[0]);
+            Tasks.ScrollIntoView(selected);
+        }
         ToolWindowChrome.SetStatusLeft(this, $"进行中：{_activeItems.Count} 项");
     }
 
@@ -64,6 +77,36 @@ public partial class TotoMainWindow : Window
     {
         if (ItemsControl.ContainerFromElement(Tasks, e.OriginalSource as DependencyObject) is DataGridRow &&
             SelectedItem is { } item) ShowDetail(item);
+    }
+
+    private void Tasks_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key is Key.Left or Key.Right)
+        {
+            e.Handled = true;
+            return;
+        }
+        if (e.Key is Key.Up or Key.Down)
+        {
+            if (_activeItems.Count == 0) return;
+            var index = Tasks.SelectedIndex;
+            var next = index < 0 ? (e.Key == Key.Down ? 0 : _activeItems.Count - 1) :
+                e.Key == Key.Down ? (index + 1) % _activeItems.Count :
+                (index - 1 + _activeItems.Count) % _activeItems.Count;
+            Tasks.SelectedIndex = next;
+            if (Tasks.SelectedItem is { } selected)
+            {
+                Tasks.CurrentCell = new DataGridCellInfo(selected, Tasks.Columns[0]);
+                Tasks.ScrollIntoView(selected, Tasks.Columns[0]);
+            }
+            e.Handled = true;
+            return;
+        }
+        if (e.Key == Key.Enter && SelectedItem is { } item)
+        {
+            e.Handled = true;
+            ShowDetail(item);
+        }
     }
 
     private void HandleShortcut(object sender, KeyEventArgs e)
