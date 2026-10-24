@@ -7,6 +7,7 @@ using Juju.App.Views;
 using Juju.Core.Tools;
 using Juju.Tools.Json.Settings;
 using Toto.App;
+using Toto.App.Services;
 using CheckBox = System.Windows.Controls.CheckBox;
 using ComboBox = System.Windows.Controls.ComboBox;
 using Orientation = System.Windows.Controls.Orientation;
@@ -83,7 +84,7 @@ public sealed class TotoSettingsSection : ISettingsSection
         _shortcuts = new Dictionary<string, string>(values, StringComparer.OrdinalIgnoreCase);
         var shortcutDefinitions = new[]
         {
-            ("新增", "shortcut_add"), ("历史", "shortcut_history"), ("设置", "shortcut_settings"),
+            ("新增", "shortcut_add"), ("历史", "shortcut_history"),
             ("刷新", "shortcut_refresh"), ("详情", "shortcut_detail"), ("编辑", "shortcut_edit"),
             ("完成", "shortcut_complete"), ("取消", "shortcut_cancel")
         };
@@ -379,7 +380,6 @@ public sealed class TotoSettingsSection : ISettingsSection
     private void EditWindowShortcut(string key, string label)
     {
         var current = _shortcuts.GetValueOrDefault(key, "");
-        var definition = key;
         _dialogs.EditShortcut("编辑快捷键 · " + label, current, false, false, false,
             candidate => ValidateTotoLocalShortcut(key, candidate), async candidate =>
             {
@@ -395,16 +395,22 @@ public sealed class TotoSettingsSection : ISettingsSection
 
     private string? ValidateTotoLocalShortcut(string key, string candidate)
     {
-        if (!_toto.IsValidWindowShortcut(candidate)) return "快捷键格式无效。";
+        if (!WindowShortcut.TryNormalize(candidate, out var normalized)) return "快捷键格式无效。";
+        var global = new[] { _application.Current.LeaderShortcut, _jsonSettings.Current.GlobalShortcut, _toto.Hotkey }
+            .Concat(_application.Current.ToolGlobalShortcuts.Values)
+            .Where(value => !string.IsNullOrWhiteSpace(value) && value != GlobalHotkeyPolicy.None);
+        if (global.Any(value => value.Equals(normalized, StringComparison.OrdinalIgnoreCase)))
+            return "此按键已被应用或工具的全局热键占用。";
         if (_toto.ToolSettings.Any(item => item.Key.StartsWith("shortcut_", StringComparison.Ordinal) &&
-            item.Key != key && item.Value.Equals(candidate, StringComparison.OrdinalIgnoreCase)))
+            item.Key != key && WindowShortcut.TryNormalize(item.Value, out var existing) &&
+            existing.Equals(normalized, StringComparison.OrdinalIgnoreCase)))
             return "与另一个 Toto 窗口快捷键冲突。";
         return null;
     }
 
     private static readonly IReadOnlyDictionary<string, string> ShortcutDefaults = new Dictionary<string, string>
     {
-        ["shortcut_add"] = "Alt+A", ["shortcut_history"] = "Alt+Q", ["shortcut_settings"] = "Alt+S",
+        ["shortcut_add"] = "Alt+A", ["shortcut_history"] = "Alt+Q",
         ["shortcut_refresh"] = "Alt+R", ["shortcut_detail"] = "Alt+D", ["shortcut_edit"] = "Alt+E",
         ["shortcut_complete"] = "Alt+F", ["shortcut_cancel"] = "Alt+C"
     };

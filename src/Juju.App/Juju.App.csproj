@@ -19,6 +19,7 @@
   <ItemGroup>
     <Resource Include="Assets\juju.ico" />
     <Resource Include="Assets\json.ico" />
+    <Resource Include="..\Juju.Tools.Toto\toto.ico" Link="Assets\toto.ico" />
   </ItemGroup>
   <Target Name="BuildEditor" BeforeTargets="Build">
     <Exec Command="npm run build" WorkingDirectory="$(MSBuildProjectDirectory)\..\..\editor" />

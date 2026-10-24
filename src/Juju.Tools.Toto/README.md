@@ -1,44 +1,26 @@
-# Toto（Juju 内置日程工具）
+# Toto（ToolBox 内置日程工具）
 
-原独立 .NET 10 WinForms 日程管理工具的完整业务模块已迁入此项目。保留原事项窗体、快速输入、
-CSV/INI 持久化、历史分页、节假日下载、锁屏/唤醒/时钟变化时重新调度、定时提醒弹窗、工作日提醒、
-提醒状态先写回文件等逻辑。原独立 `Program` / `ApplicationContext` / 第二个托盘图标不再使用；
-应用进程、单实例、唯一 Juju 托盘、自启动和全局快捷键由 Juju 宿主统一管理。
+Toto 的主窗口、新增/编辑/完成/取消事项窗口、详情、历史查询和提醒窗口均位于
+`src/Juju.App/Views/Toto*.xaml`，采用 ToolBox 的 WPF 工具窗口外壳。
+`Juju.Tools.Toto` 保留事项模型、CSV/INI 仓储、节假日与工作日规则、快速输入解析和独立于窗口的提醒调度。
 
-## 入口与快捷键
+## 快捷键与设置
 
-- 左键点击 Juju 托盘图标显示 Launcher；右键菜单可直接打开 JSON/Toto。
-- 在 Launcher 点「Toto（日程提醒）」或按 `T` 打开 Toto 主窗体；单键可在 Toto 工具设置中修改。
-- Toto 与 JSON 的全局直达热键默认均为 `None`，分别在自己的 Juju 工具设置页中配置。
-- Juju Launcher 入口全局快捷键默认为 `Ctrl+Alt+Space`。
-- Juju 托盘「Toto 操作」仍可直接进入新增、历史、设置、工作日管理。
-- 主窗口内的新增 `Alt+A`、历史 `Alt+Q`、设置 `Alt+S`、刷新 `Alt+R`、详情 `Alt+D`、
-  编辑 `Alt+E`、完成 `Alt+F`、取消 `Alt+C` 维持原行为。
+- ToolBox 主界面可打开 Toto；工具列表单键默认 `T`，全局直达键默认 `None`。
+- Toto 主窗口内：新增 `Alt+A`、历史 `Alt+Q`、刷新 `Alt+R`、详情 `Alt+D`、
+  编辑 `Alt+E`、完成 `Alt+F`、取消 `Alt+C`。这些按键在 ToolBox 的 Toto 工具设置页配置，
+  不注册成系统全局热键。没有独立的 Toto 设置窗口或 `Alt+S` 入口。
+- 默认提醒提前 5 分钟；新增事项支持 `内容 @时间`，其中时间可为 `HHmm`、`ddHHmm`、
+  `MMddHHmm`、`yyyyMMddHHmm`、连续 `+` 加天或连续 `W` 加周后的星期几。
 
-## 数据与生命周期
+## 数据与调度
 
-Toto 数据默认位于 `<工具箱数据目录>/tools/toto/`：`config.ini`、`toto_ing.csv`、`toto_end.csv`、
-`yyyy.json` 和 `logs/`。第一次运行时，对 `%USERPROFILE%/.toto/` 中的对应文件只复制缺失项，
-不覆盖新目录已有文件，也不删除旧数据。Toto 自身窗口图标使用本项目嵌入的 `toto.ico`；
-托盘图标始终为 Juju 的 `juju.ico`。工具目录可以独立改动；复制和切换在正常退出时完成，下次启动生效。
-原配置启用了开机启动且首次成功迁移时，会同步启用 Juju 的开机启动；
-只有确认原 `toto.lnk` 指向 `toto.exe` 才移除旧快捷方式，避免系统登录时出现两个托盘图标。
+默认数据路径为 `<工具箱数据目录>/tools/toto/`，保留 `config.ini`、`toto_ing.csv`、
+`toto_end.csv`、`yyyy.json` 与 `logs/` 的既有格式。首次运行只从 `%USERPROFILE%/.toto/`
+复制目标目录中缺失的文件，不覆盖现有数据。原版自启动配置可迁移到 ToolBox；
+只有确定原启动快捷方式指向 `toto.exe` 才移除它。
 
-`TotoToolHost` 在 Juju 启动时构造并启动 `ReminderScheduler`。它即使在 Toto 主窗口未显示时
-也运行；到期会创建原有的置顶 `ReminderForm`。Juju 退出时释放调度计时器、取消系统事件订阅并
-关闭所有 Toto 窗口。Toto 快捷键、工作日弹窗以及法定节假日和调休在 Juju 的 WPF 工具设置页中完成；
-原独立的 WinForms 设置和工作日管理窗体已移除。开机启动由 Juju 的常用设置管理。
-若日历首次下载失败，Toto 不会使用错误的节假日规则启动调度；会每五分钟重试，
-并在用户尝试进入 Toto 时显示原因，Juju 和 JSON 仍可正常使用。
-
-`Templates/` 和 `legacy-config.ini` 保留原独立项目的数据格式样例用于对照，实际首次运行的文件
-由 `ItemRepository` 和 `SettingsRepository` 创建。
-
-## 源码导航
-
-- `TotoToolHost.cs`：Juju 与 Toto 的生命周期、窗口及旧数据迁移边界。
-- `Domain/`、`Data/`：事项模型及 CSV/INI 仓储。
-- `Services/ReminderScheduler.cs`：后台到期计算与提醒事件。
-- `Services/HolidayCalendarDownloadService.cs`：节假日缓存及下载。
-- `UI/`：原 WinForms 业务窗体与快捷键交互。
-- `tests/Juju.Tools.Toto.Tests/`：事项并发操作与旧数据迁移的回归测试。
+`TotoToolHost` 启动后持有唯一的 `ReminderScheduler`，窗口关闭、隐藏或最小化都不停止提醒。
+调度器先持久化“已提醒”状态，再将到期事项通过 ToolBox 的 WPF 同步上下文交给提醒窗口；
+上/下班提醒、休眠唤醒、锁屏和系统时间变化继续按原业务规则处理。法定节假日及调休仍在
+ToolBox 的 Toto 设置页管理，日历初始化失败时保持五分钟重试，不会影响其他工具启动。

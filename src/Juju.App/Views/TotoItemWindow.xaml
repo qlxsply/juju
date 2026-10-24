@@ -1,0 +1,90 @@
+<Window x:Class="Juju.App.Views.TotoItemWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
+        xmlns:views="clr-namespace:Juju.App.Views"
+        Icon="pack://application:,,,/Juju.App;component/Assets/toto.ico"
+        views:ToolWindowChrome.IsEnabled="True" views:ToolWindowChrome.ToolIcon="{StaticResource TotoToolIcon}"
+        views:ToolWindowChrome.ShowStatusBar="False" views:ToolWindowChrome.ShowMaximizeButton="False"
+        Style="{StaticResource ToolWindowWindowStyle}"
+        Width="600" MinWidth="600" MaxWidth="600" Height="Auto" MinHeight="0"
+        SizeToContent="Height" ResizeMode="NoResize" WindowStartupLocation="CenterOwner">
+    <shell:WindowChrome.WindowChrome>
+        <shell:WindowChrome CaptionHeight="48" ResizeBorderThickness="6" GlassFrameThickness="0"
+                            UseAeroCaptionButtons="False" />
+    </shell:WindowChrome.WindowChrome>
+    <Window.Resources>
+        <Style TargetType="ScrollBar" BasedOn="{StaticResource TotoScrollBar}" />
+    </Window.Resources>
+    <DockPanel LastChildFill="True">
+        <Border DockPanel.Dock="Bottom" BorderBrush="#E8EBF1" BorderThickness="0,1,0,0"
+                Background="#FBFCFE" Padding="15,10">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button x:Name="CancelButton" Content="取消" Style="{StaticResource TotoButton}"
+                        IsCancel="True" Margin="0,0,9,0" Click="Cancel_Click" />
+                <Button x:Name="SaveButton" Content="保存" Style="{StaticResource TotoPrimaryButton}"
+                        IsDefault="True" Click="Save_Click" />
+            </StackPanel>
+        </Border>
+        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+            <StackPanel Margin="20">
+                <StackPanel x:Name="QuickPanel">
+                    <TextBlock Text="快速输入" Foreground="#56657B" FontSize="12" Margin="0,0,0,7" />
+                    <TextBox x:Name="QuickInput" Style="{StaticResource TotoInput}" TextChanged="QuickInput_TextChanged"
+                             AutomationProperties.Name="事项内容 @计划时间" />
+                    <TextBlock Text="事项内容 @计划时间&#xA;HHmm · ddHHmm · MMddHHmm · yyyyMMddHHmm · +HHmm · ++HHmm · WDHHmm · WWDHHmm&#xA;周一至周日使用 1–7；W 表示增加一周，+ 表示增加一天"
+                               Foreground="#8996A8" FontSize="11" TextWrapping="Wrap" Margin="0,8,0,0" />
+                    <Border Background="#F8FAFF" BorderBrush="#E8ECF3" BorderThickness="1"
+                            CornerRadius="6" Padding="12" Margin="0,12,0,0">
+                        <TextBlock x:Name="QuickPreview" Text="输入事项内容及计划时间" FontSize="12"
+                                   Foreground="#596A83" TextWrapping="Wrap" />
+                    </Border>
+                </StackPanel>
+                <StackPanel x:Name="EditPanel" Visibility="Collapsed">
+                    <TextBlock Text="事项内容" Foreground="#56657B" FontSize="12" Margin="0,0,0,7" />
+                    <TextBox x:Name="ContentInput" Style="{StaticResource TotoInput}" Margin="0,0,0,16" />
+                    <Grid Margin="0,0,0,16">
+                        <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="12"/><ColumnDefinition/></Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <CheckBox x:Name="UsePlan" Content="计划时间" IsChecked="True" FontSize="12"
+                                      Foreground="#56657B" Margin="0,0,0,7" Checked="UsePlan_Changed" Unchecked="UsePlan_Changed" />
+                            <Grid x:Name="PlanFields">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="62"/>
+                                    <ColumnDefinition Width="8"/><ColumnDefinition Width="62"/></Grid.ColumnDefinitions>
+                                <DatePicker x:Name="PlanDate" Height="35" Margin="0,0,6,0"
+                                            SelectedDateChanged="PlanDateTime_Changed" />
+                                <ComboBox x:Name="PlanHour" Grid.Column="1" Height="35" SelectionChanged="PlanDateTime_Changed" />
+                                <TextBlock Grid.Column="2" Text=":" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                <ComboBox x:Name="PlanMinute" Grid.Column="3" Height="35" SelectionChanged="PlanDateTime_Changed" />
+                            </Grid>
+                        </StackPanel>
+                        <StackPanel Grid.Column="2">
+                            <CheckBox x:Name="UseRemind" Content="提醒时间" IsChecked="True" FontSize="12"
+                                      Foreground="#56657B" Margin="0,0,0,7" Checked="UseRemind_Changed" Unchecked="UseRemind_Changed" />
+                            <Grid x:Name="RemindFields">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="62"/>
+                                    <ColumnDefinition Width="8"/><ColumnDefinition Width="62"/></Grid.ColumnDefinitions>
+                                <DatePicker x:Name="RemindDate" Height="35" Margin="0,0,6,0" />
+                                <ComboBox x:Name="RemindHour" Grid.Column="1" Height="35" />
+                                <TextBlock Grid.Column="2" Text=":" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                <ComboBox x:Name="RemindMinute" Grid.Column="3" Height="35" />
+                            </Grid>
+                        </StackPanel>
+                    </Grid>
+                    <TextBlock Text="备注" Foreground="#56657B" FontSize="12" Margin="0,0,0,7" />
+                    <TextBox x:Name="NoteInput" Style="{StaticResource TotoMultilineInput}" AcceptsReturn="True"
+                             TextWrapping="Wrap" Height="92" VerticalContentAlignment="Top" VerticalScrollBarVisibility="Auto" />
+                </StackPanel>
+                <StackPanel x:Name="EndPanel" Visibility="Collapsed">
+                    <TextBlock x:Name="EndQuestion" FontSize="13" Foreground="#25344D" TextWrapping="Wrap"
+                               Margin="0,0,0,14" />
+                    <TextBlock x:Name="EndNoteLabel" Text="完成备注" Foreground="#56657B" FontSize="12" Margin="0,0,0,7" />
+                    <TextBox x:Name="EndNote" Style="{StaticResource TotoMultilineInput}" AcceptsReturn="True"
+                             TextWrapping="Wrap" Height="92" VerticalContentAlignment="Top"
+                             VerticalScrollBarVisibility="Auto" />
+                </StackPanel>
+                <StackPanel x:Name="DetailPanel" Visibility="Collapsed" />
+            </StackPanel>
+        </ScrollViewer>
+    </DockPanel>
+</Window>

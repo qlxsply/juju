@@ -40,7 +40,7 @@ internal sealed class ItemRepository(AppPaths paths)
         lock (gate)
         {
             page = Math.Max(1, page);
-            pageSize = pageSize is 100 or 200 or 500 ? pageSize : 200;
+            pageSize = pageSize is 10 or 20 or 50 or 100 or 200 or 500 ? pageSize : 200;
             var all = Filter(ReadHistory(), criteria).OrderByDescending(item => item.EndedAt)
                 .ThenByDescending(item => item.CreatedSeq).ToArray();
             return new HistoryPage(all.Skip((page - 1) * pageSize).Take(pageSize).ToArray(), all.Length, page,
@@ -213,6 +213,9 @@ internal sealed class ItemRepository(AppPaths paths)
     {
         if (c is null) return items;
         return items.Where(item => (string.IsNullOrWhiteSpace(c.Id) || item.Id == c.Id) &&
+                                   (string.IsNullOrWhiteSpace(c.SearchText) ||
+                                    item.Content.Contains(c.SearchText, StringComparison.OrdinalIgnoreCase) ||
+                                    item.Note.Contains(c.SearchText, StringComparison.OrdinalIgnoreCase)) &&
                                    (string.IsNullOrWhiteSpace(c.Content) ||
                                     item.Content.Contains(c.Content, StringComparison.OrdinalIgnoreCase)) &&
                                    (string.IsNullOrWhiteSpace(c.Note) ||

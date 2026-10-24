@@ -1,0 +1,84 @@
+<Window x:Class="Juju.App.Views.TotoHistoryWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
+        xmlns:views="clr-namespace:Juju.App.Views"
+        Title="历史事项" Icon="pack://application:,,,/Juju.App;component/Assets/toto.ico"
+        views:ToolWindowChrome.IsEnabled="True" views:ToolWindowChrome.ToolIcon="{StaticResource TotoToolIcon}"
+        views:ToolWindowChrome.ShowStatusBar="False" views:ToolWindowChrome.ShowMaximizeButton="False"
+        Style="{StaticResource ToolWindowWindowStyle}"
+        Width="1200" MinWidth="1200" MaxWidth="1200" Height="620" MinHeight="425"
+        ResizeMode="CanResize" WindowStartupLocation="CenterOwner">
+    <shell:WindowChrome.WindowChrome>
+        <shell:WindowChrome CaptionHeight="48" ResizeBorderThickness="6" GlassFrameThickness="0"
+                            UseAeroCaptionButtons="False" />
+    </shell:WindowChrome.WindowChrome>
+    <Grid>
+        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+        <Border x:Name="FilterBar" Grid.Row="0" Padding="10,8" Background="White"
+                BorderBrush="#E7EBF2" BorderThickness="0,0,0,1">
+            <Grid>
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="116"/>
+                    <ColumnDefinition Width="106"/><ColumnDefinition Width="306"/>
+                    <ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                <TextBox x:Name="SearchFilter" Height="35" Margin="0,0,8,0" Tag="搜索事项内容或备注"
+                         Style="{StaticResource TotoFilterInput}" AutomationProperties.Name="搜索事项内容或备注"
+                         PreviewKeyDown="SearchFilter_PreviewKeyDown" />
+                <ComboBox x:Name="StatusFilter" Grid.Column="1" Height="35" Margin="0,0,8,0" />
+                <ComboBox x:Name="PeriodPreset" Grid.Column="2" Height="35" Margin="0,0,8,0"
+                          SelectionChanged="PeriodPreset_Changed" />
+                <Grid Grid.Column="3" Margin="0,0,8,0" ToolTip="结束时间范围">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="130"/><ColumnDefinition Width="32"/>
+                        <ColumnDefinition Width="130"/></Grid.ColumnDefinitions>
+                    <DatePicker x:Name="FromDate" Height="35" SelectedDateChanged="RangeDate_Changed"
+                                AutomationProperties.Name="结束时间范围起始日期" />
+                    <TextBlock Grid.Column="1" Text="至" FontSize="11" Foreground="#8795AA"
+                               HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    <DatePicker x:Name="ToDate" Grid.Column="2" Height="35" SelectedDateChanged="RangeDate_Changed"
+                                AutomationProperties.Name="结束时间范围截止日期" />
+                </Grid>
+                <Button Grid.Column="4" Content="查询" Style="{StaticResource TotoPrimaryButton}"
+                        Height="35" Margin="0,0,8,0" VerticalAlignment="Center" Click="Search_Click" />
+                <Button Grid.Column="5" Content="重置" Style="{StaticResource TotoButton}"
+                        Height="35" VerticalAlignment="Center"
+                        Click="Reset_Click" />
+            </Grid>
+        </Border>
+        <Border x:Name="PaginationBar" Grid.Row="2" BorderBrush="#E8EBF1" BorderThickness="0,1,0,0"
+                Padding="15,10" Background="#FBFCFE">
+            <Grid>
+                <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                <TextBlock x:Name="PageLabel" Foreground="#7B889D" FontSize="12" VerticalAlignment="Center" />
+                <StackPanel Grid.Column="1" Orientation="Horizontal">
+                    <Button Content="首页" Style="{StaticResource TotoButton}" Click="First_Click" Margin="0,0,5,0" />
+                    <Button Content="上一页" Style="{StaticResource TotoButton}" Click="Previous_Click" Margin="0,0,5,0" />
+                    <Button Content="下一页" Style="{StaticResource TotoButton}" Click="Next_Click" Margin="0,0,5,0" />
+                    <Button Content="末页" Style="{StaticResource TotoButton}" Click="Last_Click" Margin="0,0,10,0" />
+                    <TextBlock Text="每页" Foreground="#7B889D" VerticalAlignment="Center" Margin="0,0,5,0" />
+                    <ComboBox x:Name="PageSize" Width="78" Height="33" SelectionChanged="PageSize_Changed" />
+                </StackPanel>
+            </Grid>
+        </Border>
+        <DataGrid Grid.Row="1" x:Name="History" Style="{StaticResource TotoGrid}"
+                  ItemsSource="{Binding HistoryItems}" MouseDoubleClick="History_MouseDoubleClick">
+            <DataGrid.Resources><Style TargetType="ScrollBar" BasedOn="{StaticResource TotoScrollBar}" /></DataGrid.Resources>
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="事项内容" Binding="{Binding Content}" Width="260"
+                                    ElementStyle="{StaticResource TotoContentCellText}"
+                                    CellStyle="{StaticResource TotoFirstCell}" />
+                <DataGridTextColumn Header="计划时间" Binding="{Binding PlannedText}" Width="140"
+                                    ElementStyle="{StaticResource TotoCellText}" />
+                <DataGridTextColumn Header="提醒时间" Binding="{Binding RemindText}" Width="140"
+                                    ElementStyle="{StaticResource TotoCellText}" />
+                <DataGridTextColumn Header="创建时间" Binding="{Binding CreatedText}" Width="145"
+                                    ElementStyle="{StaticResource TotoCellText}" />
+                <DataGridTextColumn Header="备注" Binding="{Binding Note}" Width="210"
+                                    ElementStyle="{StaticResource TotoNoteCellText}" />
+                <DataGridTextColumn Header="结束状态" Binding="{Binding StatusText}" Width="95"
+                                    ElementStyle="{StaticResource TotoCellText}" />
+                <DataGridTextColumn Header="结束时间" Binding="{Binding EndedText}" Width="145"
+                                    ElementStyle="{StaticResource TotoCellText}" />
+            </DataGrid.Columns>
+        </DataGrid>
+    </Grid>
+</Window>

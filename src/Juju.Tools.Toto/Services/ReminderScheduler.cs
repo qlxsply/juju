@@ -22,13 +22,14 @@ internal sealed class ReminderScheduler : IDisposable
     public event Action<ScheduledPopupKind>? ScheduledPopup;
 
     /// <summary>创建调度器并捕获当前 UI 同步上下文，用于将通知切回 UI 线程。</summary>
-    public ReminderScheduler(ItemRepository items, SettingsRepository settings, WorkCalendarService calendar)
+    public ReminderScheduler(ItemRepository items, SettingsRepository settings, WorkCalendarService calendar,
+        SynchronizationContext uiContext)
     {
         this.items = items;
         this.settings = settings;
         this.calendar = calendar;
-        context = SynchronizationContext.Current ?? new WindowsFormsSynchronizationContext();
-        // Timer 回调在线程池线程执行，不能直接操作 WinForms 控件；后续通过 context.Post 切回 UI 线程。
+        context = uiContext;
+        // Timer 回调在线程池线程执行；通过宿主提供的同步上下文投递 UI 通知。
         timer = new Timer(_ => Tick(), null, Timeout.Infinite, Timeout.Infinite);
     }
 

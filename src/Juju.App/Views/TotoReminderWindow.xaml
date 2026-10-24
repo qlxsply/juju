@@ -1,0 +1,32 @@
+<Window x:Class="Juju.App.Views.TotoReminderWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
+        xmlns:views="clr-namespace:Juju.App.Views"
+        Icon="pack://application:,,,/Juju.App;component/Assets/toto.ico"
+        views:ToolWindowChrome.IsEnabled="True" views:ToolWindowChrome.ToolIcon="{StaticResource TotoToolIcon}"
+        views:ToolWindowChrome.ShowStatusBar="False" views:ToolWindowChrome.ShowMaximizeButton="False"
+        Style="{StaticResource ToolWindowWindowStyle}" Topmost="True" Width="720" Height="400"
+        MinWidth="540" MinHeight="300" WindowStartupLocation="CenterScreen">
+    <shell:WindowChrome.WindowChrome>
+        <shell:WindowChrome CaptionHeight="48" ResizeBorderThickness="6" GlassFrameThickness="0"
+                            UseAeroCaptionButtons="False" />
+    </shell:WindowChrome.WindowChrome>
+    <DockPanel LastChildFill="True">
+        <Border DockPanel.Dock="Bottom" Background="#FBFCFE" BorderBrush="#E8EBF1" BorderThickness="0,1,0,0"
+                Padding="12,8">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button Content="完成选中" Style="{StaticResource TotoPrimaryButton}" Margin="0,0,8,0"
+                        Click="Complete_Click" />
+                <Button Content="关闭" Style="{StaticResource TotoButton}" Click="Close_Click" />
+            </StackPanel>
+        </Border>
+        <DataGrid x:Name="Tasks" Style="{StaticResource TotoGrid}" ItemsSource="{Binding ReminderItems}">
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="事项内容" Binding="{Binding Content}" Width="2*" MinWidth="220" />
+                <DataGridTextColumn Header="计划时间" Binding="{Binding PlannedText}" Width="1*" MinWidth="125" />
+                <DataGridTextColumn Header="提醒时间" Binding="{Binding RemindText}" Width="1*" MinWidth="125" />
+            </DataGrid.Columns>
+        </DataGrid>
+    </DockPanel>
+</Window>

@@ -2,15 +2,14 @@ using Microsoft.Win32;
 using Toto.App.Data;
 using Toto.App.Domain;
 using Toto.App.Services;
-using Toto.App.UI;
 using Juju.Core.Tools;
 
 namespace Toto.App;
 
 /// <summary>
-/// 将原独立 WinForms 应用适配为 Juju 内的常驻工具。只保留一份提醒调度器和一组窗体；
+/// 将原独立 Toto 适配为 Juju 内的常驻工具。只保留一份提醒调度器；
 /// Juju 负责进程、托盘、单实例、开机启动和全局热键。
-/// 必须在 Juju 的 UI 线程构造和释放本对象，因为 WinForms 窗体和系统事件依赖该线程。
+/// 提醒 UI 由 Juju 的 WPF 窗口管理器订阅，调度器不依赖任何窗口。
 /// </summary>
 public sealed class TotoToolHost : IDisposable
 {
@@ -20,26 +19,28 @@ public sealed class TotoToolHost : IDisposable
     private readonly WorkCalendarService calendar;
     private readonly ReminderScheduler scheduler;
     private readonly AppLog log;
-    private readonly Action showUnifiedSettings;
-    private readonly List<ReminderForm> reminders = [];
-    private readonly List<Form> auxiliaryForms = [];
     private readonly SynchronizationContext ui;
-    private readonly int uiThread = Environment.CurrentManagedThreadId;
     private readonly System.Threading.Timer retry;
-    private MainForm? main;
     private bool disposed;
     private bool ready;
     private Exception? initializationError;
 
     public event Action<string>? HotkeyChanged;
-    public event Action? MainWindowHidden;
+    internal event Action<IReadOnlyList<TodoItem>>? DueReminders;
+    internal event Action<ScheduledPopupKind>? ScheduledPopup;
     // 宿主先尝试注册候选热键；失败时设置页不落盘，避免下次启动丢失旧快捷键。
     public event Func<string, bool>? HotkeyChanging;
     public string Hotkey => settings.Load().GetValueOrDefault("hotkey", GlobalHotkeyPolicy.None);
-    public bool IsValidWindowShortcut(string value) => Toto.App.UI.Hotkey.TryParse(value, out _);
+    public bool IsValidWindowShortcut(string value) => WindowShortcut.TryNormalize(value, out _);
     public bool MigratedAutoStartEnabled { get; }
     public bool CalendarReady => ready;
     public IReadOnlyDictionary<string, string> ToolSettings => settings.Load();
+    internal ItemRepository Items => items;
+    internal SettingsRepository Settings => settings;
+    internal void Reschedule() { if (ready) scheduler.Reschedule(); }
+    internal void Resume() { if (ready) scheduler.Resume(); }
+    public string? InitializationError => initializationError?.Message;
+    public bool EnsureReady() => TryStart();
     private bool TryRegisterHotkey(string candidate) => HotkeyChanging?.Invoke(candidate) ?? true;
 
     /// <summary>统一设置窗口保存 Toto INI，并更新后台提醒；不再创建第二个设置窗口。</summary>
@@ -51,9 +52,11 @@ public sealed class TotoToolHost : IDisposable
             throw new InvalidOperationException("提醒分钟必须为非负整数，上下班时间必须有效。");
         var shortcuts = values.Where(item => item.Key.StartsWith("shortcut_", StringComparison.Ordinal))
             .Select(item => item.Value).ToArray();
-        if (shortcuts.Length != 8 || shortcuts.Any(value => !Toto.App.UI.Hotkey.TryParse(value, out _)) ||
-            shortcuts.Distinct(StringComparer.OrdinalIgnoreCase).Count() != shortcuts.Length)
-            throw new InvalidOperationException("Toto 的八个窗口内快捷键必须有效且不能重复。");
+        var normalizedShortcuts = shortcuts.Select(value => WindowShortcut.TryNormalize(value, out var shortcut)
+            ? shortcut : "").ToArray();
+        if (shortcuts.Length != 7 || normalizedShortcuts.Any(string.IsNullOrEmpty) ||
+            normalizedShortcuts.Distinct(StringComparer.OrdinalIgnoreCase).Count() != normalizedShortcuts.Length)
+            throw new InvalidOperationException("Toto 的七个窗口内快捷键必须有效且不能重复。");
         var newHotkey = GlobalHotkeyPolicy.Normalize(values.GetValueOrDefault("hotkey"), optional: true);
         var previous = settings.Load();
         if (!TryRegisterHotkey(newHotkey)) throw new InvalidOperationException("Toto 全局直达热键无效或已占用。");
@@ -97,13 +100,13 @@ public sealed class TotoToolHost : IDisposable
         if (ready) scheduler.Reschedule();
     }
 
-    public TotoToolHost(Action showUnifiedSettings)
+    public TotoToolHost(SynchronizationContext uiContext) : this(uiContext, new AppPaths(), importLegacy: true) { }
+
+    internal TotoToolHost(SynchronizationContext uiContext, AppPaths paths, bool importLegacy)
     {
-        this.showUnifiedSettings = showUnifiedSettings;
-        ui = SynchronizationContext.Current ?? new WindowsFormsSynchronizationContext();
-        var paths = new AppPaths();
+        ui = uiContext;
         log = new AppLog(paths.LogDirectory);
-        var importedSettings = ImportLegacyData(paths);
+        var importedSettings = importLegacy && ImportLegacyData(paths);
         items = new ItemRepository(paths);
         settings = new SettingsRepository(paths);
         items.EnsureFiles();
@@ -121,16 +124,15 @@ public sealed class TotoToolHost : IDisposable
         if (importedSettings) RemoveLegacyStartupShortcut();
         repository = new WorkCalendarRepository(new HolidayCalendarDownloadService(paths));
         calendar = new WorkCalendarService(repository);
-        scheduler = new ReminderScheduler(items, settings, calendar);
-        scheduler.DueReminders += ShowReminders;
-        scheduler.ScheduledPopup += ShowWorkPopup;
+        scheduler = new ReminderScheduler(items, settings, calendar, ui);
+        scheduler.DueReminders += due => DueReminders?.Invoke(due);
+        scheduler.ScheduledPopup += kind => ScheduledPopup?.Invoke(kind);
         // 网络下载失败时不能使 Juju/JSON 无法启动；Toto 保留严格日历校验并定时重试。
         retry = new System.Threading.Timer(_ => ui.Post(__ => { if (!disposed) TryStart(); }, null), null,
             Timeout.Infinite, Timeout.Infinite);
         SystemEvents.SessionSwitch += SessionSwitch;
         SystemEvents.PowerModeChanged += PowerModeChanged;
         SystemEvents.TimeChanged += TimeChanged;
-        Application.ThreadException += ThreadException;
         TryStart();
     }
 
@@ -158,77 +160,6 @@ public sealed class TotoToolHost : IDisposable
         }
     }
 
-    /// <summary>从 Juju Launcher、托盘或工具专属全局热键直接打开原 Toto 主窗口。</summary>
-    public void ShowMain()
-    {
-        if (disposed) return;
-        if (Environment.CurrentManagedThreadId != uiThread)
-        {
-            ui.Post(_ => ShowMain(), null);
-            return;
-        }
-        if (!TryStart())
-        {
-            MessageBox.Show($"节假日日历尚未就绪，Toto 将继续重试：\n{initializationError?.Message}", "Toto",
-                MessageBoxButtons.OK, MessageBoxIcon.Error);
-            return;
-        }
-        if (main is null || main.IsDisposed)
-        {
-            main = new MainForm(items, settings, scheduler, showUnifiedSettings);
-            main.FormClosed += (_, _) => main = null;
-            main.VisibleChanged += (_, _) =>
-            {
-                if (main is { Visible: false } && !disposed) MainWindowHidden?.Invoke();
-            };
-        }
-        main.Show();
-        if (main.WindowState == FormWindowState.Minimized) main.WindowState = FormWindowState.Normal;
-        main.Activate();
-        main.RefreshItems();
-    }
-
-    /// <summary>在主窗口尚未打开时也可从 Juju 托盘进入原有新增、历史、设置和工作日功能。</summary>
-    public void ShowNewItem() { ShowMain(); main?.ShowEditor(); }
-    public void ShowHistory()
-    {
-        if (TryStart()) ShowAuxiliary(new HistoryForm(items, settings), main);
-        else ShowMain();
-    }
-    public void ShowSettings()
-    {
-        showUnifiedSettings();
-    }
-    public void ShowCalendar()
-    {
-        showUnifiedSettings();
-    }
-
-    private void ShowAuxiliary(Form form, Form? owner = null)
-    {
-        auxiliaryForms.Add(form);
-        form.FormClosed += (_, _) => auxiliaryForms.Remove(form);
-        if (owner is { IsDisposed: false, Visible: true }) form.Show(owner);
-        else form.Show();
-    }
-
-    private void OnSettingsSaved() => HotkeyChanged?.Invoke(Hotkey);
-
-    private void ShowReminders(IReadOnlyList<TodoItem> due) =>
-        ShowReminder(new ReminderForm(items, due, settings, "toto 提醒"));
-
-    private void ShowWorkPopup(ScheduledPopupKind kind) =>
-        ShowReminder(new ReminderForm(items, items.GetActive(), settings,
-            kind == ScheduledPopupKind.WorkStart ? "toto - 上班事项提醒" : "toto - 下班事项提醒"));
-
-    private void ShowReminder(ReminderForm form)
-    {
-        reminders.Add(form);
-        form.FormClosed += (_, _) => { reminders.Remove(form); main?.RefreshItems(); };
-        form.Show();
-        form.Activate();
-    }
-
     private void SessionSwitch(object? sender, SessionSwitchEventArgs e)
     {
         if (e.Reason == SessionSwitchReason.SessionLock) scheduler.SetLocked(true);
@@ -246,9 +177,6 @@ public sealed class TotoToolHost : IDisposable
     {
         if (TryStart()) scheduler.Resume();
     }
-
-    private void ThreadException(object sender, System.Threading.ThreadExceptionEventArgs e) =>
-        log.Write($"WinForms UI exception: {e.Exception}");
 
     /// <summary>只复制目标目录中尚不存在的旧数据，保留原 .toto 文件作为迁移备份。</summary>
     internal static bool ImportLegacyData(AppPaths paths, string? oldDataDirectory = null)
@@ -304,13 +232,8 @@ public sealed class TotoToolHost : IDisposable
         SystemEvents.SessionSwitch -= SessionSwitch;
         SystemEvents.PowerModeChanged -= PowerModeChanged;
         SystemEvents.TimeChanged -= TimeChanged;
-        Application.ThreadException -= ThreadException;
         retry.Dispose();
         scheduler.Dispose();
-        foreach (var form in reminders.ToArray()) form.Close();
-        foreach (var form in auxiliaryForms.ToArray()) form.Close();
-        main?.Close();
-        main?.Dispose();
     }
 }
 

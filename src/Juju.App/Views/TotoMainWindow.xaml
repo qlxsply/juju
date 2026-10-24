@@ -1,0 +1,44 @@
+<Window x:Class="Juju.App.Views.TotoMainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
+        xmlns:views="clr-namespace:Juju.App.Views"
+        Title="Toto 日程提醒" Icon="pack://application:,,,/Juju.App;component/Assets/toto.ico"
+        views:ToolWindowChrome.IsEnabled="True" views:ToolWindowChrome.ToolIcon="{StaticResource TotoToolIcon}"
+        views:ToolWindowChrome.StatusLeft="进行中：0 项"
+        views:ToolWindowChrome.StatusRight="Alt+A 新增 · Alt+Q 历史 · Alt+E 编辑 · Alt+F 完成"
+        Style="{StaticResource ToolWindowWindowStyle}"
+        Width="1200" MinWidth="1200" MaxWidth="1200" Height="600" MinHeight="420"
+        ResizeMode="CanResize" WindowStartupLocation="CenterScreen">
+    <shell:WindowChrome.WindowChrome>
+        <shell:WindowChrome CaptionHeight="48" ResizeBorderThickness="6" GlassFrameThickness="0"
+                            UseAeroCaptionButtons="False" />
+    </shell:WindowChrome.WindowChrome>
+    <DataGrid x:Name="Tasks" Style="{StaticResource TotoGrid}" ItemsSource="{Binding ActiveItems}"
+              MouseDoubleClick="Tasks_MouseDoubleClick">
+        <DataGrid.Resources>
+            <Style TargetType="ScrollBar" BasedOn="{StaticResource TotoScrollBar}" />
+        </DataGrid.Resources>
+        <DataGrid.Columns>
+            <DataGridTextColumn Header="事项内容" Binding="{Binding Content}" Width="340"
+                                ElementStyle="{StaticResource TotoContentCellText}"
+                                CellStyle="{StaticResource TotoFirstCell}" />
+            <DataGridTextColumn Header="计划时间" Binding="{Binding PlannedText}" Width="165"
+                                ElementStyle="{StaticResource TotoCellText}" />
+            <DataGridTextColumn Header="提醒时间" Binding="{Binding RemindText}" Width="165"
+                                ElementStyle="{StaticResource TotoCellText}" />
+            <DataGridTemplateColumn Header="提醒状态" Width="115">
+                <DataGridTemplateColumn.CellTemplate>
+                    <DataTemplate>
+                        <TextBlock Text="{Binding StatusText}" Foreground="{Binding StatusForeground}"
+                                   Style="{StaticResource TotoCellText}" />
+                    </DataTemplate>
+                </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+            <DataGridTextColumn Header="创建时间" Binding="{Binding CreatedText}" Width="165"
+                                ElementStyle="{StaticResource TotoCellText}" />
+            <DataGridTextColumn Header="备注" Binding="{Binding Note}" Width="220"
+                                ElementStyle="{StaticResource TotoNoteCellText}" />
+        </DataGrid.Columns>
+    </DataGrid>
+</Window>

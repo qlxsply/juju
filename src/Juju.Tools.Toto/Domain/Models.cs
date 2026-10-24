@@ -58,6 +58,9 @@ internal sealed record HolidayCalendarDay(string Name, DateOnly Date, bool IsOff
 /// <summary>封装事项查询的可选筛选条件。</summary>
 internal sealed class QueryCriteria
 {
+    /// <summary>按事项内容或备注执行不区分大小写的统一文本搜索。</summary>
+    public string? SearchText { get; init; }
+
     /// <summary>按精确事项标识筛选。</summary>
     public string? Id { get; init; }
 

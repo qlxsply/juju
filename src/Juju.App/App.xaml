@@ -8,6 +8,7 @@
             <ResourceDictionary.MergedDictionaries>
                 <ResourceDictionary Source="Assets/IconResources.xaml" />
                 <ResourceDictionary Source="Assets/ToolboxStyles.xaml" />
+                <ResourceDictionary Source="Assets/TotoStyles.xaml" />
             </ResourceDictionary.MergedDictionaries>
             <!-- 浅灰背景画刷；以键名提供给窗口和控件的 Background 属性。 -->
             <SolidColorBrush x:Key="JujuBackground" Color="#F5F5F5" />

@@ -147,6 +147,153 @@ public sealed class ItemRepositoryTests : IDisposable
         Assert.Equal("None", repository.Load()["hotkey"]);
     }
 
+    [Fact]
+    public void Legacy_active_and_history_csv_keep_their_status_times_and_notes()
+    {
+        var activeFile = Path.Combine(dataDirectory, "toto_ing.csv");
+        var historyFile = Path.Combine(dataDirectory, "toto_end.csv");
+        File.WriteAllText(activeFile,
+            "事项ID,事项内容,计划时间,提前提醒分钟数,提醒时间,创建时间,创建序号,提醒状态,响铃时间,备注\n" +
+            "legacy,原有事项,2026-10-26 16:00:00,5,,2026-10-22 10:00:00,1,未提醒,,原有备注\n");
+        File.WriteAllText(historyFile,
+            "事项ID,事项内容,计划时间,提醒时间,创建时间,创建序号,结束状态,结束时间,备注\n" +
+            "old,结束事项,,,2026-10-20 08:00:00,2,已取消,2026-10-21 09:00:00,结束备注\n");
+
+        var current = Assert.Single(repository.GetActive());
+        Assert.Equal(new DateTime(2026, 10, 26, 15, 55, 0), current.RemindAt);
+        Assert.Equal(ReminderStatus.Pending, current.ReminderStatus);
+        Assert.Equal("原有备注", current.Note);
+        var history = Assert.Single(repository.GetHistory(null, 1, 10).Items);
+        Assert.Equal(ItemStatus.Cancelled, history.Status);
+        Assert.Equal(new DateTime(2026, 10, 21, 9, 0, 0), history.EndedAt);
+        Assert.Equal("结束备注", history.Note);
+    }
+
+    [Fact]
+    public void Removed_settings_shortcut_is_ignored_without_erasing_other_ini_values()
+    {
+        var settings = new SettingsRepository(new AppPaths(dataDirectory));
+        settings.EnsureExists();
+        var path = Path.Combine(dataDirectory, "config.ini");
+        var ini = IniFile.Load(path);
+        ini.Set("General", "shortcut_settings", "Alt+S");
+        ini.SaveAtomically(path);
+
+        var values = settings.Load();
+        Assert.False(values.ContainsKey("shortcut_settings"));
+        Assert.Equal("Alt+A", values["shortcut_add"]);
+        Assert.Equal("Alt+S", IniFile.Load(path).Get("General", "shortcut_settings"));
+    }
+
+    [Theory]
+    [InlineData("Alt+A", "Alt+A")]
+    [InlineData("alt+ctrl+a", "Ctrl+Alt+A")]
+    [InlineData("Alt+NumPad7", "Alt+NumPad7")]
+    [InlineData("Alt+OemPeriod", "Alt+OemPeriod")]
+    [InlineData("Alt+PageUp", "Alt+PageUp")]
+    public void Local_shortcuts_preserve_existing_modifier_and_numpad_bindings(string value, string expected)
+    {
+        Assert.True(WindowShortcut.TryNormalize(value, out var normalized));
+        Assert.Equal(expected, normalized);
+    }
+
+    [Fact]
+    public async Task Scheduler_marks_a_due_reminder_once_without_an_open_window()
+    {
+        var paths = new AppPaths(dataDirectory);
+        var calendar = new HolidayCalendarDownloadService(paths);
+        calendar.SaveLocal(DateTime.Today.Year, []);
+        if (DateTime.Today.AddDays(7).Year != DateTime.Today.Year)
+            calendar.SaveLocal(DateTime.Today.Year + 1, []);
+        using var host = new TotoToolHost(new SynchronizationContext(), paths, importLegacy: false);
+        Assert.True(host.EnsureReady());
+        host.Items.Add(Item("due", "需要提醒", DateTime.Now.AddMinutes(-1)));
+        var notifications = new List<TodoItem>();
+        var delivered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        host.DueReminders += due =>
+        {
+            lock (notifications) notifications.AddRange(due);
+            delivered.TrySetResult();
+        };
+        host.Reschedule();
+        await delivered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        host.Resume();
+        lock (notifications) Assert.Single(notifications);
+        Assert.Equal(ReminderStatus.Reminded, host.Items.GetActive().Single().ReminderStatus);
+        Assert.Empty(host.Items.GetHistory(null, 1, 10).Items);
+    }
+
+    [Fact]
+    public void History_filters_and_paginates_existing_csv_records()
+    {
+        var endedAt = new DateTime(2026, 10, 22, 12, 0, 0);
+        for (var index = 0; index < 15; index++)
+        {
+            var id = $"historical-{index}";
+            repository.Add(Item(id, index % 2 == 0 ? "项目会议" : "开发事项"));
+            Assert.True(repository.End(id, index % 2 == 0 ? ItemStatus.Completed : ItemStatus.Cancelled,
+                index % 2 == 0 ? "会议记录" : "开发记录", endedAt.AddMinutes(index)));
+        }
+        Assert.Equal(10, repository.GetHistory(null, 1, 10).Items.Count);
+        Assert.Equal(5, repository.GetHistory(null, 2, 10).Items.Count);
+        var meetings = repository.GetHistory(new QueryCriteria
+        {
+            Content = "会议", Note = "会议记录", Status = ItemStatus.Completed,
+            EndedFrom = endedAt.Date, EndedTo = endedAt.Date.AddDays(1)
+        }, 1, 10);
+        Assert.Equal(8, meetings.TotalCount);
+        Assert.All(meetings.Items, item => Assert.Equal(ItemStatus.Completed, item.Status));
+    }
+
+    [Fact]
+    public async Task Startup_resumes_an_existing_due_reminder_without_opening_a_window()
+    {
+        var paths = new AppPaths(dataDirectory);
+        var calendar = new HolidayCalendarDownloadService(paths);
+        calendar.SaveLocal(DateTime.Today.Year, []);
+        if (DateTime.Today.AddDays(7).Year != DateTime.Today.Year)
+            calendar.SaveLocal(DateTime.Today.Year + 1, []);
+        repository.Add(Item("restored", "重启后到期", DateTime.Now.AddMinutes(-1)));
+        using var host = new TotoToolHost(new SynchronizationContext(), paths, importLegacy: false);
+        var delivered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        host.DueReminders += due =>
+        {
+            if (due.Any(item => item.Id == "restored")) delivered.TrySetResult();
+        };
+
+        await delivered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(ReminderStatus.Reminded, repository.GetActive().Single().ReminderStatus);
+        Assert.Null(repository.GetNextReminder());
+    }
+
+    [Fact]
+    public async Task Workday_popup_is_recorded_once_across_scheduler_resumes()
+    {
+        var paths = new AppPaths(dataDirectory);
+        var calendar = new HolidayCalendarDownloadService(paths);
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        calendar.SaveLocal(today.Year, [new HolidayCalendarDay("调休工作日", today, false)]);
+        if (DateTime.Today.AddDays(7).Year != today.Year)
+            calendar.SaveLocal(today.Year + 1, []);
+        using var host = new TotoToolHost(new SynchronizationContext(), paths, importLegacy: false);
+        var values = host.ToolSettings.ToDictionary(item => item.Key, item => item.Value);
+        values["work_start_popup_enabled"] = "1";
+        values["work_start_time"] = "00:00";
+        host.SaveToolSettings(values);
+        var shown = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var count = 0;
+        host.ScheduledPopup += kind =>
+        {
+            Interlocked.Increment(ref count);
+            shown.TrySetResult();
+        };
+        host.Resume();
+        await shown.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        host.Resume();
+        Assert.Equal(1, count);
+        Assert.True(host.Settings.WasScheduledPopupShown(today, ScheduledPopupKind.WorkStart));
+    }
+
     private static TodoItem Item(string id, string content, DateTime? remindAt = null) =>
         new(id, content, null, remindAt, DateTime.Now, 0, ItemStatus.Active,
             remindAt is null ? ReminderStatus.None : ReminderStatus.Pending, null, null, "");

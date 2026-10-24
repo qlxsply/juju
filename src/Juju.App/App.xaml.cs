@@ -109,9 +109,9 @@ public partial class App
         services.AddSingleton<IStorageManager>(storage);
         services.AddSingleton(documents);
         // 先创建 TotoToolHost 再显示 Launcher：提醒调度独立于 Toto 主窗口一直运行。
-        // WinForms 设置页的自启动开关转发到 Juju 的同一个注册表启动项和宿主配置。
-        services.AddSingleton(provider => new TotoToolHost(
-            () => provider.GetRequiredService<DesktopWindowManager>().ShowToolSettings(ToolId.Toto)));
+        // 旧版自启动配置迁移到 Juju 的同一个注册表启动项和宿主配置。
+        services.AddSingleton(_ => new TotoToolHost(
+            new System.Windows.Threading.DispatcherSynchronizationContext(Application.Current.Dispatcher)));
         services.AddSingleton<IToolRegistry, ToolRegistry>();
         services.AddSingleton<IRuntimeManager, RuntimeManager>();
         services.AddSingleton<DesktopWindowManager>();
