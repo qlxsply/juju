@@ -189,17 +189,35 @@ public sealed class DesktopWindowManager : IWindowManager
             new TotoHistoryWindow(toto) { Owner = owner }.ShowDialog();
     }
 
-    private void ShowDueReminders(IReadOnlyList<TodoItem> due) => ShowReminder(due, "Toto 提醒");
+    private void ShowDueReminders(IReadOnlyList<TodoItem> due) =>
+        ShowReminder(new TotoReminderWindow("Toto 提醒", due));
 
-    private void ShowScheduledPopup(ScheduledPopupKind kind) => ShowReminder(toto.Items.GetActive(),
-        kind == ScheduledPopupKind.WorkStart ? "Toto - 上班事项提醒" : "Toto - 下班事项提醒");
+    private void ShowScheduledPopup(ScheduledPopupKind kind)
+    {
+        var pending = toto.Items.GetActive();
+        if (kind == ScheduledPopupKind.WorkStart)
+        {
+            ShowReminder(new TotoReminderWindow("Toto - 今日待办盘点", pending, highlightTodayGreen: true));
+            return;
+        }
 
-    private void ShowReminder(IReadOnlyList<TodoItem> items, string title)
+        var today = DateTime.Today;
+        var criteria = new QueryCriteria
+        {
+            Status = ItemStatus.Completed, EndedFrom = today, EndedTo = today.AddDays(1)
+        };
+        var firstPage = toto.Items.GetHistory(criteria, 1, 500);
+        var completed = firstPage.Items.ToList();
+        for (var page = 2; completed.Count < firstPage.TotalCount; page++)
+            completed.AddRange(toto.Items.GetHistory(criteria, page, 500).Items);
+        ShowReminder(new TotoReminderWindow("Toto - 今日完成复盘", pending,
+            completedItems: completed, highlightTodayRed: true));
+    }
+
+    private void ShowReminder(TotoReminderWindow window)
     {
         if (_shuttingDown) return;
-        var window = new TotoReminderWindow(toto, items, title);
         _reminders.Add(window);
-        window.ItemChanged += () => _toto?.RefreshItems();
         window.Closed += (_, _) => { _reminders.Remove(window); _toto?.RefreshItems(); };
         window.Show();
         window.Activate();

@@ -66,7 +66,7 @@ public sealed class TotoToolHost : IDisposable
         {
             var next = values.ToDictionary(item => item.Key, item => item.Value);
             next["hotkey"] = newHotkey;
-            settings.Save(next);
+            settings.SaveDailyReviewSettings(next, DateTime.Now);
             if (ready) scheduler.Reschedule();
             HotkeyChanged?.Invoke(newHotkey);
         }

@@ -10,6 +10,22 @@
     <SolidColorBrush x:Key="ToolboxPanel" Color="#F7F8FB" />
     <SolidColorBrush x:Key="ToolboxSelected" Color="#E9EEFC" />
 
+    <Style x:Key="ToolboxSlimScrollBar" TargetType="ScrollBar">
+        <Setter Property="Width" Value="6" />
+        <Setter Property="MinWidth" Value="6" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Style.Triggers>
+            <Trigger Property="Orientation" Value="Horizontal">
+                <Setter Property="Width" Value="Auto" />
+                <Setter Property="MinWidth" Value="0" />
+                <Setter Property="Height" Value="6" />
+                <Setter Property="MinHeight" Value="6" />
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+    <Style TargetType="ScrollBar" BasedOn="{StaticResource ToolboxSlimScrollBar}" />
+
     <!-- Compacta, redondea y unifica los desplegables de todas las páginas de ajustes. -->
     <Style TargetType="ComboBoxItem">
         <Setter Property="Foreground" Value="#26334B" />

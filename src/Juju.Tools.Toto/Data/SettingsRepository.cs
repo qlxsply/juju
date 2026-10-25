@@ -78,6 +78,32 @@ internal sealed class SettingsRepository(AppPaths paths)
         lock (gate) SaveCore(settings);
     }
 
+    /// <summary>保存盘点配置，并仅清除今天已过去提醒的对应标记（当新配置时间仍在未来时）。</summary>
+    public void SaveDailyReviewSettings(IReadOnlyDictionary<string, string> values, DateTime now)
+    {
+        lock (gate)
+        {
+            var ini = IniFile.Load(paths.ConfigPath);
+            var general = ini.GetSection("General");
+            var startChanged = NormalizeOptionalTime(general.GetValueOrDefault("daily_review_start_time")) !=
+                               NormalizeOptionalTime(values.GetValueOrDefault("daily_review_start_time"));
+            var endChanged = NormalizeOptionalTime(general.GetValueOrDefault("daily_review_end_time")) !=
+                             NormalizeOptionalTime(values.GetValueOrDefault("daily_review_end_time"));
+            SaveGeneral(ini, values);
+
+            var today = DateOnly.FromDateTime(now);
+            if (startChanged && IsFuture(values.GetValueOrDefault("daily_review_start_time"), now))
+                ini.Remove("ScheduledPopups", PopupKey(today, ScheduledPopupKind.WorkStart));
+            if (endChanged && IsFuture(values.GetValueOrDefault("daily_review_end_time"), now))
+                ini.Remove("ScheduledPopups", PopupKey(today, ScheduledPopupKind.WorkEnd));
+            ini.SaveAtomically(paths.ConfigPath);
+        }
+    }
+
+    private static bool IsFuture(string? value, DateTime now) =>
+        TimeOnly.TryParseExact(value, "HH:mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out var time) &&
+        time.ToTimeSpan() > now.TimeOfDay;
+
     /// <summary>读取指定窗口上次正常显示时的边界；未记录或格式无效时返回空。</summary>
     public Rectangle? LoadWindowBounds(string window)
     {
@@ -138,9 +164,14 @@ internal sealed class SettingsRepository(AppPaths paths)
     private void SaveCore(IReadOnlyDictionary<string, string> settings)
     {
         var ini = IniFile.Load(paths.ConfigPath);
+        SaveGeneral(ini, settings);
+        ini.SaveAtomically(paths.ConfigPath);
+    }
+
+    private static void SaveGeneral(IniFile ini, IReadOnlyDictionary<string, string> settings)
+    {
         foreach (var (key, defaultValue) in Defaults)
             ini.Set("General", key, settings.GetValueOrDefault(key, defaultValue));
-        ini.SaveAtomically(paths.ConfigPath);
     }
 
     /// <summary>生成 INI 中用于标识一次计划弹窗的稳定键。</summary>

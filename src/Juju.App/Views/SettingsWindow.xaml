@@ -27,12 +27,6 @@
             <Setter Property="HorizontalAlignment" Value="Center" />
             <Setter Property="VerticalAlignment" Value="Center" />
         </Style>
-        <Style TargetType="ScrollBar">
-            <Setter Property="Width" Value="6" />
-            <Setter Property="MinWidth" Value="6" />
-            <Setter Property="Background" Value="Transparent" />
-            <Setter Property="BorderThickness" Value="0" />
-        </Style>
     </Window.Resources>
     <!-- 无内部留边和 DropShadowEffect：窗口由 Windows 自己处理外轮廓，内容只负责布局。 -->
     <Border Background="White" BorderBrush="#D5DCE8" BorderThickness="1" CornerRadius="3">

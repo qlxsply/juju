@@ -103,9 +103,9 @@ internal sealed class ReminderScheduler : IDisposable
                 }.Where(x =>
                     TimeOnly.TryParseExact(values.GetValueOrDefault(x.Item1), "HH:mm", out var time) &&
                     now.TimeOfDay >= time.ToTimeSpan()).OrderBy(x => x.Item2).ToArray();
-            var candidate = candidates.LastOrDefault();
-            if (candidate != default && settings.TryMarkScheduledPopupShown(date, candidate.Item2, now))
-                context.Post(_ => ScheduledPopup?.Invoke(candidate.Item2), null);
+            foreach (var candidate in candidates)
+                if (settings.TryMarkScheduledPopupShown(date, candidate.Item2, now))
+                    context.Post(_ => ScheduledPopup?.Invoke(candidate.Item2), null);
         }
 
         Reschedule();

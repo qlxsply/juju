@@ -1,11 +1,6 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-    <Style x:Key="TotoScrollBar" TargetType="ScrollBar">
-        <Setter Property="Width" Value="5" />
-        <Setter Property="MinWidth" Value="5" />
-        <Setter Property="Background" Value="Transparent" />
-        <Setter Property="BorderThickness" Value="0" />
-    </Style>
+    <Style x:Key="TotoScrollBar" TargetType="ScrollBar" BasedOn="{StaticResource ToolboxSlimScrollBar}" />
     <Style x:Key="TotoCell" TargetType="DataGridCell">
         <Setter Property="FocusVisualStyle" Value="{x:Null}" />
         <Setter Property="Padding" Value="12,0" />
@@ -92,6 +87,16 @@
     </Style>
     <Style x:Key="TotoNoteCellText" TargetType="TextBlock" BasedOn="{StaticResource TotoCellText}">
         <Setter Property="ToolTip" Value="{Binding Note}" />
+    </Style>
+    <Style x:Key="TotoReminderPlainText" TargetType="TextBlock" BasedOn="{StaticResource TotoCellText}">
+        <Setter Property="Foreground" Value="{Binding PlainForeground}" />
+    </Style>
+    <Style x:Key="TotoReminderContentText" TargetType="TextBlock" BasedOn="{StaticResource TotoCellText}">
+        <Setter Property="Foreground" Value="{Binding ContentForeground}" />
+        <Setter Property="ToolTip" Value="{Binding Content}" />
+    </Style>
+    <Style x:Key="TotoReminderPlanText" TargetType="TextBlock" BasedOn="{StaticResource TotoCellText}">
+        <Setter Property="Foreground" Value="{Binding PlanForeground}" />
     </Style>
     <Style x:Key="TotoFirstCell" TargetType="DataGridCell" BasedOn="{StaticResource TotoCell}">
         <Setter Property="Padding" Value="9,0,12,0" />

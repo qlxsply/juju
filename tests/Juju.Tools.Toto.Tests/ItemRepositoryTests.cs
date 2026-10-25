@@ -210,6 +210,29 @@ public sealed class ItemRepositoryTests : IDisposable
         Assert.Equal("", persisted.Get("General", "daily_review_end_time"));
     }
 
+    [Fact]
+    public void Changing_daily_review_time_clears_only_today_mark_when_new_time_is_still_future()
+    {
+        var settings = new SettingsRepository(new AppPaths(Path.Combine(dataDirectory, "daily-review-reschedule")));
+        settings.EnsureExists();
+        var initial = settings.Load().ToDictionary(item => item.Key, item => item.Value);
+        initial["daily_review_start_time"] = "16:40";
+        initial["daily_review_end_time"] = "16:38";
+        settings.Save(initial);
+        var now = new DateTime(2026, 10, 25, 16, 50, 0);
+        var today = DateOnly.FromDateTime(now);
+        Assert.True(settings.TryMarkScheduledPopupShown(today, ScheduledPopupKind.WorkStart, now));
+        Assert.True(settings.TryMarkScheduledPopupShown(today, ScheduledPopupKind.WorkEnd, now));
+
+        var changed = settings.Load().ToDictionary(item => item.Key, item => item.Value);
+        changed["daily_review_start_time"] = "16:30";
+        changed["daily_review_end_time"] = "18:00";
+        settings.SaveDailyReviewSettings(changed, now);
+
+        Assert.True(settings.WasScheduledPopupShown(today, ScheduledPopupKind.WorkStart));
+        Assert.False(settings.WasScheduledPopupShown(today, ScheduledPopupKind.WorkEnd));
+    }
+
     [Theory]
     [InlineData("Alt+A", "Alt+A")]
     [InlineData("alt+ctrl+a", "Ctrl+Alt+A")]
@@ -317,6 +340,41 @@ public sealed class ItemRepositoryTests : IDisposable
         host.Resume();
         Assert.Equal(1, count);
         Assert.True(host.Settings.WasScheduledPopupShown(today, ScheduledPopupKind.WorkStart));
+    }
+
+    [Fact]
+    public async Task Start_and_end_daily_reviews_are_independent_when_both_are_due()
+    {
+        var paths = new AppPaths(Path.Combine(dataDirectory, "independent-daily-reviews"));
+        var calendar = new HolidayCalendarDownloadService(paths);
+        calendar.SaveLocal(DateTime.Today.Year, []);
+        if (DateTime.Today.AddDays(7).Year != DateTime.Today.Year)
+            calendar.SaveLocal(DateTime.Today.Year + 1, []);
+        using var host = new TotoToolHost(new SynchronizationContext(), paths, importLegacy: false);
+        var values = host.ToolSettings.ToDictionary(item => item.Key, item => item.Value);
+        values["daily_review_start_time"] = "00:00";
+        values["daily_review_end_time"] = "00:00";
+        values["daily_review_workdays"] = "0";
+        host.SaveToolSettings(values);
+
+        var kinds = new System.Collections.Concurrent.ConcurrentBag<ScheduledPopupKind>();
+        var bothDelivered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        host.ScheduledPopup += kind =>
+        {
+            kinds.Add(kind);
+            if (kinds.Count >= 2) bothDelivered.TrySetResult();
+        };
+        host.Resume();
+        await bothDelivered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        Assert.Contains(ScheduledPopupKind.WorkStart, kinds);
+        Assert.Contains(ScheduledPopupKind.WorkEnd, kinds);
+        Assert.True(host.Settings.WasScheduledPopupShown(today, ScheduledPopupKind.WorkStart));
+        Assert.True(host.Settings.WasScheduledPopupShown(today, ScheduledPopupKind.WorkEnd));
+        host.Resume();
+        await Task.Delay(100);
+        Assert.Equal(2, kinds.Count);
     }
 
     private static TodoItem Item(string id, string content, DateTime? remindAt = null) =>
