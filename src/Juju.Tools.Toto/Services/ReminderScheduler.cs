@@ -10,7 +10,6 @@ internal sealed class ReminderScheduler : IDisposable
 {
     private readonly ItemRepository items;
     private readonly SettingsRepository settings;
-    private readonly WorkCalendarService calendar;
     private readonly Timer timer;
     private readonly SynchronizationContext context;
     private bool locked;
@@ -22,12 +21,10 @@ internal sealed class ReminderScheduler : IDisposable
     public event Action<ScheduledPopupKind>? ScheduledPopup;
 
     /// <summary>创建调度器并捕获当前 UI 同步上下文，用于将通知切回 UI 线程。</summary>
-    public ReminderScheduler(ItemRepository items, SettingsRepository settings, WorkCalendarService calendar,
-        SynchronizationContext uiContext)
+    public ReminderScheduler(ItemRepository items, SettingsRepository settings, SynchronizationContext uiContext)
     {
         this.items = items;
         this.settings = settings;
-        this.calendar = calendar;
         context = uiContext;
         // Timer 回调在线程池线程执行；通过宿主提供的同步上下文投递 UI 通知。
         timer = new Timer(_ => Tick(), null, Timeout.Infinite, Timeout.Infinite);
@@ -64,21 +61,22 @@ internal sealed class ReminderScheduler : IDisposable
     private DateTime? NextWorkPopup(DateTime now)
     {
         var values = settings.Load();
+        var weekdaysOnly = values.GetValueOrDefault("daily_review_workdays") == "1";
         var candidates = new List<DateTime>();
         for (var dayOffset = 0; dayOffset <= 7; dayOffset++)
         {
-            var date = DateOnly.FromDateTime(now.Date.AddDays(dayOffset));
-            if (!calendar.IsWorkday(date)) continue;
+            var date = now.Date.AddDays(dayOffset);
+            if (weekdaysOnly && date.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday) continue;
             foreach (var pair in new[]
                      {
-                         ("work_start_popup_enabled", "work_start_time", ScheduledPopupKind.WorkStart),
-                         ("work_end_popup_enabled", "work_end_time", ScheduledPopupKind.WorkEnd)
+                         ("daily_review_start_time", ScheduledPopupKind.WorkStart),
+                         ("daily_review_end_time", ScheduledPopupKind.WorkEnd)
                      })
-                if (values.GetValueOrDefault(pair.Item1) == "1" &&
-                    TimeOnly.TryParse(values.GetValueOrDefault(pair.Item2), out var time))
+                if (TimeOnly.TryParseExact(values.GetValueOrDefault(pair.Item1), "HH:mm", out var time))
                 {
-                    var due = date.ToDateTime(time);
-                    if (due > now && !settings.WasScheduledPopupShown(date, pair.Item3)) candidates.Add(due);
+                    var due = date.Add(time.ToTimeSpan());
+                    if (due > now && !settings.WasScheduledPopupShown(DateOnly.FromDateTime(date), pair.Item2))
+                        candidates.Add(due);
                 }
         }
 
@@ -94,20 +92,20 @@ internal sealed class ReminderScheduler : IDisposable
         if (due.Count > 0) context.Post(_ => DueReminders?.Invoke(due), null);
         var values = settings.Load();
         var date = DateOnly.FromDateTime(now);
-        if (calendar.IsWorkday(date))
+        var weekdaysOnly = values.GetValueOrDefault("daily_review_workdays") == "1";
+        if (!weekdaysOnly || date.DayOfWeek is not DayOfWeek.Saturday and not DayOfWeek.Sunday)
         {
             var candidates =
                 new[]
                 {
-                    ("work_start_popup_enabled", "work_start_time", ScheduledPopupKind.WorkStart),
-                    ("work_end_popup_enabled", "work_end_time", ScheduledPopupKind.WorkEnd)
+                    ("daily_review_start_time", ScheduledPopupKind.WorkStart),
+                    ("daily_review_end_time", ScheduledPopupKind.WorkEnd)
                 }.Where(x =>
-                    values.GetValueOrDefault(x.Item1) == "1" &&
-                    TimeOnly.TryParse(values.GetValueOrDefault(x.Item2), out var time) &&
-                    now.TimeOfDay >= time.ToTimeSpan()).OrderBy(x => x.Item3).ToArray();
+                    TimeOnly.TryParseExact(values.GetValueOrDefault(x.Item1), "HH:mm", out var time) &&
+                    now.TimeOfDay >= time.ToTimeSpan()).OrderBy(x => x.Item2).ToArray();
             var candidate = candidates.LastOrDefault();
-            if (candidate != default && settings.TryMarkScheduledPopupShown(date, candidate.Item3, now))
-                context.Post(_ => ScheduledPopup?.Invoke(candidate.Item3), null);
+            if (candidate != default && settings.TryMarkScheduledPopupShown(date, candidate.Item2, now))
+                context.Post(_ => ScheduledPopup?.Invoke(candidate.Item2), null);
         }
 
         Reschedule();

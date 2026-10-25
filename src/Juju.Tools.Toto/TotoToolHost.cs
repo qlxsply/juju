@@ -16,7 +16,6 @@ public sealed class TotoToolHost : IDisposable
     private readonly ItemRepository items;
     private readonly SettingsRepository settings;
     private readonly WorkCalendarRepository repository;
-    private readonly WorkCalendarService calendar;
     private readonly ReminderScheduler scheduler;
     private readonly AppLog log;
     private readonly SynchronizationContext ui;
@@ -42,14 +41,17 @@ public sealed class TotoToolHost : IDisposable
     public string? InitializationError => initializationError?.Message;
     public bool EnsureReady() => TryStart();
     private bool TryRegisterHotkey(string candidate) => HotkeyChanging?.Invoke(candidate) ?? true;
+    private static bool OptionalTime(string? value) => string.IsNullOrWhiteSpace(value) ||
+        TimeOnly.TryParseExact(value, "HH:mm", out _);
 
     /// <summary>统一设置窗口保存 Toto INI，并更新后台提醒；不再创建第二个设置窗口。</summary>
     public void SaveToolSettings(IReadOnlyDictionary<string, string> values)
     {
         if (!int.TryParse(values.GetValueOrDefault("default_remind_minutes"), out var minutes) || minutes < 0 ||
-            !TimeOnly.TryParse(values.GetValueOrDefault("work_start_time"), out _) ||
-            !TimeOnly.TryParse(values.GetValueOrDefault("work_end_time"), out _))
-            throw new InvalidOperationException("提醒分钟必须为非负整数，上下班时间必须有效。");
+            !OptionalTime(values.GetValueOrDefault("daily_review_start_time")) ||
+            !OptionalTime(values.GetValueOrDefault("daily_review_end_time")) ||
+            values.GetValueOrDefault("daily_review_workdays") is not ("0" or "1"))
+            throw new InvalidOperationException("默认提醒分钟或每日事项盘点设置无效。");
         var shortcuts = values.Where(item => item.Key.StartsWith("shortcut_", StringComparison.Ordinal))
             .Select(item => item.Value).ToArray();
         var normalizedShortcuts = shortcuts.Select(value => WindowShortcut.TryNormalize(value, out var shortcut)
@@ -123,8 +125,7 @@ public sealed class TotoToolHost : IDisposable
         MigratedAutoStartEnabled = importedSettings && settings.Load().GetValueOrDefault("auto_start") == "1";
         if (importedSettings) RemoveLegacyStartupShortcut();
         repository = new WorkCalendarRepository(new HolidayCalendarDownloadService(paths));
-        calendar = new WorkCalendarService(repository);
-        scheduler = new ReminderScheduler(items, settings, calendar, ui);
+        scheduler = new ReminderScheduler(items, settings, ui);
         scheduler.DueReminders += due => DueReminders?.Invoke(due);
         scheduler.ScheduledPopup += kind => ScheduledPopup?.Invoke(kind);
         // 网络下载失败时不能使 Juju/JSON 无法启动；Toto 保留严格日历校验并定时重试。

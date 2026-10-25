@@ -13,8 +13,8 @@ internal sealed class SettingsRepository(AppPaths paths)
         ["hotkey"] = "None", ["shortcut_add"] = "Alt+A", ["shortcut_history"] = "Alt+Q",
         ["shortcut_refresh"] = "Alt+R", ["shortcut_detail"] = "Alt+D",
         ["shortcut_edit"] = "Alt+E", ["shortcut_complete"] = "Alt+F", ["shortcut_cancel"] = "Alt+C",
-        ["default_remind_minutes"] = "5", ["auto_start"] = "0", ["work_start_popup_enabled"] = "0",
-        ["work_end_popup_enabled"] = "0", ["work_start_time"] = "09:00", ["work_end_time"] = "18:00"
+        ["default_remind_minutes"] = "5", ["auto_start"] = "0", ["daily_review_start_time"] = "",
+        ["daily_review_end_time"] = "", ["daily_review_workdays"] = "0"
     };
 
     private readonly Lock gate = new();
@@ -27,12 +27,42 @@ internal sealed class SettingsRepository(AppPaths paths)
         {
             var result = new Dictionary<string, string>(Defaults, StringComparer.OrdinalIgnoreCase);
             var ini = IniFile.Load(paths.ConfigPath);
-            foreach (var (key, value) in ini.GetSection("General"))
+            var general = ini.GetSection("General");
+            foreach (var (key, value) in general)
                 if (Defaults.ContainsKey(key))
                     result[key] = value;
+            var migrated = false;
+            if (!general.ContainsKey("daily_review_start_time"))
+            {
+                result["daily_review_start_time"] = MigrateLegacyTime(general, "work_start_popup_enabled", "work_start_time");
+                migrated = true;
+            }
+            if (!general.ContainsKey("daily_review_end_time"))
+            {
+                result["daily_review_end_time"] = MigrateLegacyTime(general, "work_end_popup_enabled", "work_end_time");
+                migrated = true;
+            }
+            if (!general.ContainsKey("daily_review_workdays"))
+            {
+                result["daily_review_workdays"] = "0";
+                migrated = true;
+            }
+            result["daily_review_start_time"] = NormalizeOptionalTime(result["daily_review_start_time"]);
+            result["daily_review_end_time"] = NormalizeOptionalTime(result["daily_review_end_time"]);
+            result["daily_review_workdays"] = result["daily_review_workdays"] == "1" ? "1" : "0";
+            if (migrated) SaveCore(result);
             return result;
         }
     }
+
+    private static string MigrateLegacyTime(IReadOnlyDictionary<string, string> general, string enabledKey, string timeKey)
+    {
+        if (general.GetValueOrDefault(enabledKey) != "1") return "";
+        return NormalizeOptionalTime(general.GetValueOrDefault(timeKey));
+    }
+
+    private static string NormalizeOptionalTime(string? value) =>
+        TimeOnly.TryParse(value, out var time) ? time.ToString("HH:mm", CultureInfo.InvariantCulture) : "";
 
     /// <summary>确保配置文件存在；首次调用时写入默认设置。</summary>
     public void EnsureExists()

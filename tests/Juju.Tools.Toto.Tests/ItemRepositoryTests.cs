@@ -185,6 +185,31 @@ public sealed class ItemRepositoryTests : IDisposable
         Assert.Equal("Alt+S", IniFile.Load(path).Get("General", "shortcut_settings"));
     }
 
+    [Fact]
+    public void Legacy_shift_reminders_migrate_to_daily_review_times_and_keep_lead_minutes()
+    {
+        var paths = new AppPaths(Path.Combine(dataDirectory, "settings-migration"));
+        Directory.CreateDirectory(paths.DataDirectory);
+        var legacy = IniFile.Load(paths.ConfigPath);
+        legacy.Set("General", "default_remind_minutes", "12");
+        legacy.Set("General", "work_start_popup_enabled", "1");
+        legacy.Set("General", "work_start_time", "07:30");
+        legacy.Set("General", "work_end_popup_enabled", "0");
+        legacy.Set("General", "work_end_time", "18:00");
+        legacy.SaveAtomically(paths.ConfigPath);
+        var settings = new SettingsRepository(paths);
+
+        var migrated = settings.Load();
+
+        Assert.Equal("12", migrated["default_remind_minutes"]);
+        Assert.Equal("07:30", migrated["daily_review_start_time"]);
+        Assert.Equal("", migrated["daily_review_end_time"]);
+        Assert.Equal("0", migrated["daily_review_workdays"]);
+        var persisted = IniFile.Load(paths.ConfigPath);
+        Assert.Equal("07:30", persisted.Get("General", "daily_review_start_time"));
+        Assert.Equal("", persisted.Get("General", "daily_review_end_time"));
+    }
+
     [Theory]
     [InlineData("Alt+A", "Alt+A")]
     [InlineData("alt+ctrl+a", "Ctrl+Alt+A")]
@@ -267,18 +292,18 @@ public sealed class ItemRepositoryTests : IDisposable
     }
 
     [Fact]
-    public async Task Workday_popup_is_recorded_once_across_scheduler_resumes()
+    public async Task Daily_review_is_recorded_once_across_scheduler_resumes()
     {
         var paths = new AppPaths(dataDirectory);
         var calendar = new HolidayCalendarDownloadService(paths);
         var today = DateOnly.FromDateTime(DateTime.Today);
-        calendar.SaveLocal(today.Year, [new HolidayCalendarDay("调休工作日", today, false)]);
+        calendar.SaveLocal(today.Year, []);
         if (DateTime.Today.AddDays(7).Year != today.Year)
             calendar.SaveLocal(today.Year + 1, []);
         using var host = new TotoToolHost(new SynchronizationContext(), paths, importLegacy: false);
         var values = host.ToolSettings.ToDictionary(item => item.Key, item => item.Value);
-        values["work_start_popup_enabled"] = "1";
-        values["work_start_time"] = "00:00";
+        values["daily_review_start_time"] = "00:00";
+        values["daily_review_workdays"] = "0";
         host.SaveToolSettings(values);
         var shown = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var count = 0;

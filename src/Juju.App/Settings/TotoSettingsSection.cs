@@ -32,8 +32,9 @@ public sealed class TotoSettingsSection : ISettingsSection
     private readonly Action<string> _renderGlobalKey;
     private readonly Action<string> _renderDirectory;
     private readonly TextBox _minutes;
-    private readonly Action<string> _renderStartShift;
-    private readonly Action<string> _renderEndShift;
+    private readonly TotoTimePicker _dailyStart = new();
+    private readonly TotoTimePicker _dailyEnd = new();
+    private readonly CheckBox _weekdaysOnly = new();
     private readonly Dictionary<string, string> _shortcuts;
     private readonly Dictionary<string, Action<string>> _renderShortcuts = [];
     private readonly ComboBox _year = new() { Width = 112 };
@@ -72,14 +73,23 @@ public sealed class TotoSettingsSection : ISettingsSection
         var reminders = SettingsViewFactory.Group(page, "提醒设置");
         _minutes = SettingsViewFactory.Input(values.GetValueOrDefault("default_remind_minutes", "5"), 90);
         SettingsViewFactory.Row(reminders, "默认提前提醒分钟", "", _minutes);
-        var startEnabled = values.GetValueOrDefault("work_start_popup_enabled") == "1";
-        var startTime = values.GetValueOrDefault("work_start_time", "09:00");
-        var endEnabled = values.GetValueOrDefault("work_end_popup_enabled") == "1";
-        var endTime = values.GetValueOrDefault("work_end_time", "18:00");
-        _renderStartShift = SettingsViewFactory.Row(reminders, "上班时间提醒", startEnabled ? $"开 · {startTime}" : "关",
-            SettingsViewFactory.SoftButton("编辑…", (_, _) => EditShift(true)));
-        _renderEndShift = SettingsViewFactory.Row(reminders, "下班时间提醒", endEnabled ? $"开 · {endTime}" : "关",
-            SettingsViewFactory.SoftButton("编辑…", (_, _) => EditShift(false)));
+
+        var reviews = SettingsViewFactory.Group(page, "每日事项盘点");
+        _dailyStart.Time = values.GetValueOrDefault("daily_review_start_time");
+        _dailyEnd.Time = values.GetValueOrDefault("daily_review_end_time");
+        _dailyStart.TimeCommitted += (_, _) => SaveDailyReview();
+        _dailyEnd.TimeCommitted += (_, _) => SaveDailyReview();
+        SettingsViewFactory.Row(reviews, "开始盘点", "", ReviewTimeControl(_dailyStart));
+        SettingsViewFactory.Row(reviews, "结束盘点", "", ReviewTimeControl(_dailyEnd));
+        _weekdaysOnly = new CheckBox
+        {
+            Width = 15, Height = 15, VerticalAlignment = VerticalAlignment.Center,
+            IsChecked = values.GetValueOrDefault("daily_review_workdays") == "1",
+            ToolTip = "仅工作日提醒"
+        };
+        _weekdaysOnly.Checked += (_, _) => SaveDailyReview();
+        _weekdaysOnly.Unchecked += (_, _) => SaveDailyReview();
+        SettingsViewFactory.Row(reviews, "仅工作日提醒", "", _weekdaysOnly);
 
         _shortcuts = new Dictionary<string, string>(values, StringComparer.OrdinalIgnoreCase);
         var shortcutDefinitions = new[]
@@ -436,34 +446,35 @@ public sealed class TotoSettingsSection : ISettingsSection
             }
         });
 
-    private void EditShift(bool start)
+    private FrameworkElement ReviewTimeControl(TotoTimePicker picker)
     {
-        var settings = _toto.ToolSettings;
-        var enabledKey = start ? "work_start_popup_enabled" : "work_end_popup_enabled";
-        var timeKey = start ? "work_start_time" : "work_end_time";
-        var title = start ? "编辑上班时间提醒" : "编辑下班时间提醒";
-        var enabled = new CheckBox { Content = "启用工作日提醒", IsChecked = settings.GetValueOrDefault(enabledKey) == "1" };
-        var time = SettingsViewFactory.Input(settings.GetValueOrDefault(timeKey, start ? "09:00" : "18:00"), 120);
-        time.IsEnabled = enabled.IsChecked == true;
-        enabled.Checked += (_, _) => time.IsEnabled = true;
-        enabled.Unchecked += (_, _) => time.IsEnabled = false;
-        var body = new StackPanel();
-        body.Children.Add(enabled);
-        SettingsViewFactory.Row(body, start ? "上班时间" : "下班时间", "使用 24 小时制 HH:mm。", time);
-        _dialogs.EditGroup(title, "开关和时间作为一组设置；取消不会修改现有提醒。", body, () =>
+        var controls = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+        controls.Children.Add(picker);
+        var clear = new Button
         {
-            if (enabled.IsChecked == true && !TimeOnly.TryParse(time.Text, out _))
-                throw new InvalidOperationException("请输入有效的 24 小时制时间（HH:mm）。");
-            var values = _toto.ToolSettings.ToDictionary(item => item.Key, item => item.Value,
-                StringComparer.OrdinalIgnoreCase);
-            values[enabledKey] = enabled.IsChecked == true ? "1" : "0";
-            values[timeKey] = TimeOnly.TryParse(time.Text, out var parsed) ? parsed.ToString("HH:mm") : time.Text;
-            _toto.SaveToolSettings(values);
-            var summary = enabled.IsChecked == true
-                ? $"开 · {TimeOnly.Parse(values[timeKey]).ToString("HH:mm")}" : "关";
-            (start ? _renderStartShift : _renderEndShift)(summary);
-            return Task.CompletedTask;
-        });
+            Content = "清空", Width = 66, Height = 34, Margin = new Thickness(9, 0, 0, 0),
+            Style = (Style)Application.Current.Resources["TotoButton"]
+        };
+        clear.Click += (_, _) => { picker.Time = null; SaveDailyReview(); };
+        controls.Children.Add(clear);
+        return controls;
+    }
+
+    private void SaveDailyReview()
+    {
+        var old = _toto.ToolSettings;
+        var values = old.ToDictionary(item => item.Key, item => item.Value, StringComparer.OrdinalIgnoreCase);
+        values["daily_review_start_time"] = _dailyStart.Time ?? "";
+        values["daily_review_end_time"] = _dailyEnd.Time ?? "";
+        values["daily_review_workdays"] = _weekdaysOnly.IsChecked == true ? "1" : "0";
+        try { _toto.SaveToolSettings(values); }
+        catch (Exception ex)
+        {
+            _dailyStart.Time = old.GetValueOrDefault("daily_review_start_time");
+            _dailyEnd.Time = old.GetValueOrDefault("daily_review_end_time");
+            _weekdaysOnly.IsChecked = old.GetValueOrDefault("daily_review_workdays") == "1";
+            System.Windows.MessageBox.Show(ex.Message, "Toolbox 设置", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
     }
 
     private void EditHoliday(TotoHoliday? existing)

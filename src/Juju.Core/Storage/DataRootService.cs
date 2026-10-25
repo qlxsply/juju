@@ -30,13 +30,21 @@ public sealed class DataRootService(IAtomicFileWriter writer)
             if (!File.Exists(marker))
             {
                 if (Directory.EnumerateFileSystemEntries(root).Any())
-                    return new DataRootValidationResult(root, false, false,
-                        "A non-empty directory without juju.json cannot be initialized.");
-                if (!initializeEmptyDirectory)
+                {
+                    if (!initializeEmptyDirectory || !IsRecognizedLegacyDataRoot(root))
+                        return new DataRootValidationResult(root, false, false,
+                            $"The non-empty directory '{root}' is not a recognized Juju data root and cannot be initialized.");
+                    // Older Juju installations used this layout before the root marker was introduced.
+                    // Add the marker in place; existing user data is left untouched.
+                    await writer.WriteTextAsync(marker, JsonSerializer.Serialize(new { schemaVersion = 1 }),
+                        cancellationToken);
+                }
+                else if (!initializeEmptyDirectory)
                     return new DataRootValidationResult(root, false, true,
                         "The empty directory has not been initialized.");
-                await writer.WriteTextAsync(marker, JsonSerializer.Serialize(new { schemaVersion = 1 }),
-                    cancellationToken);
+                else
+                    await writer.WriteTextAsync(marker, JsonSerializer.Serialize(new { schemaVersion = 1 }),
+                        cancellationToken);
             }
             else
             {
@@ -77,6 +85,36 @@ public sealed class DataRootService(IAtomicFileWriter writer)
         if (result.IsValid) return;
         throw new JujuException(result.Path is null ? ErrorCode.DataRootUnavailable : ErrorCode.DataRootInvalid,
             result.Error ?? "The data root is invalid.");
+    }
+
+    private static bool IsRecognizedLegacyDataRoot(string root)
+    {
+        var entries = Directory.EnumerateFileSystemEntries(root).ToArray();
+        var allowedRootEntries = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "config.json", "tools", "app", "layout-migration-v1.json" };
+        if (entries.Any(entry => !allowedRootEntries.Contains(Path.GetFileName(entry)))) return false;
+
+        var config = Path.Combine(root, "config.json");
+        var tools = Path.Combine(root, "tools");
+        if (!File.Exists(config) || !Directory.Exists(tools)) return false;
+        var toolDirectories = Directory.EnumerateFileSystemEntries(tools).ToArray();
+        var supportedTools = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "json", "toto", "echo-http", "kairos" };
+        if (toolDirectories.Length == 0 || toolDirectories.Any(path =>
+                !Directory.Exists(path) || !supportedTools.Contains(Path.GetFileName(path)))) return false;
+
+        try
+        {
+            using var document = JsonDocument.Parse(File.ReadAllText(config));
+            return document.RootElement.ValueKind == JsonValueKind.Object &&
+                   document.RootElement.TryGetProperty("theme", out _) &&
+                   document.RootElement.TryGetProperty("toolKeys", out var keys) &&
+                   keys.ValueKind == JsonValueKind.Object;
+        }
+        catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException)
+        {
+            return false;
+        }
     }
 }
 

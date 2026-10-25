@@ -374,6 +374,28 @@ public sealed class JsonDocumentServiceTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Data_root_adds_marker_to_recognized_legacy_juju_layout_without_changing_data()
+    {
+        var root = Path.Combine(_root, "legacy-juju-root");
+        var jsonDocuments = Path.Combine(root, "tools", "json", "documents");
+        var toto = Path.Combine(root, "tools", "toto");
+        Directory.CreateDirectory(jsonDocuments);
+        Directory.CreateDirectory(toto);
+        Directory.CreateDirectory(Path.Combine(root, "app"));
+        var existingDocument = Path.Combine(jsonDocuments, "legacy.json");
+        var existingTotoData = Path.Combine(toto, "toto_ing.csv");
+        await File.WriteAllTextAsync(existingDocument, "{\"kept\":true}");
+        await File.WriteAllTextAsync(existingTotoData, "legacy toto data");
+        await File.WriteAllTextAsync(Path.Combine(root, "config.json"), "{\"theme\":0,\"toolKeys\":{}}");
+
+        await new DataRootService(new AtomicFileWriter()).EnsureInitializedAsync(root);
+
+        Assert.True(File.Exists(Path.Combine(root, "juju.json")));
+        Assert.Equal("{\"kept\":true}", await File.ReadAllTextAsync(existingDocument));
+        Assert.Equal("legacy toto data", await File.ReadAllTextAsync(existingTotoData));
+    }
+
+    [Fact]
     public async Task Reconcile_recovers_documents_after_metadata_corruption()
     {
         // 损坏元数据文件，同时保留真实文档文件，验证列表加载触发恢复路径。
