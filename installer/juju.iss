@@ -1,6 +1,8 @@
 ; Build after `dotnet publish src\Juju.App\Juju.App.csproj -c Release -r win-x64 --self-contained true -o artifacts\win-x64`.
 #define AppName "juju"
-#define AppVersion "0.1.0"
+#ifndef AppVersion
+  #define AppVersion "0.1.0"
+#endif
 #define AppPublisher "juju"
 #define AppExeName "Juju.App.exe"
 
@@ -15,7 +17,7 @@ DefaultGroupName=juju
 PrivilegesRequired=lowest
 DisableProgramGroupPage=yes
 OutputDir=..\artifacts\installer
-OutputBaseFilename=juju-setup-win-x64
+OutputBaseFilename=juju_v{#AppVersion}_setup_win64
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 UninstallDisplayName=juju
