@@ -188,7 +188,7 @@ public sealed class JsonDocumentServiceTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Legacy_file_copy_keeps_source_and_does_not_overwrite_existing_target()
+    public async Task Directory_copy_keeps_source_and_does_not_overwrite_existing_target()
     {
         var old = Path.Combine(_root, "legacy");
         var target = Path.Combine(_root, "next", "tools", "json");
@@ -261,29 +261,6 @@ public sealed class JsonDocumentServiceTests : IAsyncLifetime
         Assert.True(File.Exists(Path.Combine(target, "config.json")));
         Assert.True(Directory.Exists(_root));
         if (Directory.Exists(target)) Directory.Delete(target, true);
-    }
-
-    [Fact]
-    public async Task Old_installation_layout_is_copied_into_root_config_and_tools_without_removing_originals()
-    {
-        var install = Path.Combine(_root, "old-install");
-        var destination = Path.Combine(_root, "new-data");
-        Directory.CreateDirectory(Path.Combine(install, "data", "json", "documents"));
-        Directory.CreateDirectory(Path.Combine(install, "data", "toto"));
-        await new DataRootService(new AtomicFileWriter()).EnsureInitializedAsync(destination);
-        await File.WriteAllTextAsync(Path.Combine(install, "config.json"), "{\"theme\":1}");
-        await File.WriteAllTextAsync(Path.Combine(install, "data", "json", "documents", "draft.json"), "{}");
-        await File.WriteAllTextAsync(Path.Combine(install, "data", "toto", "config.ini"), "[General]");
-
-        await DataLayoutMigration.ImportLegacyAsync(new AtomicFileWriter(), default, install, destination);
-
-        Assert.Equal("{\"theme\":1}", await File.ReadAllTextAsync(Path.Combine(destination, "config.json")));
-        Assert.Equal("{}", await File.ReadAllTextAsync(Path.Combine(destination, "tools", "json", "documents", "draft.json")));
-        Assert.True(File.Exists(Path.Combine(destination, "tools", "toto", "config.ini")));
-        Assert.True(File.Exists(Path.Combine(install, "config.json")));
-        File.Delete(Path.Combine(destination, "tools", "json", "documents", "draft.json"));
-        await DataLayoutMigration.ImportLegacyAsync(new AtomicFileWriter(), default, install, destination);
-        Assert.False(File.Exists(Path.Combine(destination, "tools", "json", "documents", "draft.json")));
     }
 
     [Fact]
@@ -374,7 +351,7 @@ public sealed class JsonDocumentServiceTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Data_root_adds_marker_to_recognized_legacy_juju_layout_without_changing_data()
+    public async Task Data_root_rejects_recognized_legacy_layout_without_marker()
     {
         var root = Path.Combine(_root, "legacy-juju-root");
         var jsonDocuments = Path.Combine(root, "tools", "json", "documents");
@@ -388,9 +365,11 @@ public sealed class JsonDocumentServiceTests : IAsyncLifetime
         await File.WriteAllTextAsync(existingTotoData, "legacy toto data");
         await File.WriteAllTextAsync(Path.Combine(root, "config.json"), "{\"theme\":0,\"toolKeys\":{}}");
 
-        await new DataRootService(new AtomicFileWriter()).EnsureInitializedAsync(root);
+        var error = await Assert.ThrowsAsync<JujuException>(() =>
+            new DataRootService(new AtomicFileWriter()).EnsureInitializedAsync(root));
 
-        Assert.True(File.Exists(Path.Combine(root, "juju.json")));
+        Assert.Equal(ErrorCode.DataRootInvalid, error.Code);
+        Assert.False(File.Exists(Path.Combine(root, "juju.json")));
         Assert.Equal("{\"kept\":true}", await File.ReadAllTextAsync(existingDocument));
         Assert.Equal("legacy toto data", await File.ReadAllTextAsync(existingTotoData));
     }

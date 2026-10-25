@@ -28,7 +28,8 @@ public partial class TotoHistoryWindow : Window
         StatusFilter.ItemsSource = new[] { "全部状态", "已完成", "已取消" };
         StatusFilter.SelectedIndex = 0;
         PeriodPreset.ItemsSource = new[] { "不限", "本周", "上一周", "本月", "上一月", "本年", "上一年", "自定义" };
-        PeriodPreset.SelectedIndex = 0;
+        PeriodPreset.SelectedItem = "本月";
+        _criteria = CreateCriteria();
         PageSize.ItemsSource = new[] { 10, 20, 50, 100, 200, 500 };
         PageSize.SelectedItem = 10;
         PreviewKeyDown += (_, e) =>
@@ -81,27 +82,25 @@ public partial class TotoHistoryWindow : Window
             System.Windows.MessageBox.Show(this, "结束日期的起始值不能晚于结束值。", "历史事项");
             return;
         }
-        _criteria = new QueryCriteria
-        {
-            SearchText = SearchFilter.Text.Trim(),
-            Status = StatusFilter.SelectedIndex switch { 1 => ItemStatus.Completed, 2 => ItemStatus.Cancelled, _ => null },
-            EndedFrom = FromDate.SelectedDate?.Date,
-            EndedTo = ToDate.SelectedDate?.Date.AddDays(1)
-        };
+        _criteria = CreateCriteria();
         _page = 1;
         LoadPage();
     }
+
+    private QueryCriteria CreateCriteria() => new()
+    {
+        SearchText = SearchFilter.Text.Trim(),
+        Status = StatusFilter.SelectedIndex switch { 1 => ItemStatus.Completed, 2 => ItemStatus.Cancelled, _ => null },
+        EndedFrom = FromDate.SelectedDate?.Date,
+        EndedTo = ToDate.SelectedDate?.Date.AddDays(1)
+    };
 
     private void Reset_Click(object sender, RoutedEventArgs e)
     {
         SearchFilter.Clear();
         StatusFilter.SelectedIndex = 0;
-        _updatingPeriod = true;
-        PeriodPreset.SelectedIndex = 0;
-        FromDate.SelectedDate = null;
-        ToDate.SelectedDate = null;
-        _updatingPeriod = false;
-        _criteria = new QueryCriteria();
+        PeriodPreset.SelectedItem = "本月";
+        _criteria = CreateCriteria();
         _page = 1;
         LoadPage();
     }

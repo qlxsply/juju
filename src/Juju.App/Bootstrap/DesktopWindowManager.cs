@@ -134,7 +134,6 @@ public sealed class DesktopWindowManager : IWindowManager
                 _toto = new TotoMainWindow(toto, ShowHistory);
                 var window = _toto;
                 if (windowState.HasPlacement("toto")) windowState.Restore(window, "toto");
-                else RestoreLegacyTotoBounds(window);
                 window.Closed += (_, _) => { if (ReferenceEquals(_toto, window)) _toto = null; };
                 window.IsVisibleChanged += (_, _) =>
                 {
@@ -222,18 +221,6 @@ public sealed class DesktopWindowManager : IWindowManager
         window.Show();
         window.Activate();
         _toto?.RefreshItems();
-    }
-
-    private void RestoreLegacyTotoBounds(TotoMainWindow window)
-    {
-        if (toto.Settings.LoadWindowBounds("main") is not { } saved) return;
-        var area = System.Windows.Forms.Screen.FromRectangle(saved).WorkingArea;
-        if (!area.IntersectsWith(saved)) return;
-        window.Width = Math.Clamp(saved.Width, window.MinWidth, area.Width);
-        window.Height = Math.Clamp(saved.Height, window.MinHeight, area.Height);
-        window.Left = Math.Clamp(saved.Left, area.Left, Math.Max(area.Left, area.Right - window.Width));
-        window.Top = Math.Clamp(saved.Top, area.Top, Math.Max(area.Top, area.Bottom - window.Height));
-        window.WindowStartupLocation = System.Windows.WindowStartupLocation.Manual;
     }
 
     private void OnToolHidden(ToolId tool)

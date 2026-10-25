@@ -25,7 +25,6 @@ public sealed class SettingsService(IAtomicFileWriter writer) : ISettingsService
 
     private readonly string _path = ApplicationPaths.ConfigurationFile;
     public AppSettings Current { get; private set; } = AppSettings.CreateDefault();
-    public string? LegacyJsonShortcut { get; private set; }
 
     /// <summary>异步读取配置；不存在时写入默认值，取消令牌贯穿读取和首次保存。</summary>
     public async Task LoadAsync(CancellationToken cancellationToken = default)
@@ -37,9 +36,6 @@ public sealed class SettingsService(IAtomicFileWriter writer) : ISettingsService
         }
 
         var json = await File.ReadAllTextAsync(_path, cancellationToken);
-        using var document = JsonDocument.Parse(json);
-        if (document.RootElement.TryGetProperty("jsonShortcut", out var legacy) && legacy.ValueKind == JsonValueKind.String)
-            LegacyJsonShortcut = legacy.GetString();
         var loaded = JsonSerializer.Deserialize<AppSettings>(json, Options);
         if (loaded is not null) Current = loaded with
         {

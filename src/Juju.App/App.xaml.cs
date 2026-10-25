@@ -54,7 +54,6 @@ public partial class App
         _shutdown = new CancellationTokenSource();
         var writer = new AtomicFileWriter();
         await new DataRootService(writer).EnsureInitializedAsync(ApplicationPaths.DataRoot, _shutdown.Token);
-        await DataLayoutMigration.ImportLegacyAsync(writer, _shutdown.Token);
         var settings = new SettingsService(writer);
         await settings.LoadAsync(_shutdown.Token);
         ApplicationPaths.ConfigureToolDirectories(settings.Current.ToolDataDirectories);
@@ -65,10 +64,6 @@ public partial class App
         await storage.InitializeAsync(ApplicationPaths.DataRoot, _shutdown.Token);
         var jsonSettings = new JsonToolSettingsService(writer);
         await jsonSettings.LoadAsync(_shutdown.Token);
-        if (settings.LegacyJsonShortcut is { } oldJsonHotkey &&
-            !oldJsonHotkey.Equals("Ctrl+Alt+J", StringComparison.OrdinalIgnoreCase) &&
-            jsonSettings.Current.GlobalShortcut == GlobalHotkeyPolicy.None)
-            await jsonSettings.SaveAsync(jsonSettings.Current with { GlobalShortcut = oldJsonHotkey }, _shutdown.Token);
         var documents = new JsonDocumentService(ApplicationPaths.ToolDataDirectory("json"),
             new JsonMetadataStore(ApplicationPaths.ToolDataDirectory("json"), writer), writer,
             new DocumentRevisionService());
@@ -109,7 +104,6 @@ public partial class App
         services.AddSingleton<IStorageManager>(storage);
         services.AddSingleton(documents);
         // 先创建 TotoToolHost 再显示 Launcher：提醒调度独立于 Toto 主窗口一直运行。
-        // 旧版自启动配置迁移到 Juju 的同一个注册表启动项和宿主配置。
         services.AddSingleton(_ => new TotoToolHost(
             new System.Windows.Threading.DispatcherSynchronizationContext(Application.Current.Dispatcher)));
         services.AddSingleton<IToolRegistry, ToolRegistry>();
@@ -139,12 +133,7 @@ public partial class App
         _lifecycle = _services.GetRequiredService<IAppLifecycle>();
         await _services.GetRequiredService<WindowStateService>().LoadAsync(_shutdown.Token);
         _services.GetRequiredService<ThemeService>().Apply(settings.Current.Theme);
-        var toto = _services.GetRequiredService<TotoToolHost>();
-        if (toto.MigratedAutoStartEnabled && !settings.Current.StartAtLogin)
-        {
-            await settings.SaveAsync(settings.Current with { StartAtLogin = true }, _shutdown.Token);
-            _services.GetRequiredService<IStartupService>().SetEnabled(true);
-        }
+        _services.GetRequiredService<TotoToolHost>();
         _services.GetRequiredService<DesktopWindowManager>().InitializeLauncher();
         _ = _services.GetRequiredService<TrayService>();
         // 后台管道监听与 UI 生命周期并行运行；其取消令牌由退出流程统一触发。

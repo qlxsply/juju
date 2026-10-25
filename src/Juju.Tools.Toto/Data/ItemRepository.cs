@@ -41,10 +41,32 @@ internal sealed class ItemRepository(AppPaths paths)
         {
             page = Math.Max(1, page);
             pageSize = pageSize is 10 or 20 or 50 or 100 or 200 or 500 ? pageSize : 200;
-            var all = Filter(ReadHistory(), criteria).OrderByDescending(item => item.EndedAt)
+            var all = Filter(ReadHistory(criteria), criteria).OrderByDescending(item => item.EndedAt)
                 .ThenByDescending(item => item.CreatedSeq).ToArray();
             return new HistoryPage(all.Skip((page - 1) * pageSize).Take(pageSize).ToArray(), all.Length, page,
                 pageSize);
+        }
+    }
+
+    /// <summary>将结束月份不晚于截止月的当前历史记录归入月文件，并从当前文件移除。</summary>
+    public void ArchiveHistoryThrough(DateOnly cutoffMonth)
+    {
+        lock (gate)
+        {
+            var cutoffExclusive = cutoffMonth.AddMonths(1).ToDateTime(TimeOnly.MinValue);
+            var current = Read(paths.HistoryCsvPath, false);
+            var archived = current.Where(item => item.EndedAt < cutoffExclusive).ToArray();
+            if (archived.Length == 0) return;
+
+            foreach (var monthGroup in archived.GroupBy(item => item.EndedAt!.Value.Year * 100 + item.EndedAt.Value.Month))
+            {
+                var archivePath = paths.HistoryArchiveCsvPath(monthGroup.Key);
+                var merged = Read(archivePath, false).ToDictionary(item => item.Id, StringComparer.Ordinal);
+                foreach (var item in monthGroup) merged[item.Id] = item;
+                SaveHistory(archivePath, merged.Values);
+            }
+
+            SaveHistory(paths.HistoryCsvPath, current.Where(item => item.EndedAt >= cutoffExclusive));
         }
     }
 
@@ -133,7 +155,10 @@ internal sealed class ItemRepository(AppPaths paths)
     private List<TodoItem> ReadActive() => Read(paths.ActiveCsvPath, true);
 
     /// <summary>读取历史事项 CSV。</summary>
-    private List<TodoItem> ReadHistory() => Read(paths.HistoryCsvPath, false);
+    private List<TodoItem> ReadHistory(QueryCriteria? criteria = null) => HistoryArchivePaths(criteria)
+        .SelectMany(path => Read(path, false))
+        .Concat(Read(paths.HistoryCsvPath, false))
+        .GroupBy(item => item.Id, StringComparer.Ordinal).Select(group => group.Last()).ToList();
 
     /// <summary>按活动事项排序规则保存记录。</summary>
     private void SaveActive(IEnumerable<TodoItem> items) => CsvFile.WriteAtomically(paths.ActiveCsvPath, ActiveHeader,
@@ -141,41 +166,57 @@ internal sealed class ItemRepository(AppPaths paths)
             .Select(ToActiveRow));
 
     /// <summary>按历史事项排序规则保存记录。</summary>
-    private void SaveHistory(IEnumerable<TodoItem> items) => CsvFile.WriteAtomically(paths.HistoryCsvPath,
-        HistoryHeader,
-        items.OrderByDescending(item => item.EndedAt).ThenByDescending(item => item.CreatedSeq).Select(ToHistoryRow));
+    private void SaveHistory(IEnumerable<TodoItem> items) => SaveHistory(paths.HistoryCsvPath, items);
 
-    /// <summary>将 CSV 行转换为领域事项，并兼容旧版提醒分钟数列。</summary>
+    private void SaveHistory(string path, IEnumerable<TodoItem> items) => CsvFile.WriteAtomically(path, HistoryHeader,
+        items.OrderBy(item => item.EndedAt).ThenBy(item => item.CreatedSeq).Select(ToHistoryRow));
+
+    private IEnumerable<string> HistoryArchivePaths(QueryCriteria? criteria = null)
+    {
+        if (!Directory.Exists(paths.DataDirectory)) yield break;
+        foreach (var path in Directory.EnumerateFiles(paths.DataDirectory, "toto_end_*.csv"))
+        {
+            var name = Path.GetFileNameWithoutExtension(path);
+            const string prefix = "toto_end_";
+            if (name.Length != prefix.Length + 6 || !name.StartsWith(prefix, StringComparison.Ordinal)) continue;
+            var month = name[prefix.Length..];
+            if (!DateOnly.TryParseExact(month + "01", "yyyyMMdd", System.Globalization.CultureInfo.InvariantCulture,
+                    System.Globalization.DateTimeStyles.None, out var archiveStart)) continue;
+            var archiveEnd = archiveStart.AddMonths(1).ToDateTime(TimeOnly.MinValue);
+            var start = archiveStart.ToDateTime(TimeOnly.MinValue);
+            if (criteria?.EndedFrom is { } from && archiveEnd <= from) continue;
+            if (criteria?.EndedTo is { } to && start >= to) continue;
+            yield return path;
+        }
+    }
+
+    /// <summary>将当前 CSV 格式的行转换为领域事项。</summary>
     private static List<TodoItem> Read(string path, bool active)
     {
         var rows = CsvFile.Read(path);
         if (rows.Count == 0) return [];
-        var legacy = rows[0].Count >= 4 && rows[0][3] == "提前提醒分钟数";
         var items = new List<TodoItem>();
         foreach (var row in rows.Skip(1))
         {
             if (row.All(string.IsNullOrEmpty)) continue;
             try
             {
-                var offset = legacy ? 1 : 0;
-                if (row.Count < 8 + offset || !long.TryParse(row[5 + offset], out var sequence) ||
-                    DateTimeText.Read(row[4 + offset]) is not { } created) continue;
+                if (row.Count < 8 || !long.TryParse(row[5], out var sequence) ||
+                    DateTimeText.Read(row[4]) is not { } created) continue;
                 var planned = DateTimeText.Read(row[2]);
-                var remind = DateTimeText.Read(row[3 + offset]);
-                if (legacy && remind is null && planned is not null && int.TryParse(row[3], out var minutes))
-                    remind = planned.Value.AddMinutes(-minutes);
-                var note = row.Count > 8 + offset ? row[^1] : "";
+                var remind = DateTimeText.Read(row[3]);
+                var note = row.Count > 8 ? row[^1] : "";
                 if (active)
                 {
                     var reminder = remind is null ? ReminderStatus.None :
-                        row[6 + offset] == "已提醒" ? ReminderStatus.Reminded : ReminderStatus.Pending;
+                        row[6] == "已提醒" ? ReminderStatus.Reminded : ReminderStatus.Pending;
                     items.Add(new TodoItem(row[0], row[1], planned, remind, created, sequence, ItemStatus.Active,
-                        reminder, DateTimeText.Read(row[7 + offset]), null, note));
+                        reminder, DateTimeText.Read(row[7]), null, note));
                 }
                 else
                 {
-                    var status = row[6 + offset] == "已取消" ? ItemStatus.Cancelled : ItemStatus.Completed;
-                    var ended = DateTimeText.Read(row[7 + offset]);
+                    var status = row[6] == "已取消" ? ItemStatus.Cancelled : ItemStatus.Completed;
+                    var ended = DateTimeText.Read(row[7]);
                     if (ended is not null)
                         items.Add(new TodoItem(row[0], row[1], planned, remind, created, sequence, status, null, null,
                             ended, note));

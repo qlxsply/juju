@@ -31,7 +31,6 @@ public sealed class TotoToolHost : IDisposable
     public event Func<string, bool>? HotkeyChanging;
     public string Hotkey => settings.Load().GetValueOrDefault("hotkey", GlobalHotkeyPolicy.None);
     public bool IsValidWindowShortcut(string value) => WindowShortcut.TryNormalize(value, out _);
-    public bool MigratedAutoStartEnabled { get; }
     public bool CalendarReady => ready;
     public IReadOnlyDictionary<string, string> ToolSettings => settings.Load();
     internal ItemRepository Items => items;
@@ -44,7 +43,7 @@ public sealed class TotoToolHost : IDisposable
     private static bool OptionalTime(string? value) => string.IsNullOrWhiteSpace(value) ||
         TimeOnly.TryParseExact(value, "HH:mm", out _);
 
-    /// <summary>统一设置窗口保存 Toto INI，并更新后台提醒；不再创建第二个设置窗口。</summary>
+    /// <summary>统一设置窗口保存 Toto JSON 配置，并更新后台提醒；不再创建第二个设置窗口。</summary>
     public void SaveToolSettings(IReadOnlyDictionary<string, string> values)
     {
         if (!int.TryParse(values.GetValueOrDefault("default_remind_minutes"), out var minutes) || minutes < 0 ||
@@ -102,28 +101,31 @@ public sealed class TotoToolHost : IDisposable
         if (ready) scheduler.Reschedule();
     }
 
-    public TotoToolHost(SynchronizationContext uiContext) : this(uiContext, new AppPaths(), importLegacy: true) { }
+    public TotoToolHost(SynchronizationContext uiContext) : this(uiContext, new AppPaths()) { }
 
-    internal TotoToolHost(SynchronizationContext uiContext, AppPaths paths, bool importLegacy)
+    internal TotoToolHost(SynchronizationContext uiContext, AppPaths paths)
     {
         ui = uiContext;
         log = new AppLog(paths.LogDirectory);
-        var importedSettings = importLegacy && ImportLegacyData(paths);
         items = new ItemRepository(paths);
         settings = new SettingsRepository(paths);
         items.EnsureFiles();
         settings.EnsureExists();
-        // 旧版自动写入的 Ctrl+Alt+Space 与新的工具箱默认入口冲突，迁移为“无直达热键”。
-        var legacyHotkey = settings.Load();
-        if (string.Equals(legacyHotkey.GetValueOrDefault("hotkey")?.Replace(" ", ""),
-                "Ctrl+Alt+Space", StringComparison.OrdinalIgnoreCase))
+        var cutoffMonth = new DateOnly(DateTime.Today.Year, DateTime.Today.Month, 1).AddMonths(-1);
+        var cutoffText = cutoffMonth.ToString("yyyyMM", System.Globalization.CultureInfo.InvariantCulture);
+        if (string.IsNullOrEmpty(settings.ArchiveProgressMonth) ||
+            string.CompareOrdinal(settings.ArchiveProgressMonth, cutoffText) < 0)
         {
-            var migrated = legacyHotkey.ToDictionary(pair => pair.Key, pair => pair.Value);
-            migrated["hotkey"] = GlobalHotkeyPolicy.None;
-            settings.Save(migrated);
+            try
+            {
+                items.ArchiveHistoryThrough(cutoffMonth);
+                settings.SaveArchiveProgressMonth(cutoffText);
+            }
+            catch (Exception ex)
+            {
+                log.Write($"Toto history archive failed; it will be retried on the next start: {ex}");
+            }
         }
-        MigratedAutoStartEnabled = importedSettings && settings.Load().GetValueOrDefault("auto_start") == "1";
-        if (importedSettings) RemoveLegacyStartupShortcut();
         repository = new WorkCalendarRepository(new HolidayCalendarDownloadService(paths));
         scheduler = new ReminderScheduler(items, settings, ui);
         scheduler.DueReminders += due => DueReminders?.Invoke(due);
@@ -177,53 +179,6 @@ public sealed class TotoToolHost : IDisposable
     private void TimeChanged(object? sender, EventArgs e)
     {
         if (TryStart()) scheduler.Resume();
-    }
-
-    /// <summary>只复制目标目录中尚不存在的旧数据，保留原 .toto 文件作为迁移备份。</summary>
-    internal static bool ImportLegacyData(AppPaths paths, string? oldDataDirectory = null)
-    {
-        var old = oldDataDirectory ??
-                  Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".toto");
-        if (!Directory.Exists(old)) return false;
-        Directory.CreateDirectory(paths.DataDirectory);
-        var importedSettings = false;
-        foreach (var name in new[] { "config.ini", "toto_ing.csv", "toto_end.csv" })
-        {
-            var source = Path.Combine(old, name);
-            var target = Path.Combine(paths.DataDirectory, name);
-            if (File.Exists(source) && !File.Exists(target))
-            {
-                File.Copy(source, target);
-                if (name == "config.ini") importedSettings = true;
-            }
-        }
-        foreach (var source in Directory.EnumerateFiles(old, "????.json"))
-        {
-            var target = Path.Combine(paths.DataDirectory, Path.GetFileName(source));
-            if (!File.Exists(target)) File.Copy(source, target);
-        }
-        return importedSettings;
-    }
-
-    private void RemoveLegacyStartupShortcut()
-    {
-        var shortcutPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Startup), "toto.lnk");
-        if (!File.Exists(shortcutPath)) return;
-        try
-        {
-            var shellType = Type.GetTypeFromProgID("WScript.Shell");
-            if (shellType is null) return;
-            dynamic shell = Activator.CreateInstance(shellType)!;
-            dynamic shortcut = shell.CreateShortcut(shortcutPath);
-            var target = (string)shortcut.TargetPath;
-            // 只移除旧 Toto 程序自己建立的入口，不删除同名但指向其他程序的快捷方式。
-            if (string.Equals(Path.GetFileName(target), "toto.exe", StringComparison.OrdinalIgnoreCase))
-                File.Delete(shortcutPath);
-        }
-        catch (Exception ex)
-        {
-            log.Write($"Could not remove legacy toto startup shortcut: {ex}");
-        }
     }
 
     public void Dispose()

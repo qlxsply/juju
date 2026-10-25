@@ -158,7 +158,8 @@ Launcher 显示与隐藏不是“重新打开页面”：`DesktopWindowManager.I
 <数据根>/tools/json/metadata.json        文档元数据
 <数据根>/tools/json/documents/*.json     文档内容
 <数据根>/tools/json/.trash/              删除后的回收目录
-<数据根>/tools/toto/config.ini           Toto 工具设置
+<数据根>/tools/toto/config.json          Toto 工具设置、盘点弹窗标记和归档进度
+<数据根>/tools/toto/toto_end_yyyyMM.csv  按结束月份归档的历史事项
 ```
 
 `JsonDocumentService` 是 JSON 工具的应用服务。它实现：
@@ -220,17 +221,17 @@ Monaco 文本变化
 
 ### 4.5 Toto 日程提醒工具与 WinForms/WPF 共存
 
-原独立 Toto 被迁入 `src/Juju.Tools.Toto`，保留 WinForms 的事项编辑、详情、历史、提醒、
-工作日管理和设置窗体。Juju 的 `App.OnStartup` 创建 `TotoToolHost`，它负责初始化 CSV/INI、
+原独立 Toto 被迁入 `src/Juju.Tools.Toto`，使用 WPF 事项编辑、详情、历史和提醒窗口。
+Juju 的 `App.OnStartup` 创建 `TotoToolHost`，它负责初始化 CSV/JSON、
 节假日日历和 `ReminderScheduler`；即使 Toto 主窗体隐藏，也有单次 Timer 在后台调度并自动弹出提醒。
 
 工具入口链：Launcher 的 Toto 按钮或专属热键 -> `DesktopWindowManager.ShowTool(ToolId.Toto)` ->
-`TotoToolHost.ShowMain()` -> 原 `MainForm`。设置页中修改 Toto 热键时先由 Launcher 所属的
-`GlobalShortcutService` 试注册，再保存 Toto 的 `config.ini`；Toto 内的“开机自启”路由到 Juju 的
-唯一启动项，进程只有一个 `TrayService` / `NotifyIcon`。
+`TotoMainWindow`。设置页中修改 Toto 热键时先由 Launcher 所属的
+`GlobalShortcutService` 试注册，再保存 Toto 的 `config.json`；进程只有一个 `TrayService` / `NotifyIcon`。
 
-数据写入 `<数据根>/tools/toto/`，迁移时从旧 `%USERPROFILE%/.toto/` 只复制缺失文件，
-保留源目录。若节假日日历下载失败，Toto 不采用不准确的周末替代规则，后台每五分钟重试，
+数据写入 `<数据根>/tools/toto/`。每月启动时历史 CSV 按结束月份归档，进度保存在 `config.json`；
+历史查询合并所需月份的归档和当前 CSV。应用不导入旧安装目录、旧配置或旧 CSV 格式。
+若节假日日历下载失败，Toto 不采用不准确的周末替代规则，后台每五分钟重试，
 不会导致 Juju 和 JSON 无法启动。更详细的功能、文件和快捷键列表见
 `src/Juju.Tools.Toto/README.md`。
 

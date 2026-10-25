@@ -100,26 +100,6 @@ public sealed class ItemRepositoryTests : IDisposable
     }
 
     [Fact]
-    public void Migration_copies_existing_toto_files_without_overwriting_juju_data()
-    {
-        var legacy = Path.Combine(dataDirectory, "legacy");
-        var target = Path.Combine(dataDirectory, "juju");
-        Directory.CreateDirectory(legacy);
-        Directory.CreateDirectory(target);
-        File.WriteAllText(Path.Combine(legacy, "config.ini"), "legacy settings");
-        File.WriteAllText(Path.Combine(legacy, "toto_ing.csv"), "legacy items");
-        File.WriteAllText(Path.Combine(legacy, "2026.json"), "legacy holidays");
-        File.WriteAllText(Path.Combine(target, "toto_ing.csv"), "current items");
-
-        Assert.True(TotoToolHost.ImportLegacyData(new AppPaths(target), legacy));
-
-        Assert.Equal("legacy settings", File.ReadAllText(Path.Combine(target, "config.ini")));
-        Assert.Equal("current items", File.ReadAllText(Path.Combine(target, "toto_ing.csv")));
-        Assert.Equal("legacy holidays", File.ReadAllText(Path.Combine(target, "2026.json")));
-        Assert.True(File.Exists(Path.Combine(legacy, "toto_ing.csv")));
-    }
-
-    [Fact]
     public void Toto_window_icon_is_embedded_in_the_integrated_tool()
     {
         Assert.Contains("Juju.Tools.Toto.toto.ico", typeof(TotoToolHost).Assembly.GetManifestResourceNames());
@@ -148,13 +128,13 @@ public sealed class ItemRepositoryTests : IDisposable
     }
 
     [Fact]
-    public void Legacy_active_and_history_csv_keep_their_status_times_and_notes()
+    public void Current_active_and_history_csv_keep_their_status_times_and_notes()
     {
         var activeFile = Path.Combine(dataDirectory, "toto_ing.csv");
         var historyFile = Path.Combine(dataDirectory, "toto_end.csv");
         File.WriteAllText(activeFile,
-            "事项ID,事项内容,计划时间,提前提醒分钟数,提醒时间,创建时间,创建序号,提醒状态,响铃时间,备注\n" +
-            "legacy,原有事项,2026-10-26 16:00:00,5,,2026-10-22 10:00:00,1,未提醒,,原有备注\n");
+            "事项ID,事项内容,计划时间,提醒时间,创建时间,创建序号,提醒状态,响铃时间,备注\n" +
+            "current,当前事项,2026-10-26 16:00:00,2026-10-26 15:55:00,2026-10-22 10:00:00,1,未提醒,,当前备注\n");
         File.WriteAllText(historyFile,
             "事项ID,事项内容,计划时间,提醒时间,创建时间,创建序号,结束状态,结束时间,备注\n" +
             "old,结束事项,,,2026-10-20 08:00:00,2,已取消,2026-10-21 09:00:00,结束备注\n");
@@ -162,7 +142,7 @@ public sealed class ItemRepositoryTests : IDisposable
         var current = Assert.Single(repository.GetActive());
         Assert.Equal(new DateTime(2026, 10, 26, 15, 55, 0), current.RemindAt);
         Assert.Equal(ReminderStatus.Pending, current.ReminderStatus);
-        Assert.Equal("原有备注", current.Note);
+        Assert.Equal("当前备注", current.Note);
         var history = Assert.Single(repository.GetHistory(null, 1, 10).Items);
         Assert.Equal(ItemStatus.Cancelled, history.Status);
         Assert.Equal(new DateTime(2026, 10, 21, 9, 0, 0), history.EndedAt);
@@ -170,44 +150,51 @@ public sealed class ItemRepositoryTests : IDisposable
     }
 
     [Fact]
-    public void Removed_settings_shortcut_is_ignored_without_erasing_other_ini_values()
+    public void Settings_are_persisted_as_json_and_unknown_setting_keys_are_not_loaded()
     {
         var settings = new SettingsRepository(new AppPaths(dataDirectory));
         settings.EnsureExists();
-        var path = Path.Combine(dataDirectory, "config.ini");
-        var ini = IniFile.Load(path);
-        ini.Set("General", "shortcut_settings", "Alt+S");
-        ini.SaveAtomically(path);
+        var path = Path.Combine(dataDirectory, "config.json");
+        File.WriteAllText(path,
+            "{\"settings\":{\"hotkey\":\"None\",\"shortcut_settings\":\"Alt+S\"},\"scheduledPopups\":{},\"archiveProgressMonth\":\"\"}");
 
         var values = settings.Load();
         Assert.False(values.ContainsKey("shortcut_settings"));
         Assert.Equal("Alt+A", values["shortcut_add"]);
-        Assert.Equal("Alt+S", IniFile.Load(path).Get("General", "shortcut_settings"));
+        Assert.Equal("", settings.ArchiveProgressMonth);
+        Assert.Contains("archiveProgressMonth", File.ReadAllText(path));
     }
 
     [Fact]
-    public void Legacy_shift_reminders_migrate_to_daily_review_times_and_keep_lead_minutes()
+    public void Archive_progress_month_is_persisted_in_json()
     {
-        var paths = new AppPaths(Path.Combine(dataDirectory, "settings-migration"));
-        Directory.CreateDirectory(paths.DataDirectory);
-        var legacy = IniFile.Load(paths.ConfigPath);
-        legacy.Set("General", "default_remind_minutes", "12");
-        legacy.Set("General", "work_start_popup_enabled", "1");
-        legacy.Set("General", "work_start_time", "07:30");
-        legacy.Set("General", "work_end_popup_enabled", "0");
-        legacy.Set("General", "work_end_time", "18:00");
-        legacy.SaveAtomically(paths.ConfigPath);
+        var paths = new AppPaths(Path.Combine(dataDirectory, "archive-settings"));
         var settings = new SettingsRepository(paths);
+        settings.EnsureExists();
 
-        var migrated = settings.Load();
+        settings.SaveArchiveProgressMonth("202609");
 
-        Assert.Equal("12", migrated["default_remind_minutes"]);
-        Assert.Equal("07:30", migrated["daily_review_start_time"]);
-        Assert.Equal("", migrated["daily_review_end_time"]);
-        Assert.Equal("0", migrated["daily_review_workdays"]);
-        var persisted = IniFile.Load(paths.ConfigPath);
-        Assert.Equal("07:30", persisted.Get("General", "daily_review_start_time"));
-        Assert.Equal("", persisted.Get("General", "daily_review_end_time"));
+        Assert.Equal("202609", settings.ArchiveProgressMonth);
+        Assert.Contains("\"archiveProgressMonth\": \"202609\"", File.ReadAllText(paths.ConfigPath));
+    }
+
+    [Fact]
+    public void Startup_archives_through_previous_month_and_records_progress()
+    {
+        var paths = new AppPaths(dataDirectory);
+        var cutoff = new DateOnly(DateTime.Today.Year, DateTime.Today.Month, 1).AddMonths(-1);
+        var oldMonth = cutoff.AddMonths(-1);
+        EndAt("startup-archive", oldMonth.AddDays(2).ToDateTime(new TimeOnly(12, 0)));
+        var calendar = new HolidayCalendarDownloadService(paths);
+        calendar.SaveLocal(DateTime.Today.Year, []);
+        if (DateTime.Today.AddDays(7).Year != DateTime.Today.Year)
+            calendar.SaveLocal(DateTime.Today.Year + 1, []);
+
+        using var host = new TotoToolHost(new SynchronizationContext(), paths);
+
+        Assert.Equal(cutoff.ToString("yyyyMM"), host.Settings.ArchiveProgressMonth);
+        Assert.Single(CsvFile.Read(paths.HistoryArchiveCsvPath(oldMonth.Year * 100 + oldMonth.Month)).Skip(1));
+        Assert.Single(CsvFile.Read(paths.HistoryCsvPath));
     }
 
     [Fact]
@@ -253,7 +240,7 @@ public sealed class ItemRepositoryTests : IDisposable
         calendar.SaveLocal(DateTime.Today.Year, []);
         if (DateTime.Today.AddDays(7).Year != DateTime.Today.Year)
             calendar.SaveLocal(DateTime.Today.Year + 1, []);
-        using var host = new TotoToolHost(new SynchronizationContext(), paths, importLegacy: false);
+        using var host = new TotoToolHost(new SynchronizationContext(), paths);
         Assert.True(host.EnsureReady());
         host.Items.Add(Item("due", "需要提醒", DateTime.Now.AddMinutes(-1)));
         var notifications = new List<TodoItem>();
@@ -294,6 +281,39 @@ public sealed class ItemRepositoryTests : IDisposable
     }
 
     [Fact]
+    public void Archive_moves_records_through_cutoff_month_and_history_queries_all_months()
+    {
+        EndAt("aug-late", new DateTime(2026, 8, 30, 12, 0, 0));
+        EndAt("aug-early", new DateTime(2026, 8, 2, 12, 0, 0));
+        EndAt("sep", new DateTime(2026, 9, 15, 12, 0, 0));
+        EndAt("oct", new DateTime(2026, 10, 2, 12, 0, 0));
+
+        repository.ArchiveHistoryThrough(new DateOnly(2026, 9, 1));
+
+        Assert.Equal(["aug-early", "aug-late"], CsvFile.Read(new AppPaths(dataDirectory)
+            .HistoryArchiveCsvPath(202608)).Skip(1).Select(row => row[0]).ToArray());
+        Assert.Equal(["sep"], CsvFile.Read(new AppPaths(dataDirectory)
+            .HistoryArchiveCsvPath(202609)).Skip(1).Select(row => row[0]).ToArray());
+        Assert.Equal(["oct"], CsvFile.Read(new AppPaths(dataDirectory).HistoryCsvPath)
+            .Skip(1).Select(row => row[0]).ToArray());
+
+        var history = repository.GetHistory(null, 1, 10);
+        Assert.Equal(4, history.TotalCount);
+        Assert.Equal(["oct", "sep", "aug-late", "aug-early"], history.Items.Select(item => item.Id).ToArray());
+        var august = repository.GetHistory(new QueryCriteria
+        {
+            EndedFrom = new DateTime(2026, 8, 1), EndedTo = new DateTime(2026, 9, 1)
+        }, 1, 10);
+        Assert.Equal(["aug-late", "aug-early"], august.Items.Select(item => item.Id).ToArray());
+    }
+
+    private void EndAt(string id, DateTime endedAt)
+    {
+        repository.Add(Item(id, id));
+        Assert.True(repository.End(id, ItemStatus.Completed, "", endedAt));
+    }
+
+    [Fact]
     public async Task Startup_resumes_an_existing_due_reminder_without_opening_a_window()
     {
         var paths = new AppPaths(dataDirectory);
@@ -302,7 +322,7 @@ public sealed class ItemRepositoryTests : IDisposable
         if (DateTime.Today.AddDays(7).Year != DateTime.Today.Year)
             calendar.SaveLocal(DateTime.Today.Year + 1, []);
         repository.Add(Item("restored", "重启后到期", DateTime.Now.AddMinutes(-1)));
-        using var host = new TotoToolHost(new SynchronizationContext(), paths, importLegacy: false);
+        using var host = new TotoToolHost(new SynchronizationContext(), paths);
         var delivered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         host.DueReminders += due =>
         {
@@ -323,7 +343,7 @@ public sealed class ItemRepositoryTests : IDisposable
         calendar.SaveLocal(today.Year, []);
         if (DateTime.Today.AddDays(7).Year != today.Year)
             calendar.SaveLocal(today.Year + 1, []);
-        using var host = new TotoToolHost(new SynchronizationContext(), paths, importLegacy: false);
+        using var host = new TotoToolHost(new SynchronizationContext(), paths);
         var values = host.ToolSettings.ToDictionary(item => item.Key, item => item.Value);
         values["daily_review_start_time"] = "00:00";
         values["daily_review_workdays"] = "0";
@@ -350,7 +370,7 @@ public sealed class ItemRepositoryTests : IDisposable
         calendar.SaveLocal(DateTime.Today.Year, []);
         if (DateTime.Today.AddDays(7).Year != DateTime.Today.Year)
             calendar.SaveLocal(DateTime.Today.Year + 1, []);
-        using var host = new TotoToolHost(new SynchronizationContext(), paths, importLegacy: false);
+        using var host = new TotoToolHost(new SynchronizationContext(), paths);
         var values = host.ToolSettings.ToDictionary(item => item.Key, item => item.Value);
         values["daily_review_start_time"] = "00:00";
         values["daily_review_end_time"] = "00:00";

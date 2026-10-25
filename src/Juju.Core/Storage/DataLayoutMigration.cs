@@ -2,29 +2,9 @@ using System.Security.Cryptography;
 
 namespace Juju.Core.Storage;
 
-/// <summary>旧版数据仅在新位置缺失时迁入；源文件保留，单个文件写完并验证后才发布。</summary>
+/// <summary>在用户主动更换数据目录时复制缺少的文件；源文件保留，单个文件验证后再发布。</summary>
 public static class DataLayoutMigration
 {
-    public static async Task ImportLegacyAsync(IAtomicFileWriter writer, CancellationToken cancellationToken = default,
-        string? installDirectory = null, string? dataRoot = null)
-    {
-        var install = installDirectory ?? ApplicationPaths.InstallDirectory;
-        var root = dataRoot ?? ApplicationPaths.DataRoot;
-        var marker = Path.Combine(root, "layout-migration-v1.json");
-        if (File.Exists(marker)) return;
-        var config = Path.Combine(root, "config.json");
-        var oldConfig = Path.Combine(install, "config.json");
-        if (File.Exists(oldConfig) && !File.Exists(config))
-            await writer.WriteTextAsync(config,
-                await File.ReadAllTextAsync(oldConfig, cancellationToken), cancellationToken);
-
-        var oldRoot = Path.Combine(install, "data");
-        foreach (var name in new[] { "json", "toto" })
-            await CopyMissingAsync(Path.Combine(oldRoot, name),
-                Path.Combine(root, "tools", name), cancellationToken);
-        await writer.WriteTextAsync(marker, "{\"completed\":true}", cancellationToken);
-    }
-
     public static async Task CopyMissingAsync(string source, string destination, CancellationToken cancellationToken = default)
     {
         if (!Directory.Exists(source)) return;

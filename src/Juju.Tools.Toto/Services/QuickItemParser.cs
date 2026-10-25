@@ -34,7 +34,7 @@ internal static class QuickItemParser
         if (!TryParsePlan(token, referenceTime ?? DateTime.Now, out var plan, out error)) return false;
 
         var minutes = defaultMinutes;
-        // Keep reading the legacy optional @minutes suffix; the quick-entry UI uses the simpler two-part syntax.
+        // An optional third segment overrides the configured default reminder lead time.
         if (parts.Length == 3 && (!int.TryParse(parts[2], out minutes) || minutes < 0))
         {
             error = "提前提醒分钟数必须是非负整数。";

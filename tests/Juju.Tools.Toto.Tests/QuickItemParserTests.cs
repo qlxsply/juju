@@ -73,7 +73,7 @@ public sealed class QuickItemParserTests
     }
 
     [Fact]
-    public void Preserves_legacy_minutes_override()
+    public void Explicit_reminder_minutes_override_configured_default()
     {
         Assert.True(QuickItemParser.TryParse("会议 @1600@10", 5, out _, out var plan, out var remind,
             out _, Reference));
