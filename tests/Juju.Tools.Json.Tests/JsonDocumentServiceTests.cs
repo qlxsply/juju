@@ -188,6 +188,10 @@ public sealed class JsonDocumentServiceTests : IAsyncLifetime
     }
 
     [Fact]
+    public void Fresh_install_shows_launcher_instead_of_starting_hidden_in_the_tray() =>
+        Assert.False(AppSettings.CreateDefault().StartMinimized);
+
+    [Fact]
     public async Task Directory_copy_keeps_source_and_does_not_overwrite_existing_target()
     {
         var old = Path.Combine(_root, "legacy");

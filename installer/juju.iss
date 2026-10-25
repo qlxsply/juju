@@ -12,6 +12,8 @@ AppPublisher={#AppPublisher}
 ; Juju stores its configuration and data beside the executable, so install per-user.
 DefaultDirName={localappdata}\Programs\juju
 DefaultGroupName=juju
+PrivilegesRequired=lowest
+DisableProgramGroupPage=yes
 OutputDir=..\artifacts\installer
 OutputBaseFilename=juju-setup-win-x64
 ArchitecturesAllowed=x64compatible
@@ -23,12 +25,12 @@ SolidCompression=yes
 [Files]
 Source: "..\artifacts\win-x64\*"; DestDir: "{app}"; Flags: recursesubdirs ignoreversion
 
-[Icons]
-Name: "{group}\juju"; Filename: "{app}\{#AppExeName}"
-Name: "{autodesktop}\juju"; Filename: "{app}\{#AppExeName}"; Tasks: desktopicon
-
 [Tasks]
-Name: "desktopicon"; Description: "创建桌面快捷方式"; Flags: unchecked
+Name: "desktopicon"; Description: "创建桌面快捷方式"
+
+[Icons]
+Name: "{group}\juju"; Filename: "{app}\{#AppExeName}"; WorkingDir: "{app}"
+Name: "{autodesktop}\juju"; Filename: "{app}\{#AppExeName}"; WorkingDir: "{app}"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\{#AppExeName}"; Description: "启动 juju"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\{#AppExeName}"; Parameters: "--show-launcher"; WorkingDir: "{app}"; Description: "启动 juju"; Flags: nowait postinstall skipifsilent

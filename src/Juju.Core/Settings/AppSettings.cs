@@ -17,7 +17,7 @@ public sealed record AppSettings(
     string LeaderShortcut = "Ctrl+Alt+Space",
     int LauncherTimeoutMilliseconds = 2000,
     ThemePreference Theme = ThemePreference.System,
-    bool StartMinimized = true,
+    bool StartMinimized = false,
     bool ShowToolNotifications = true,
     bool AutoHideLauncher = true,
     bool ReturnToLauncherOnToolClose = false,

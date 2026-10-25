@@ -56,6 +56,9 @@ public partial class App
         await new DataRootService(writer).EnsureInitializedAsync(ApplicationPaths.DataRoot, _shutdown.Token);
         var settings = new SettingsService(writer);
         await settings.LoadAsync(_shutdown.Token);
+        if (Array.Exists(e.Args, argument => string.Equals(argument, "--show-launcher",
+                StringComparison.OrdinalIgnoreCase)) && settings.Current.StartMinimized)
+            await settings.SaveAsync(settings.Current with { StartMinimized = false }, _shutdown.Token);
         ApplicationPaths.ConfigureToolDirectories(settings.Current.ToolDataDirectories);
         Directory.CreateDirectory(Path.Combine(ApplicationPaths.ToolDataDirectory("json"), "documents"));
         Directory.CreateDirectory(Path.Combine(ApplicationPaths.ToolDataDirectory("json"), ".trash"));

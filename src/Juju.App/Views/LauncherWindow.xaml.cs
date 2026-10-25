@@ -249,7 +249,7 @@ public partial class LauncherWindow : Window
 
     protected override void OnPreviewKeyDown(KeyEventArgs e)
     {
-        if (e.IsRepeat)
+        if (e.IsRepeat && e.Key is not (Key.Up or Key.Down))
         {
             e.Handled = true;
             return;
@@ -268,6 +268,13 @@ public partial class LauncherWindow : Window
             return;
         }
 
+        if (Keyboard.Modifiers == ModifierKeys.None && e.Key is Key.Up or Key.Down)
+        {
+            MoveToolFocus(e.Key == Key.Down);
+            e.Handled = true;
+            return;
+        }
+
         if (Keyboard.Modifiers == ModifierKeys.None &&
             e.Key is >= Key.A and <= Key.Z or >= Key.D0 and <= Key.D9)
         {
@@ -282,6 +289,16 @@ public partial class LauncherWindow : Window
         }
 
         base.OnPreviewKeyDown(e);
+    }
+
+    private void MoveToolFocus(bool down)
+    {
+        var rows = new[] { JsonRow, TotoRow, EchoRow, KairosRow };
+        var current = Array.FindIndex(rows, row => row.IsKeyboardFocusWithin);
+        var next = current < 0
+            ? down ? 0 : rows.Length - 1
+            : (current + (down ? 1 : -1) + rows.Length) % rows.Length;
+        Keyboard.Focus(rows[next]);
     }
 
     // 自定义标题栏的 Grid 是普通 WPF 客户区控件；DragMove 使用系统窗口移动操作。
