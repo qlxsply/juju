@@ -904,7 +904,20 @@ public partial class JsonToolWindow : Window
     private void Documents_PreviewKeyDown(object sender, KeyEventArgs e)
     {
         if (_mode != JsonViewMode.Edit || _renaming is not null || e.OriginalSource is WpfTextBox) return;
-        if (e.Key == Key.Delete && Keyboard.Modifiers == ModifierKeys.None)
+        if (Keyboard.Modifiers == ModifierKeys.None && e.Key is Key.Up or Key.Down)
+        {
+            var count = Documents.Items.Count;
+            if (count == 0) return;
+
+            var index = Documents.SelectedIndex;
+            var next = index < 0
+                ? e.Key == Key.Down ? 0 : count - 1
+                : (index + (e.Key == Key.Down ? 1 : -1) + count) % count;
+            Documents.SelectedIndex = next;
+            if (Documents.SelectedItem is { } selected) Documents.ScrollIntoView(selected);
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Delete && Keyboard.Modifiers == ModifierKeys.None)
         {
             e.Handled = true;
             _ = ExecuteAsync(JsonToolCommand.Delete);
