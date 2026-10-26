@@ -36,8 +36,6 @@
                         Click="Settings_Click" shell:WindowChrome.IsHitTestVisibleInChrome="True">
                     <Image Source="{StaticResource SettingsIcon}" Width="18" Height="18" IsHitTestVisible="False" />
                 </Button>
-                <Border BorderBrush="{StaticResource ToolboxLine}" BorderThickness="0,0,0,1"
-                        VerticalAlignment="Bottom" Height="1" IsHitTestVisible="False" />
             </Grid>
 
             <DockPanel Margin="11,0,11,0">

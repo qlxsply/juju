@@ -366,8 +366,6 @@
                                               StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
                                     </Button>
                                 </StackPanel>
-                                <Border BorderBrush="{StaticResource ToolboxLine}" BorderThickness="0,0,0,1"
-                                        Height="1" VerticalAlignment="Bottom" IsHitTestVisible="False" />
                             </Grid>
                             <Border x:Name="StatusBar" DockPanel.Dock="Bottom" Height="30" Background="#FBFCFE"
                                     BorderBrush="{StaticResource ToolboxLine}" BorderThickness="0,1,0,0">
