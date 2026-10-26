@@ -178,18 +178,18 @@
                 <MenuItem x:Name="DeleteMenuItem" Header="删除" Tag="Delete" Style="{StaticResource JsonMenuEntry}" Click="MenuCommand_Click" />
             </MenuItem>
             <MenuItem x:Name="EditMenu" Header="编辑" Style="{StaticResource JsonMenuItem}">
-                <MenuItem Header="格式化" Tag="Format" Style="{StaticResource JsonMenuEntry}" Click="MenuCommand_Click" />
-                <MenuItem Header="复制" Tag="CopyText" Style="{StaticResource JsonMenuEntry}" Click="MenuCommand_Click" />
-                <MenuItem Header="压缩复制" Tag="CopyMinified" Style="{StaticResource JsonMenuEntry}" Click="MenuCommand_Click" />
-                <MenuItem Header="复制文件" Tag="CopyFile" Style="{StaticResource JsonMenuEntry}" Click="MenuCommand_Click" />
+                <MenuItem x:Name="FormatMenuItem" Header="格式化" Tag="Format" Style="{StaticResource JsonMenuEntry}" Click="MenuCommand_Click" />
+                <MenuItem x:Name="CopyTextMenuItem" Header="复制" Tag="CopyText" Style="{StaticResource JsonMenuEntry}" Click="MenuCommand_Click" />
+                <MenuItem x:Name="CopyMinifiedMenuItem" Header="压缩复制" Tag="CopyMinified" Style="{StaticResource JsonMenuEntry}" Click="MenuCommand_Click" />
+                <MenuItem x:Name="CopyFileMenuItem" Header="复制文件" Tag="CopyFile" Style="{StaticResource JsonMenuEntry}" Click="MenuCommand_Click" />
             </MenuItem>
             <MenuItem x:Name="ViewMenu" Header="视图" Style="{StaticResource JsonMenuItem}">
-                <MenuItem Header="全部折叠" Tag="FoldAll" Style="{StaticResource JsonMenuEntry}" Click="MenuCommand_Click" />
-                <MenuItem Header="全部展开" Tag="UnfoldAll" Style="{StaticResource JsonMenuEntry}" Click="MenuCommand_Click" />
-                <MenuItem Header="逐层展开" Tag="UnfoldLevel" Style="{StaticResource JsonMenuEntry}" Click="MenuCommand_Click" />
+                <MenuItem x:Name="FoldAllMenuItem" Header="全部折叠" Tag="FoldAll" Style="{StaticResource JsonMenuEntry}" Click="MenuCommand_Click" />
+                <MenuItem x:Name="UnfoldAllMenuItem" Header="全部展开" Tag="UnfoldAll" Style="{StaticResource JsonMenuEntry}" Click="MenuCommand_Click" />
+                <MenuItem x:Name="UnfoldLevelMenuItem" Header="逐层展开" Tag="UnfoldLevel" Style="{StaticResource JsonMenuEntry}" Click="MenuCommand_Click" />
             </MenuItem>
             <MenuItem x:Name="ToolMenu" Header="工具" Style="{StaticResource JsonMenuItem}">
-                <MenuItem Header="文本对比" Tag="EnterDiff" Style="{StaticResource JsonMenuEntry}" Click="MenuCommand_Click" />
+                <MenuItem x:Name="EnterDiffMenuItem" Header="文本对比" Tag="EnterDiff" Style="{StaticResource JsonMenuEntry}" Click="MenuCommand_Click" />
             </MenuItem>
         </Menu>
         <Grid x:Name="CompareBar" DockPanel.Dock="Top" Height="44" Background="#FBFCFF"

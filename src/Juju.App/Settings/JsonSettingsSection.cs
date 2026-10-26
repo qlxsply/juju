@@ -78,12 +78,14 @@ public sealed class JsonSettingsSection : ISettingsSection
 
         _rows = JsonToolShortcuts.Definitions
             .Select(definition => new ShortcutRow(definition, settings.Current.Shortcuts[definition.Command])).ToList();
-        var basicRows = _rows.Where(row => row.SourceKind == JsonToolShortcutSource.Juju).ToArray();
+        var basicRows = _rows.Where(row => row.SourceKind == JsonToolShortcutSource.Juju &&
+                                            row.Command != JsonToolCommand.UnfoldLevel).ToArray();
         var basicRenderers = SettingsViewFactory.ShortcutGroup(panel, "基础快捷键",
             basicRows.Select(row => (row.Command.ToString(), row.CommandName, row.Shortcut,
                 (Action)(() => EditEditorShortcut(row)))));
         foreach (var row in basicRows) _renderShortcutRows[row.Command] = basicRenderers[row.Command.ToString()];
-        var editorRows = _rows.Where(row => row.SourceKind == JsonToolShortcutSource.Monaco).ToArray();
+        var editorRows = _rows.Where(row => row.SourceKind == JsonToolShortcutSource.Monaco ||
+                                             row.Command == JsonToolCommand.UnfoldLevel).ToArray();
         var editorRenderers = SettingsViewFactory.ShortcutGroup(panel, "编辑器快捷键",
             editorRows.Select(row => (row.Command.ToString(), row.CommandName, row.Shortcut,
                 (Action)(() => EditEditorShortcut(row)))));

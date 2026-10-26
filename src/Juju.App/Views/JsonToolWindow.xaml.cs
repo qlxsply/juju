@@ -1118,6 +1118,14 @@ public partial class JsonToolWindow : Window
         SaveMenuItem.InputGestureText = settings.Shortcuts[JsonToolCommand.Save];
         RenameMenuItem.InputGestureText = settings.Shortcuts[JsonToolCommand.Rename];
         DeleteMenuItem.InputGestureText = settings.Shortcuts[JsonToolCommand.Delete];
+        FormatMenuItem.InputGestureText = settings.Shortcuts[JsonToolCommand.Format];
+        CopyTextMenuItem.InputGestureText = settings.Shortcuts[JsonToolCommand.CopyText];
+        CopyMinifiedMenuItem.InputGestureText = settings.Shortcuts[JsonToolCommand.CopyMinified];
+        CopyFileMenuItem.InputGestureText = settings.Shortcuts[JsonToolCommand.CopyFile];
+        FoldAllMenuItem.InputGestureText = settings.Shortcuts[JsonToolCommand.FoldAll];
+        UnfoldAllMenuItem.InputGestureText = settings.Shortcuts[JsonToolCommand.UnfoldAll];
+        UnfoldLevelMenuItem.InputGestureText = settings.Shortcuts[JsonToolCommand.UnfoldLevel];
+        EnterDiffMenuItem.InputGestureText = settings.Shortcuts[JsonToolCommand.EnterDiff];
     }
 
     private async Task RefreshEditorConfigurationAsync()

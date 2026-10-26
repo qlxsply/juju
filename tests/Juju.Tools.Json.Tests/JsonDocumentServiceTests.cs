@@ -137,17 +137,27 @@ public sealed class JsonDocumentServiceTests : IAsyncLifetime
     }
 
     [Fact]
-    public void Json_shortcuts_default_to_the_overlap_plan()
+    public void Json_shortcuts_default_to_the_displayed_menu_and_settings_plan()
     {
-        // null 表示没有用户配置，Normalize 应生成完整默认快捷键方案。
         var shortcuts = JsonToolShortcuts.Normalize(null);
 
-        // 先校验命令总数，再校验代表性编辑器、列表和对比模式快捷键及其元数据来源/上下文。
         Assert.Equal(JsonToolShortcuts.Commands.Count, shortcuts.Count);
-        Assert.Equal("Ctrl+S", shortcuts[JsonToolCommand.Save]);
-        Assert.Equal("Ctrl+K Ctrl+0", shortcuts[JsonToolCommand.FoldAll]);
+        Assert.Equal("Alt+A", shortcuts[JsonToolCommand.New]);
+        Assert.Equal("Alt+S", shortcuts[JsonToolCommand.Save]);
+        Assert.Equal("Alt+F", shortcuts[JsonToolCommand.Format]);
+        Assert.Equal("Ctrl+C", shortcuts[JsonToolCommand.CopyText]);
+        Assert.Equal("Ctrl+Shift+C", shortcuts[JsonToolCommand.CopyMinified]);
+        Assert.Equal("Ctrl+Alt+Shift+C", shortcuts[JsonToolCommand.CopyFile]);
+        Assert.Equal("Alt+Q", shortcuts[JsonToolCommand.FoldAll]);
+        Assert.Equal("Alt+W", shortcuts[JsonToolCommand.UnfoldAll]);
+        Assert.Equal("Alt+E", shortcuts[JsonToolCommand.UnfoldLevel]);
+        Assert.Equal("Alt+D", shortcuts[JsonToolCommand.EnterDiff]);
         Assert.Equal("Escape", shortcuts[JsonToolCommand.ExitDiff]);
+        Assert.Equal("Alt+R", shortcuts[JsonToolCommand.Rename]);
+        Assert.Equal("Delete", shortcuts[JsonToolCommand.Delete]);
         Assert.Equal(JsonToolShortcutSource.Monaco, JsonToolShortcuts.GetDefinition(JsonToolCommand.Save).Source);
+        Assert.Equal(JsonToolShortcutContext.Editor,
+            JsonToolShortcuts.GetDefinition(JsonToolCommand.UnfoldLevel).Context);
         Assert.Equal(JsonToolShortcutContext.List, JsonToolShortcuts.GetDefinition(JsonToolCommand.Rename).Context);
     }
 
@@ -315,7 +325,7 @@ public sealed class JsonDocumentServiceTests : IAsyncLifetime
 
     [Theory]
     // 覆盖重复组合、保留系统组合、过多修饰键和错误加号写法等不可接受的快捷键输入。
-    [InlineData(JsonToolCommand.New, "Ctrl+S")]
+    [InlineData(JsonToolCommand.New, "Alt+S")]
     [InlineData(JsonToolCommand.New, "Alt+F4")]
     [InlineData(JsonToolCommand.New, "Ctrl+Alt+Delete")]
     [InlineData(JsonToolCommand.New, "Ctrl+Alt+Space")]
