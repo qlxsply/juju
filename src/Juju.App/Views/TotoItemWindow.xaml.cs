@@ -93,10 +93,45 @@ public partial class TotoItemWindow : Window
         };
         PreviewKeyDown += (_, e) =>
         {
-            if (e.Key != Key.Escape) return;
+            var key = e.Key == Key.System ? e.SystemKey : e.Key;
+            if (key == Key.Escape)
+            {
+                e.Handled = true;
+                Close();
+                return;
+            }
+
+            if (key != Key.Enter || FocusedNoteInput() is not { } note) return;
             e.Handled = true;
-            Close();
+            switch (Keyboard.Modifiers)
+            {
+                case ModifierKeys.None:
+                case ModifierKeys.Control:
+                    Save_Click(SaveButton, new RoutedEventArgs());
+                    break;
+                case ModifierKeys.Shift:
+                case ModifierKeys.Alt:
+                    InsertLineBreak(note);
+                    break;
+            }
         };
+    }
+
+    private TextBox? FocusedNoteInput()
+    {
+        if (Keyboard.FocusedElement is not TextBox textBox) return null;
+        if (_mode == TotoItemWindowMode.Edit && ReferenceEquals(textBox, NoteInput)) return textBox;
+        if ((_mode == TotoItemWindowMode.Complete || _mode == TotoItemWindowMode.Cancel) &&
+            ReferenceEquals(textBox, EndNote)) return textBox;
+        return null;
+    }
+
+    private static void InsertLineBreak(TextBox textBox)
+    {
+        var start = textBox.SelectionStart;
+        var lineBreak = Environment.NewLine;
+        textBox.SelectedText = lineBreak;
+        textBox.CaretIndex = start + lineBreak.Length;
     }
 
     private void LoadEdit(TodoItem item)
