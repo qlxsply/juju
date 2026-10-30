@@ -24,6 +24,8 @@ dotnet test Juju.sln
 
 阶段 1 完成后的复验：`dotnet test Juju.sln --no-restore -m:1` 为 96 passed（JSON 38、Toto 49、架构 5、路由/目录/生命周期 4）；`dotnet build Juju.sln -c Release --no-restore -m:1 -v:q` 成功，0 warnings / 0 errors。阶段 1 后的手动 UI 对照仍按下方清单执行。
 
+阶段 2 完成后的复验：`dotnet test Juju.sln --no-restore -m:1` 为 100 passed（JSON 38、Toto 52、架构 6、路由/目录/生命周期 4）；`dotnet build Juju.sln -c Release --no-restore -m:1 -v:q` 成功，0 warnings / 0 errors。手动 UI 对照仍需按下方清单执行。
+
 ## 当前项目引用基线
 
 `Juju.Architecture.Tests` 读取 `src/**/*.csproj`，精确锁定以下产品项目 DAG；测试项目自身不参与产品 DAG，也不引用产品项目：

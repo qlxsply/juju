@@ -5,8 +5,10 @@ using Juju.Tools.Json.Documents;
 using Juju.App.Settings;
 using Juju.App.Views;
 using Juju.Tools.Json.Settings;
+using Juju.Tools.Toto.Application;
+using Juju.Tools.Toto.Application.Items;
+using Juju.Tools.Toto.Application.Reminders;
 using Toto.App;
-using Toto.App.Domain;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Juju.App.Bootstrap;
@@ -22,6 +24,7 @@ public sealed class DesktopWindowManager : IAppWindowManager, IJsonToolWindow, I
     private readonly IJsonToolSettingsService jsonSettings;
     private readonly SettingsDialogService dialogs;
     private readonly TotoToolHost toto;
+    private readonly ITotoApplicationService totoApplication;
     private readonly IServiceProvider services;
     private LauncherWindow? _launcher;
     private SettingsWindow? _settings;
@@ -33,6 +36,7 @@ public sealed class DesktopWindowManager : IAppWindowManager, IJsonToolWindow, I
     public DesktopWindowManager(JsonDocumentService documents, ISettingsService settings,
         WindowStateService windowState, ThemeService themes, IJsonFileClipboard fileClipboard,
         IJsonToolSettingsService jsonSettings, SettingsDialogService dialogs, TotoToolHost toto,
+        ITotoApplicationService totoApplication,
         IServiceProvider services)
     {
         this.documents = documents;
@@ -43,6 +47,7 @@ public sealed class DesktopWindowManager : IAppWindowManager, IJsonToolWindow, I
         this.jsonSettings = jsonSettings;
         this.dialogs = dialogs;
         this.toto = toto;
+        this.totoApplication = totoApplication;
         this.services = services;
         toto.DueReminders += ShowDueReminders;
         toto.ScheduledPopup += ShowScheduledPopup;
@@ -55,7 +60,7 @@ public sealed class DesktopWindowManager : IAppWindowManager, IJsonToolWindow, I
     public void InitializeLauncher()
     {
         _launcher ??= new LauncherWindow(services.GetRequiredService<Juju.App.Tools.Contracts.IToolManager>(),
-            this, settings, themes, toto, jsonSettings);
+            this, settings, themes, totoApplication, jsonSettings);
 
         // Loaded 时 SizeToContent 已经算出真实高度；仅恢复拖动位置，不从旧配置覆盖自适应宽高。
         _launcher.Loaded += (_, _) => windowState.RestorePosition(_launcher, "launcher");
@@ -115,7 +120,7 @@ public sealed class DesktopWindowManager : IAppWindowManager, IJsonToolWindow, I
     {
         if (_toto is null)
         {
-            _toto = new TotoMainWindow(toto, ShowHistory);
+            _toto = new TotoMainWindow(totoApplication, ShowHistory);
             var window = _toto;
             if (windowState.HasPlacement("toto")) windowState.Restore(window, "toto");
             window.Closed += (_, _) => { if (ReferenceEquals(_toto, window)) _toto = null; };
@@ -171,30 +176,22 @@ public sealed class DesktopWindowManager : IAppWindowManager, IJsonToolWindow, I
     private void ShowHistory()
     {
         if (_toto is { IsVisible: true } owner)
-            new TotoHistoryWindow(toto) { Owner = owner }.ShowDialog();
+            new TotoHistoryWindow(totoApplication) { Owner = owner }.ShowDialog();
     }
 
-    private void ShowDueReminders(IReadOnlyList<TodoItem> due) =>
+    private void ShowDueReminders(IReadOnlyList<TotoItemSnapshot> due) =>
         ShowReminder(new TotoReminderWindow("Toto 提醒", due));
 
-    private void ShowScheduledPopup(ScheduledPopupKind kind)
+    private void ShowScheduledPopup(TotoScheduledPopupKind kind)
     {
-        var pending = toto.Items.GetActive();
-        if (kind == ScheduledPopupKind.WorkStart)
+        var pending = totoApplication.GetActiveItems();
+        if (kind == TotoScheduledPopupKind.WorkStart)
         {
             ShowReminder(new TotoReminderWindow("Toto - 今日待办盘点", pending, highlightTodayGreen: true));
             return;
         }
 
-        var today = DateTime.Today;
-        var criteria = new QueryCriteria
-        {
-            Status = ItemStatus.Completed, EndedFrom = today, EndedTo = today.AddDays(1)
-        };
-        var firstPage = toto.Items.GetHistory(criteria, 1, 500);
-        var completed = firstPage.Items.ToList();
-        for (var page = 2; completed.Count < firstPage.TotalCount; page++)
-            completed.AddRange(toto.Items.GetHistory(criteria, page, 500).Items);
+        var completed = totoApplication.GetCompletedItems(DateOnly.FromDateTime(DateTime.Today));
         ShowReminder(new TotoReminderWindow("Toto - 今日完成复盘", pending,
             completedItems: completed, highlightTodayRed: true));
     }

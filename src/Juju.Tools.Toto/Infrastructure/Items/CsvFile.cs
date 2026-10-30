@@ -1,6 +1,6 @@
 using System.Text;
 
-namespace Toto.App.Data;
+namespace Juju.Tools.Toto.Infrastructure.Items;
 
 /// <summary>读写应用使用的简化 CSV 格式，并以临时文件替换方式保存。</summary>
 internal static class CsvFile

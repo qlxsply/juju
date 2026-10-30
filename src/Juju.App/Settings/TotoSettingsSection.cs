@@ -6,8 +6,9 @@ using Juju.Core.Storage;
 using Juju.App.Views;
 using Juju.Core.Tools;
 using Juju.Tools.Json.Settings;
-using Toto.App;
 using Toto.App.Services;
+using Juju.Tools.Toto.Application;
+using Juju.Tools.Toto.Application.Calendar;
 using CheckBox = System.Windows.Controls.CheckBox;
 using ComboBox = System.Windows.Controls.ComboBox;
 using Orientation = System.Windows.Controls.Orientation;
@@ -23,7 +24,7 @@ namespace Juju.App.Settings;
 /// <summary>在同一 WPF 设置中心管理 Toto：每个独立字段即时提交，时段和日期等关联值用草稿弹窗。</summary>
 public sealed class TotoSettingsSection : ISettingsSection
 {
-    private readonly TotoToolHost _toto;
+    private readonly ITotoApplicationService _toto;
     private readonly ISettingsService _application;
     private readonly IJsonToolSettingsService _jsonSettings;
     private readonly DataDirectoryChangeService _dataChanges;
@@ -39,7 +40,7 @@ public sealed class TotoSettingsSection : ISettingsSection
     private readonly Dictionary<string, Action<string>> _renderShortcuts = [];
     private readonly ComboBox _year = new() { Width = 112 };
     private readonly StackPanel _holidayRows = new();
-    private readonly List<TotoHoliday> _calendarDays = [];
+    private readonly List<TotoHolidaySnapshot> _calendarDays = [];
     private readonly HashSet<DateOnly> _selectedHolidays = [];
     private readonly TextBlock _calendarStatus = new() { FontSize = 11, Foreground = System.Windows.Media.Brushes.SlateGray };
     private readonly TextBlock _calendarCount = new() { FontSize = 11, Foreground = System.Windows.Media.Brushes.SlateGray };
@@ -52,7 +53,8 @@ public sealed class TotoSettingsSection : ISettingsSection
     public string NavigationColor => "#409C95";
     public FrameworkElement View { get; }
 
-    public TotoSettingsSection(TotoToolHost toto, ISettingsService application, IJsonToolSettingsService jsonSettings,
+    public TotoSettingsSection(ITotoApplicationService toto, ISettingsService application,
+        IJsonToolSettingsService jsonSettings,
         DataDirectoryChangeService dataChanges, SettingsDialogService dialogs)
     {
         _toto = toto;
@@ -60,13 +62,13 @@ public sealed class TotoSettingsSection : ISettingsSection
         _jsonSettings = jsonSettings;
         _dataChanges = dataChanges;
         _dialogs = dialogs;
-        var values = toto.ToolSettings;
+        var values = toto.Settings;
         var page = SettingsViewFactory.Page();
 
         var entryRows = SettingsViewFactory.ShortcutGroup(page, "工具入口",
         [
             ("launcher", "主界面快捷键", application.Current.ToolKeys[nameof(ToolId.Toto)], (Action)EditLaunchKey),
-            ("global", "全局快捷键", toto.Hotkey, (Action)EditGlobalHotkey)
+            ("global", "全局快捷键", toto.GlobalHotkey, (Action)EditGlobalHotkey)
         ]);
         _renderLaunchKey = entryRows["launcher"];
         _renderGlobalKey = entryRows["global"];
@@ -301,7 +303,7 @@ public sealed class TotoSettingsSection : ISettingsSection
 
     public async Task SaveImmediateAsync(FrameworkElement source)
     {
-        var old = _toto.ToolSettings;
+        var old = _toto.Settings;
         var next = old.ToDictionary(item => item.Key, item => item.Value, StringComparer.OrdinalIgnoreCase);
         if (!ReferenceEquals(source, _minutes)) return;
             if (!int.TryParse(_minutes.Text, out var minutes) || minutes < 0)
@@ -310,7 +312,7 @@ public sealed class TotoSettingsSection : ISettingsSection
                 throw new InvalidOperationException("提前提醒分钟数必须为非负整数。");
         }
         next["default_remind_minutes"] = minutes.ToString();
-        try { _toto.SaveToolSettings(next); }
+        try { _toto.SaveSettings(next); }
         catch
         {
             _minutes.Text = old.GetValueOrDefault("default_remind_minutes", "5");
@@ -363,15 +365,15 @@ public sealed class TotoSettingsSection : ISettingsSection
 
     private void EditGlobalHotkey()
     {
-        var current = _toto.Hotkey;
+        var current = _toto.GlobalHotkey;
         _dialogs.EditShortcut("编辑快捷键 · Toto 全局直达", current, true, false, false,
             ValidateGlobalHotkey, async candidate =>
             {
-                var values = _toto.ToolSettings.ToDictionary(item => item.Key, item => item.Value,
+                var values = _toto.Settings.ToDictionary(item => item.Key, item => item.Value,
                     StringComparer.OrdinalIgnoreCase);
                 values["hotkey"] = candidate;
-                _toto.SaveToolSettings(values);
-                _renderGlobalKey(_toto.Hotkey);
+                _toto.SaveSettings(values);
+                _renderGlobalKey(_toto.GlobalHotkey);
             }, defaultValue: GlobalHotkeyPolicy.None);
     }
 
@@ -394,10 +396,10 @@ public sealed class TotoSettingsSection : ISettingsSection
         _dialogs.EditShortcut("编辑快捷键 · " + label, current, false, false, false,
             candidate => ValidateTotoLocalShortcut(key, candidate), async candidate =>
             {
-                var values = _toto.ToolSettings.ToDictionary(item => item.Key, item => item.Value,
+                var values = _toto.Settings.ToDictionary(item => item.Key, item => item.Value,
                     StringComparer.OrdinalIgnoreCase);
                 values[key] = candidate;
-                _toto.SaveToolSettings(values);
+                _toto.SaveSettings(values);
                 _shortcuts[key] = candidate;
                 _renderShortcuts[key](candidate);
                 await Task.CompletedTask;
@@ -407,12 +409,12 @@ public sealed class TotoSettingsSection : ISettingsSection
     private string? ValidateTotoLocalShortcut(string key, string candidate)
     {
         if (!WindowShortcut.TryNormalize(candidate, out var normalized)) return "快捷键格式无效。";
-        var global = new[] { _application.Current.LeaderShortcut, _jsonSettings.Current.GlobalShortcut, _toto.Hotkey }
+        var global = new[] { _application.Current.LeaderShortcut, _jsonSettings.Current.GlobalShortcut, _toto.GlobalHotkey }
             .Concat(_application.Current.ToolGlobalShortcuts.Values)
             .Where(value => !string.IsNullOrWhiteSpace(value) && value != GlobalHotkeyPolicy.None);
         if (global.Any(value => value.Equals(normalized, StringComparison.OrdinalIgnoreCase)))
             return "此按键已被应用或工具的全局热键占用。";
-        if (_toto.ToolSettings.Any(item => item.Key.StartsWith("shortcut_", StringComparison.Ordinal) &&
+        if (_toto.Settings.Any(item => item.Key.StartsWith("shortcut_", StringComparison.Ordinal) &&
             item.Key != key && WindowShortcut.TryNormalize(item.Value, out var existing) &&
             existing.Equals(normalized, StringComparison.OrdinalIgnoreCase)))
             return "与另一个 Toto 窗口快捷键冲突。";
@@ -463,12 +465,12 @@ public sealed class TotoSettingsSection : ISettingsSection
 
     private void SaveDailyReview()
     {
-        var old = _toto.ToolSettings;
+        var old = _toto.Settings;
         var values = old.ToDictionary(item => item.Key, item => item.Value, StringComparer.OrdinalIgnoreCase);
         values["daily_review_start_time"] = _dailyStart.Time ?? "";
         values["daily_review_end_time"] = _dailyEnd.Time ?? "";
         values["daily_review_workdays"] = _weekdaysOnly.IsChecked == true ? "1" : "0";
-        try { _toto.SaveToolSettings(values); }
+        try { _toto.SaveSettings(values); }
         catch (Exception ex)
         {
             _dailyStart.Time = old.GetValueOrDefault("daily_review_start_time");
@@ -478,7 +480,7 @@ public sealed class TotoSettingsSection : ISettingsSection
         }
     }
 
-    private void EditHoliday(TotoHoliday? existing)
+    private void EditHoliday(TotoHolidaySnapshot? existing)
     {
         var year = _year.SelectedItem is int selectedYear ? selectedYear : DateTime.Today.Year;
         var defaultDate = year == DateTime.Today.Year ? DateTime.Today : new DateTime(year, 1, 1);
@@ -509,7 +511,8 @@ public sealed class TotoSettingsSection : ISettingsSection
                     throw new InvalidOperationException("请选择日期并输入名称。");
                 if (_year.SelectedItem is not int year || selected.Year != year)
                     throw new InvalidOperationException("日期必须属于当前选择的年份。");
-                _toto.SaveHoliday(new TotoHoliday(name.Text.Trim(), DateOnly.FromDateTime(selected), type.SelectedIndex == 0));
+                _toto.SaveHoliday(new TotoHolidaySnapshot(name.Text.Trim(), DateOnly.FromDateTime(selected),
+                    type.SelectedIndex == 0));
                 RefreshCalendar();
                 return Task.CompletedTask;
             }, width: 380, saveText: existing is null ? "添加记录" : "保存");

@@ -1,4 +1,4 @@
-using Toto.App.Data;
+using Juju.Tools.Toto.Application.Ports;
 using Toto.App.Domain;
 using Timer = System.Threading.Timer;
 
@@ -8,8 +8,8 @@ namespace Toto.App.Services;
 /// <remarks>计时器和同步上下文属于需释放或线程关联的资源；关闭时必须调用 <see cref="Dispose"/>。</remarks>
 internal sealed class ReminderScheduler : IDisposable
 {
-    private readonly ItemRepository items;
-    private readonly SettingsRepository settings;
+    private readonly ITotoItemRepository items;
+    private readonly ITotoSettingsRepository settings;
     private readonly Timer timer;
     private readonly SynchronizationContext context;
     private bool locked;
@@ -21,7 +21,8 @@ internal sealed class ReminderScheduler : IDisposable
     public event Action<ScheduledPopupKind>? ScheduledPopup;
 
     /// <summary>创建调度器并捕获当前 UI 同步上下文，用于将通知切回 UI 线程。</summary>
-    public ReminderScheduler(ItemRepository items, SettingsRepository settings, SynchronizationContext uiContext)
+    public ReminderScheduler(ITotoItemRepository items, ITotoSettingsRepository settings,
+        SynchronizationContext uiContext)
     {
         this.items = items;
         this.settings = settings;

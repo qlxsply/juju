@@ -18,12 +18,12 @@ using Juju.App.Tools.Json;
 using Juju.App.Tools.Placeholders;
 using Juju.App.Tools.Routing;
 using Juju.App.Tools.Toto;
+using Juju.Tools.Toto.Application;
 using Juju.Platform.Windows.Startup;
 using Juju.Tools.Json.Documents;
 using Juju.Tools.Json.Metadata;
 using Juju.Tools.Json.Settings;
 using Juju.Tools.Json.Storage;
-using Toto.App;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Application = System.Windows.Application;
@@ -72,7 +72,8 @@ public partial class App
         var roots = new DataRootService(writer);
         var storage = new StorageManager(roots, writer);
         await storage.InitializeAsync(ApplicationPaths.DataRoot, _shutdown.Token);
-        var jsonSettings = new JsonToolSettingsService(writer);
+        var jsonSettings = new JsonToolSettingsService(
+            Path.Combine(ApplicationPaths.ToolDataDirectory("json"), "settings.json"), writer);
         await jsonSettings.LoadAsync(_shutdown.Token);
         var documents = new JsonDocumentService(ApplicationPaths.ToolDataDirectory("json"),
             new JsonMetadataStore(ApplicationPaths.ToolDataDirectory("json"), writer), writer,
@@ -86,12 +87,14 @@ public partial class App
         services.AddSingleton<ISettingsSection, SystemSettingsSection>();
         services.AddSingleton<ISettingsSection>(provider => new ShortcutSettingsSection(
             provider.GetRequiredService<ISettingsService>(), provider.GetRequiredService<SettingsDialogService>(),
-            provider.GetRequiredService<IJsonToolSettingsService>(), provider.GetRequiredService<TotoToolHost>()));
+            provider.GetRequiredService<IJsonToolSettingsService>(),
+            provider.GetRequiredService<ITotoApplicationService>()));
         services.AddSingleton<JsonSettingsSection>(provider => new JsonSettingsSection(
             provider.GetRequiredService<IJsonToolSettingsService>(), provider.GetRequiredService<ISettingsService>(),
             provider.GetRequiredService<DataDirectoryChangeService>(),
             (tool, shortcut) => provider.GetRequiredService<DesktopWindowManager>().TryRegisterToolHotkey(tool, shortcut),
-            provider.GetRequiredService<SettingsDialogService>(), provider.GetRequiredService<TotoToolHost>()));
+            provider.GetRequiredService<SettingsDialogService>(),
+            provider.GetRequiredService<ITotoApplicationService>()));
         services.AddSingleton<ISettingsSection>(provider => new StorageSettingsSection(
             provider.GetRequiredService<DataDirectoryChangeService>(),
             provider.GetRequiredService<SettingsDialogService>(), provider.GetRequiredService<ISettingsService>()));
@@ -101,9 +104,8 @@ public partial class App
         services.AddSingleton<DataDirectoryChangeService>();
         services.AddSingleton<IStorageManager>(storage);
         services.AddSingleton(documents);
-        // 先创建 TotoToolHost 再显示 Launcher：提醒调度独立于 Toto 主窗口一直运行。
-        services.AddSingleton(_ => new TotoToolHost(
-            new System.Windows.Threading.DispatcherSynchronizationContext(Application.Current.Dispatcher)));
+        services.AddTotoApplicationServices(ApplicationPaths.ToolDataDirectory("toto"),
+            _ => new System.Windows.Threading.DispatcherSynchronizationContext(Application.Current.Dispatcher));
         services.AddSingleton<DesktopWindowManager>();
         services.AddSingleton<WindowStateService>();
         services.AddSingleton<SettingsDialogService>();

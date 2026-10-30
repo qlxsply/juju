@@ -1,11 +1,14 @@
 using System.Globalization;
 using System.Text.Json;
+using Juju.Tools.Toto.Application.Ports;
+using Juju.Tools.Toto.Infrastructure.Storage;
+using Toto.App.Data;
 using Toto.App.Domain;
 
-namespace Toto.App.Data;
+namespace Juju.Tools.Toto.Infrastructure.Settings;
 
 /// <summary>负责应用设置、计划弹窗标记和历史归档进度的 JSON 持久化。</summary>
-internal sealed class SettingsRepository(AppPaths paths)
+internal sealed class SettingsRepository(TotoPaths paths) : ITotoSettingsRepository
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
         { PropertyNamingPolicy = JsonNamingPolicy.CamelCase, WriteIndented = true };

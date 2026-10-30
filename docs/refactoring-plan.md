@@ -148,9 +148,10 @@ src/Juju.Tools.Toto/                   # Toto 业务模块，不引用 App/WPF/W
     Calendar/                            # HolidayCalendarDay、工作日规则
   Application/
     Ports/                               # 事项、设置、日历 Repository/Store 接口
-    Items/                               # ITotoApplicationService、事项用例与 DTO
-    Settings/                            # Toto 设置用例及校验
-    Calendar/                            # 节假日日历用例
+    ITotoApplicationService.cs           # App 面向的 Toto 用例入口
+    Items/                               # ITotoItemsApplicationService、事项请求/快照/历史分页模型
+    Settings/                            # ITotoSettingsApplicationService、设置用例
+    Calendar/                            # ITotoCalendarApplicationService、节假日快照/用例
     Reminders/                           # ReminderScheduler、TotoReminderRuntime
   Infrastructure/
     Items/                               # ItemRepository、CSV 编解码
@@ -332,9 +333,10 @@ App.Bootstrap/Composition           → App.Tools / App.Presentation / Platform.
 | `Juju.Tools.Toto` | `Juju.Tools.Toto.Domain.Items` | `TodoItem`、状态、查询条件、历史页等业务类型 | `Core.Domain`（仅稳定基础类型） |
 | `Juju.Tools.Toto` | `Juju.Tools.Toto.Domain.Calendar` | 节假日值对象和纯工作日规则 | `Toto.Domain` |
 | `Juju.Tools.Toto` | `Juju.Tools.Toto.Application.Ports` | 事项、设置、日历 Repository/Store 端口 | `Toto.Domain`、`Core.Contracts` |
-| `Juju.Tools.Toto` | `Juju.Tools.Toto.Application.Items` | `ITotoApplicationService`、事项用例与 App 可见快照 | `Toto.Domain`、`Toto.Application.Ports`、`Core.Contracts` |
-| `Juju.Tools.Toto` | `Juju.Tools.Toto.Application.Settings` | Toto 设置用例、配置校验与设置端口 | `Toto.Domain`、`Core.Contracts` |
-| `Juju.Tools.Toto` | `Juju.Tools.Toto.Application.Calendar` | 日历读取/更新/工作日判断用例 | `Toto.Domain`、`Core.Contracts` |
+| `Juju.Tools.Toto` | `Juju.Tools.Toto.Application` | `ITotoApplicationService` 组合入口/实现，协调事项、设置和日历用例 | `Toto.Domain`、`Application.Ports`、`Core.Contracts` |
+| `Juju.Tools.Toto` | `Juju.Tools.Toto.Application.Items` | `ITotoItemsApplicationService`、事项请求/快照、历史查询/分页模型 | `Toto.Domain`、`Application.Ports` |
+| `Juju.Tools.Toto` | `Juju.Tools.Toto.Application.Settings` | `ITotoSettingsApplicationService`、设置用例契约 | `Application.Ports`、`Core.Contracts` |
+| `Juju.Tools.Toto` | `Juju.Tools.Toto.Application.Calendar` | `ITotoCalendarApplicationService`、节假日快照/用例契约 | `Toto.Domain`、`Application.Ports` |
 | `Juju.Tools.Toto` | `Juju.Tools.Toto.Application.Reminders` | 唯一提醒调度器和 Toto 后台运行时 | `Toto.Domain`、Toto Application 端口、`Core.Contracts` |
 | `Juju.Tools.Toto` | `Juju.Tools.Toto.Infrastructure.Items` | `ItemRepository`、`CsvFile`、现行 CSV 编解码 | `Toto.Application.Ports`、`Toto.Domain`、`Core.Contracts.Storage` |
 | `Juju.Tools.Toto` | `Juju.Tools.Toto.Infrastructure.Settings` | 当前 JSON 配置文件仓储 | `Toto.Application.Settings`、`Core.Contracts.Storage` |
@@ -468,17 +470,17 @@ App.Bootstrap                   -> App.Tools + App.Presentation + Platform.Windo
 
 ### 阶段 2：新增 Toto 应用服务，收回 Repository
 
-- [ ] 在 `Juju.Tools.Toto.Application` 定义应用服务契约及只读返回模型。
-- [ ] 在 `Juju.Tools.Toto.Application.Ports` 定义所需 Repository/设置/日历端口；将现有 `ItemRepository`、`SettingsRepository` 和日历服务放入 `Infrastructure` 包实现这些端口。
-- [ ] 应用服务只依赖 `Toto.Domain`、Application Ports 和 `Juju.Core.Contracts`，不得直接依赖具体 Repository。
-- [ ] 用现有 Infrastructure 实现应用用例，不重写底层业务逻辑。
-- [ ] 将 JSON/Toto 文件路径通过 `IToolDataPaths` 或构造参数从 App Composition 注入；工具 Infrastructure 不直接读取 Core Infrastructure 的静态 `ApplicationPaths`。
-- [ ] 将 `TotoMainWindow` 的活动事项读取改为应用服务调用。
-- [ ] 将 `TotoItemWindow` 的新增、编辑、完成和取消改为应用服务调用。
-- [ ] 将 `TotoHistoryWindow` 的历史筛选与分页改为应用服务调用。
-- [ ] 将 `DesktopWindowManager` 的每日盘点数据读取改为应用服务调用。
-- [ ] 保持提醒运行时在 Toto 模块内部访问 Repository；UI 不暴露或持有 Repository。
-- [ ] 删除 `TotoToolHost.Items` 等 App 到 Repository 的直接访问；移除不再需要的 App `InternalsVisibleTo`。
+- [x] 在 `Juju.Tools.Toto.Application` 定义 `ITotoApplicationService`、只读事项/历史/日历模型及新增事项请求。
+- [x] 在 `Juju.Tools.Toto.Application.Ports` 定义事项、设置、日历 Repository 与运行时协调端口；将 `ItemRepository`、`SettingsRepository`、`WorkCalendarRepository`、日历下载器、CSV 文件设施和 `TotoPaths` 放入对应 `Infrastructure` 包实现/支撑这些端口。
+- [x] 应用服务只依赖领域模型、Application Ports 和 Core 的快捷键策略；不直接依赖具体 Repository。
+- [x] 通过包装和映射调用现有 Infrastructure，保留 Repository 的 CSV/JSON、校验、筛选、排序、分页、归档和错误语义，不重写底层规则。
+- [x] Toto 数据目录由 App Composition 作为构造参数传入；JSON 工具设置文件路径也改为由 Composition 传入，工具项目不再自行查询静态 `ApplicationPaths`。
+- [x] `TotoMainWindow` 活动事项读取、快捷键配置读取改为应用服务调用。
+- [x] `TotoItemWindow` 新增、编辑、完成和取消改为应用服务用例。
+- [x] `TotoHistoryWindow` 历史筛选、分页和详情数据改为应用服务调用。
+- [x] `DesktopWindowManager` 每日待办/完成快照改为应用服务调用。
+- [x] 提醒调度器留在 Toto 模块内，通过 Repository Ports 读写事项和设置；WPF 窗口只接收公开快照，不持有 Repository。
+- [x] 移除 `TotoToolHost.Items`、Host 的 Repository 属性和 App 到 Repository 的直接调用。保留 `InternalsVisibleTo("Juju.App")` 仅供仍在使用的快捷键解析/显示格式内部工具，随阶段 3 搬迁这些工具后再移除。
 
 **验收：** App 不再直接调用 `ItemRepository`；事项操作、历史查询、提醒和月归档结果保持不变。
 

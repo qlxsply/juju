@@ -6,7 +6,7 @@ using Juju.Core.Settings;
 using Juju.Core.Tools;
 using Juju.App.Views;
 using Juju.Core.Storage;
-using Toto.App;
+using Juju.Tools.Toto.Application;
 using MediaBrush = System.Windows.Media.Brush;
 using MediaBrushes = System.Windows.Media.Brushes;
 
@@ -20,7 +20,7 @@ public sealed class JsonSettingsSection : ISettingsSection
     private readonly DataDirectoryChangeService _dataChanges;
     private readonly Func<ToolId, string, bool> _tryRegisterHotkey;
     private readonly SettingsDialogService _dialogs;
-    private readonly TotoToolHost _toto;
+    private readonly ITotoApplicationService _toto;
     private readonly Action<string> _renderLaunchKey;
     private readonly Action<string> _renderGlobalShortcut;
     private readonly Action<string> _renderDirectory;
@@ -41,7 +41,7 @@ public sealed class JsonSettingsSection : ISettingsSection
     // 设置服务由 DI 注入；控件只编辑内存中的行模型，点击总保存时才写入持久化配置。
     public JsonSettingsSection(IJsonToolSettingsService settings, ISettingsService applicationSettings,
         DataDirectoryChangeService dataChanges,
-        Func<ToolId, string, bool> tryRegisterHotkey, SettingsDialogService dialogs, TotoToolHost toto)
+        Func<ToolId, string, bool> tryRegisterHotkey, SettingsDialogService dialogs, ITotoApplicationService toto)
     {
         _settings = settings;
         _applicationSettings = applicationSettings;
@@ -156,7 +156,7 @@ public sealed class JsonSettingsSection : ISettingsSection
                 {
                     var normalized = GlobalHotkeyPolicy.Normalize(candidate, optional: true);
                     GlobalHotkeyPolicy.EnsureDistinct(_applicationSettings.Current.LeaderShortcut,
-                        new[] { normalized, _toto.Hotkey }.Concat(_applicationSettings.Current.ToolGlobalShortcuts.Values).ToArray());
+                        new[] { normalized, _toto.GlobalHotkey }.Concat(_applicationSettings.Current.ToolGlobalShortcuts.Values).ToArray());
                     return null;
                 }
                 catch (InvalidOperationException ex) { return ex.Message; }

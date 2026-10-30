@@ -4,7 +4,7 @@ using Juju.Core.Settings;
 using Juju.Core.Storage;
 using Juju.Core.Tools;
 using Juju.Tools.Json.Settings;
-using Toto.App;
+using Juju.Tools.Toto.Application;
 
 namespace Juju.App.Settings;
 
@@ -17,7 +17,7 @@ public sealed class PlaceholderToolSettingsSection : ISettingsSection
     private readonly Func<ToolId, string, bool> _tryRegister;
     private readonly SettingsDialogService _dialogs;
     private readonly IJsonToolSettingsService _json;
-    private readonly TotoToolHost _toto;
+    private readonly ITotoApplicationService _toto;
     private readonly Action<string> _renderKey;
     private readonly Action<string> _renderHotkey;
     private readonly Action<string> _renderDirectory;
@@ -28,7 +28,7 @@ public sealed class PlaceholderToolSettingsSection : ISettingsSection
 
     public PlaceholderToolSettingsSection(ToolId tool, ISettingsService settings,
         DataDirectoryChangeService changes, Func<ToolId, string, bool> tryRegister,
-        SettingsDialogService dialogs, IJsonToolSettingsService json, TotoToolHost toto)
+        SettingsDialogService dialogs, IJsonToolSettingsService json, ITotoApplicationService toto)
     {
         _tool = tool;
         _settings = settings;
@@ -108,7 +108,7 @@ public sealed class PlaceholderToolSettingsSection : ISettingsSection
             var all = _settings.Current.ToolGlobalShortcuts.ToDictionary(item => item.Key, item => item.Value);
             all[_tool.ToString()] = candidate;
             GlobalHotkeyPolicy.EnsureDistinct(_settings.Current.LeaderShortcut,
-                new[] { all[_tool.ToString()], _json.Current.GlobalShortcut, _toto.Hotkey }
+                new[] { all[_tool.ToString()], _json.Current.GlobalShortcut, _toto.GlobalHotkey }
                     .Concat(all.Where(item => !item.Key.Equals(_tool.ToString(), StringComparison.OrdinalIgnoreCase))
                         .Select(item => item.Value)).ToArray());
             return null;

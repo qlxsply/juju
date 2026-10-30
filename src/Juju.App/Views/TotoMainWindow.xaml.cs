@@ -4,10 +4,10 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using Juju.Platform.Windows;
-using Toto.App;
 using Toto.App.Data;
-using Toto.App.Domain;
 using Toto.App.Services;
+using Juju.Tools.Toto.Application;
+using Juju.Tools.Toto.Application.Items;
 using MessageBox = System.Windows.MessageBox;
 using Brush = System.Windows.Media.Brush;
 using Color = System.Windows.Media.Color;
@@ -17,14 +17,14 @@ namespace Juju.App.Views;
 
 public partial class TotoMainWindow : Window
 {
-    private readonly TotoToolHost _host;
+    private readonly ITotoApplicationService _toto;
     private readonly Action _openHistory;
     private readonly ObservableCollection<TotoItemRow> _activeItems = [];
     private bool _allowClose;
 
-    public TotoMainWindow(TotoToolHost host, Action openHistory)
+    public TotoMainWindow(ITotoApplicationService toto, Action openHistory)
     {
-        _host = host;
+        _toto = toto;
         _openHistory = openHistory;
         InitializeComponent();
         DataContext = this;
@@ -60,7 +60,7 @@ public partial class TotoMainWindow : Window
     {
         var selectedId = (Tasks.SelectedItem as TotoItemRow)?.Item.Id;
         _activeItems.Clear();
-        foreach (var item in _host.Items.GetActive()) _activeItems.Add(new TotoItemRow(item));
+        foreach (var item in _toto.GetActiveItems()) _activeItems.Add(new TotoItemRow(item));
         var selected = _activeItems.FirstOrDefault(item => item.Item.Id == selectedId) ?? _activeItems.FirstOrDefault();
         Tasks.SelectedItem = selected;
         if (selected is not null && Tasks.Columns.Count > 0)
@@ -71,7 +71,7 @@ public partial class TotoMainWindow : Window
         ToolWindowChrome.SetStatusLeft(this, $"进行中：{_activeItems.Count} 项");
     }
 
-    private TodoItem? SelectedItem => (Tasks.SelectedItem as TotoItemRow)?.Item;
+    private TotoItemSnapshot? SelectedItem => (Tasks.SelectedItem as TotoItemRow)?.Item;
 
     private void Tasks_MouseDoubleClick(object sender, MouseButtonEventArgs e)
     {
@@ -118,7 +118,7 @@ public partial class TotoMainWindow : Window
             return;
         }
         if (e.IsRepeat || !TotoShortcutKey.TryGet(e, out var pressed)) return;
-        var shortcuts = _host.ToolSettings;
+        var shortcuts = _toto.Settings;
         var action = new[]
         {
             "shortcut_add", "shortcut_history", "shortcut_refresh", "shortcut_detail", "shortcut_edit",
@@ -134,44 +134,43 @@ public partial class TotoMainWindow : Window
             case "shortcut_refresh": RefreshItems(); break;
             case "shortcut_detail": if (SelectedItem is { } detail) ShowDetail(detail); break;
             case "shortcut_edit": if (SelectedItem is { } edit) ShowEdit(edit); break;
-            case "shortcut_complete": EndSelected(ItemStatus.Completed); break;
-            case "shortcut_cancel": EndSelected(ItemStatus.Cancelled); break;
+            case "shortcut_complete": EndSelected(TotoItemStatus.Completed); break;
+            case "shortcut_cancel": EndSelected(TotoItemStatus.Cancelled); break;
         }
     }
 
     public void ShowAdd()
     {
-        if (new TotoItemWindow(_host, TotoItemWindowMode.Add) { Owner = this }.ShowDialog() == true)
+        if (new TotoItemWindow(_toto, TotoItemWindowMode.Add) { Owner = this }.ShowDialog() == true)
             OnItemChanged();
     }
 
-    private void ShowEdit(TodoItem item)
+    private void ShowEdit(TotoItemSnapshot item)
     {
-        if (new TotoItemWindow(_host, TotoItemWindowMode.Edit, item) { Owner = this }.ShowDialog() == true)
+        if (new TotoItemWindow(_toto, TotoItemWindowMode.Edit, item) { Owner = this }.ShowDialog() == true)
             OnItemChanged();
     }
 
-    private void ShowDetail(TodoItem item) =>
-        new TotoItemWindow(_host, TotoItemWindowMode.Detail, item) { Owner = this }.ShowDialog();
+    private void ShowDetail(TotoItemSnapshot item) =>
+        new TotoItemWindow(_toto, TotoItemWindowMode.Detail, item) { Owner = this }.ShowDialog();
 
-    private void EndSelected(ItemStatus status)
+    private void EndSelected(TotoItemStatus status)
     {
         if (SelectedItem is not { } item) return;
-        if (new TotoItemWindow(_host, status == ItemStatus.Completed ? TotoItemWindowMode.Complete : TotoItemWindowMode.Cancel,
+        if (new TotoItemWindow(_toto, status == TotoItemStatus.Completed ? TotoItemWindowMode.Complete : TotoItemWindowMode.Cancel,
                 item) { Owner = this }.ShowDialog() == true) OnItemChanged();
     }
 
     private void OnItemChanged()
     {
         RefreshItems();
-        _host.Reschedule();
     }
 }
 
 public sealed class TotoItemRow
 {
-    internal TotoItemRow(TodoItem item) => Item = item;
-    internal TodoItem Item { get; }
+    internal TotoItemRow(TotoItemSnapshot item) => Item = item;
+    internal TotoItemSnapshot Item { get; }
     public string Content => Item.Content;
     public string PlannedText => Item.PlannedAt?.ToString(DateTimeText.DisplayFormat) ?? "—";
     public string RemindText => Item.RemindAt?.ToString(DateTimeText.DisplayFormat) ?? "—";
@@ -179,12 +178,12 @@ public sealed class TotoItemRow
     public string Note => string.IsNullOrWhiteSpace(Item.Note) ? "—" : Item.Note;
     public string StatusText => Item.ReminderStatus switch
     {
-        ReminderStatus.Pending => "未提醒", ReminderStatus.Reminded => "已提醒", _ => "无提醒"
+        TotoReminderStatus.Pending => "未提醒", TotoReminderStatus.Reminded => "已提醒", _ => "无提醒"
     };
     public Brush StatusForeground => new System.Windows.Media.SolidColorBrush(Item.ReminderStatus switch
     {
-        ReminderStatus.Pending => Color.FromRgb(38, 133, 99),
-        ReminderStatus.Reminded => Color.FromRgb(69, 102, 199),
+        TotoReminderStatus.Pending => Color.FromRgb(38, 133, 99),
+        TotoReminderStatus.Reminded => Color.FromRgb(69, 102, 199),
         _ => Color.FromRgb(138, 149, 165)
     });
 }

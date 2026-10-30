@@ -2,12 +2,13 @@ using Juju.App.Contracts.Windows;
 using Juju.App.Settings;
 using Juju.App.Tools.Contracts;
 using Juju.Core.Tools;
+using Microsoft.Extensions.DependencyInjection;
 using Toto.App;
 
 namespace Juju.App.Tools.Toto;
 
 public sealed class TotoToolModule(ITotoToolWindow window, TotoToolHost runtime,
-    TotoSettingsSection settings) : IToolModule
+    IServiceProvider services) : IToolModule
 {
     public ToolDescriptor Descriptor { get; } = new(ToolId.Toto, BackgroundCapability.Required,
         StorageCapability.File);
@@ -16,7 +17,9 @@ public sealed class TotoToolModule(ITotoToolWindow window, TotoToolHost runtime,
         "事项管理与到期自动提醒", "打开 Toto 日程提醒", "TotoToolIcon", null, "#409C95", 24,
         ToolLaunchKeys.Toto.ToString(), true);
 
-    public IReadOnlyCollection<ISettingsSection> SettingsSections { get; } = [settings];
+    // Build the WPF settings view on first settings-window access, after the required background module starts.
+    public IReadOnlyCollection<ISettingsSection> SettingsSections =>
+        [services.GetRequiredService<TotoSettingsSection>()];
 
     public ToolReadiness CheckReadiness() => runtime.EnsureReady()
         ? new(true)

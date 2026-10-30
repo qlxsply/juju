@@ -8,10 +8,10 @@ using Juju.App.Contracts.Windows;
 using Juju.Core.Settings;
 using Juju.Core.Tools;
 using Juju.App.Tools.Contracts;
+using Juju.Tools.Toto.Application;
 using Juju.Tools.Json.Settings;
 using Juju.Platform.Windows.HotKey;
 using Juju.Platform.Windows;
-using Toto.App;
 using Button = System.Windows.Controls.Button;
 using KeyEventArgs = System.Windows.Input.KeyEventArgs;
 using MessageBox = System.Windows.MessageBox;
@@ -31,7 +31,7 @@ public partial class LauncherWindow : Window
     {
         [ToolId.EchoHttp] = new(), [ToolId.Kairos] = new()
     };
-    private readonly TotoToolHost _toto;
+    private readonly ITotoApplicationService _toto;
     private readonly IJsonToolSettingsService _jsonSettings;
     private readonly DispatcherTimer _timeout = new();
     private bool _armed;
@@ -41,7 +41,7 @@ public partial class LauncherWindow : Window
 
     // 构造函数依赖由窗口管理器传入；ThemeService 参数用于保持依赖图一致，主题资源由 WPF 全局资源解析。
     public LauncherWindow(IToolManager tools, IAppWindowManager windows, ISettingsService settings,
-        ThemeService themes, TotoToolHost toto, IJsonToolSettingsService jsonSettings)
+        ThemeService themes, ITotoApplicationService toto, IJsonToolSettingsService jsonSettings)
     {
         _tools = tools;
         _windows = windows;
@@ -65,7 +65,7 @@ public partial class LauncherWindow : Window
             if (!_shortcut.Register(source.Handle, settings.Current.LeaderShortcut))
                 Title = $"juju (快捷键错误 {_shortcut.LastError})";
             TryRegisterToolHotkey(ToolId.Json, _jsonSettings.Current.GlobalShortcut);
-            TryRegisterToolHotkey(ToolId.Toto, _toto.Hotkey);
+            TryRegisterToolHotkey(ToolId.Toto, _toto.GlobalHotkey);
             foreach (var (tool, _) in _extraShortcuts)
                 TryRegisterToolHotkey(tool, settings.Current.ToolGlobalShortcuts.GetValueOrDefault(tool.ToString(),
                     GlobalHotkeyPolicy.None));
@@ -86,7 +86,7 @@ public partial class LauncherWindow : Window
         try
         {
             GlobalHotkeyPolicy.EnsureDistinct(settings.LeaderShortcut,
-                new[] { _jsonSettings.Current.GlobalShortcut, _toto.Hotkey }
+                new[] { _jsonSettings.Current.GlobalShortcut, _toto.GlobalHotkey }
                     .Concat(_extraShortcuts.Keys.Select(tool =>
                         settings.ToolGlobalShortcuts.GetValueOrDefault(tool.ToString()))).ToArray());
         }
@@ -153,7 +153,7 @@ public partial class LauncherWindow : Window
             MessageBox.Show($"工具箱入口热键无法恢复（Windows 错误码 {_shortcut.LastError}）。", "juju",
                 MessageBoxButton.OK, MessageBoxImage.Warning);
         TryRegisterToolHotkey(ToolId.Json, _jsonSettings.Current.GlobalShortcut);
-        TryRegisterToolHotkey(ToolId.Toto, _toto.Hotkey);
+        TryRegisterToolHotkey(ToolId.Toto, _toto.GlobalHotkey);
         foreach (var tool in _extraShortcuts.Keys)
             TryRegisterToolHotkey(tool, _settings.Current.ToolGlobalShortcuts.GetValueOrDefault(
                 tool.ToString(), GlobalHotkeyPolicy.None));
@@ -182,7 +182,7 @@ public partial class LauncherWindow : Window
             normalized = GlobalHotkeyPolicy.Normalize(hotkey, optional: true);
             GlobalHotkeyPolicy.EnsureDistinct(_settings.Current.LeaderShortcut,
                 new[] { tool == ToolId.Json ? normalized : _jsonSettings.Current.GlobalShortcut,
-                        tool == ToolId.Toto ? normalized : _toto.Hotkey }
+                        tool == ToolId.Toto ? normalized : _toto.GlobalHotkey }
                     .Concat(_extraShortcuts.Keys.Select(item => item == tool ? normalized :
                         _settings.Current.ToolGlobalShortcuts.GetValueOrDefault(item.ToString()))).ToArray());
         }

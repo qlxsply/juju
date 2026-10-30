@@ -1,10 +1,13 @@
+using Juju.Tools.Toto.Application.Ports;
+using Juju.Tools.Toto.Infrastructure.Storage;
+using Toto.App.Data;
 using Toto.App.Domain;
 
-namespace Toto.App.Data;
+namespace Juju.Tools.Toto.Infrastructure.Items;
 
 /// <summary>负责活动事项和历史事项 CSV 文件的查询及更新。</summary>
-/// <remarks>圆括号中的 <c>AppPaths paths</c> 是 C# 主构造函数参数，可直接在实例方法中使用。</remarks>
-internal sealed class ItemRepository(AppPaths paths)
+/// <remarks>主构造函数参数 <c>TotoPaths paths</c> 提供当前 Toto 数据路径。</remarks>
+internal sealed class ItemRepository(TotoPaths paths) : ITotoItemRepository
 {
     /// <summary>串行化所有 CSV 读取和写入，避免 UI 与后台提醒互相覆盖完整文件。</summary>
     private readonly Lock gate = new();

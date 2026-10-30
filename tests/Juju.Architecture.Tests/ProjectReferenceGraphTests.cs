@@ -82,6 +82,22 @@ public sealed class ProjectReferenceGraphTests
         Assert.DoesNotContain("JsonToolModule", toto, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void App_does_not_reference_toto_repository_or_infrastructure_types()
+    {
+        var appRoot = Path.Combine(FindRepositoryRoot(), "src", "Juju.App");
+        var source = string.Join('\n', Directory.GetFiles(appRoot, "*.cs", SearchOption.AllDirectories)
+            .Select(File.ReadAllText));
+
+        foreach (var forbidden in new[]
+                 {
+                     "ItemRepository", "SettingsRepository", "WorkCalendarRepository",
+                     "HolidayCalendarDownloadService", "TotoPaths", "_host.Items.", "toto.Items.",
+                     "_toto.Items."
+                 })
+            Assert.DoesNotContain(forbidden, source, StringComparison.Ordinal);
+    }
+
     private static Dictionary<string, string[]> ReadProductProjectGraph(string repositoryRoot)
     {
         var sourceRoot = Path.Combine(repositoryRoot, "src");

@@ -1,4 +1,10 @@
-using Toto.App.Data;
+using Juju.Tools.Toto.Infrastructure.Calendar;
+using Juju.Tools.Toto.Infrastructure.Items;
+using Juju.Tools.Toto.Infrastructure.Settings;
+using Juju.Tools.Toto.Infrastructure.Storage;
+using Juju.Tools.Toto.Application;
+using Juju.Tools.Toto.Application.Items;
+using Juju.Tools.Toto.Application.Reminders;
 using Toto.App.Domain;
 using Toto.App.Services;
 using Xunit;
@@ -12,7 +18,7 @@ public sealed class ItemRepositoryTests : IDisposable
 
     public ItemRepositoryTests()
     {
-        repository = new ItemRepository(new AppPaths(dataDirectory));
+        repository = new ItemRepository(new TotoPaths(dataDirectory));
         repository.EnsureFiles();
     }
 
@@ -108,7 +114,7 @@ public sealed class ItemRepositoryTests : IDisposable
     [Fact]
     public void Work_calendar_retains_upserted_and_removed_holidays()
     {
-        var downloader = new HolidayCalendarDownloadService(new AppPaths(dataDirectory));
+        var downloader = new HolidayCalendarDownloadService(new TotoPaths(dataDirectory));
         var calendar = new WorkCalendarRepository(downloader);
         var year = DateTime.Today.Year;
         downloader.SaveLocal(year, []);
@@ -122,7 +128,7 @@ public sealed class ItemRepositoryTests : IDisposable
     [Fact]
     public void Toto_global_direct_hotkey_defaults_to_none()
     {
-        var repository = new SettingsRepository(new AppPaths(Path.Combine(dataDirectory, "settings")));
+        var repository = new SettingsRepository(new TotoPaths(Path.Combine(dataDirectory, "settings")));
         repository.EnsureExists();
         Assert.Equal("None", repository.Load()["hotkey"]);
     }
@@ -152,7 +158,7 @@ public sealed class ItemRepositoryTests : IDisposable
     [Fact]
     public void Settings_are_persisted_as_json_and_unknown_setting_keys_are_not_loaded()
     {
-        var settings = new SettingsRepository(new AppPaths(dataDirectory));
+        var settings = new SettingsRepository(new TotoPaths(dataDirectory));
         settings.EnsureExists();
         var path = Path.Combine(dataDirectory, "config.json");
         File.WriteAllText(path,
@@ -168,7 +174,7 @@ public sealed class ItemRepositoryTests : IDisposable
     [Fact]
     public void Archive_progress_month_is_persisted_in_json()
     {
-        var paths = new AppPaths(Path.Combine(dataDirectory, "archive-settings"));
+        var paths = new TotoPaths(Path.Combine(dataDirectory, "archive-settings"));
         var settings = new SettingsRepository(paths);
         settings.EnsureExists();
 
@@ -181,7 +187,7 @@ public sealed class ItemRepositoryTests : IDisposable
     [Fact]
     public void Startup_archives_through_previous_month_and_records_progress()
     {
-        var paths = new AppPaths(dataDirectory);
+        var paths = new TotoPaths(dataDirectory);
         var cutoff = new DateOnly(DateTime.Today.Year, DateTime.Today.Month, 1).AddMonths(-1);
         var oldMonth = cutoff.AddMonths(-1);
         EndAt("startup-archive", oldMonth.AddDays(2).ToDateTime(new TimeOnly(12, 0)));
@@ -192,7 +198,7 @@ public sealed class ItemRepositoryTests : IDisposable
 
         using var host = new TotoToolHost(new SynchronizationContext(), paths);
 
-        Assert.Equal(cutoff.ToString("yyyyMM"), host.Settings.ArchiveProgressMonth);
+        Assert.Equal(cutoff.ToString("yyyyMM"), new SettingsRepository(paths).ArchiveProgressMonth);
         Assert.Single(CsvFile.Read(paths.HistoryArchiveCsvPath(oldMonth.Year * 100 + oldMonth.Month)).Skip(1));
         Assert.Single(CsvFile.Read(paths.HistoryCsvPath));
     }
@@ -200,7 +206,7 @@ public sealed class ItemRepositoryTests : IDisposable
     [Fact]
     public void Changing_daily_review_time_clears_only_today_mark_when_new_time_is_still_future()
     {
-        var settings = new SettingsRepository(new AppPaths(Path.Combine(dataDirectory, "daily-review-reschedule")));
+        var settings = new SettingsRepository(new TotoPaths(Path.Combine(dataDirectory, "daily-review-reschedule")));
         settings.EnsureExists();
         var initial = settings.Load().ToDictionary(item => item.Key, item => item.Value);
         initial["daily_review_start_time"] = "16:40";
@@ -235,15 +241,15 @@ public sealed class ItemRepositoryTests : IDisposable
     [Fact]
     public async Task Scheduler_marks_a_due_reminder_once_without_an_open_window()
     {
-        var paths = new AppPaths(dataDirectory);
+        var paths = new TotoPaths(dataDirectory);
         var calendar = new HolidayCalendarDownloadService(paths);
         calendar.SaveLocal(DateTime.Today.Year, []);
         if (DateTime.Today.AddDays(7).Year != DateTime.Today.Year)
             calendar.SaveLocal(DateTime.Today.Year + 1, []);
         using var host = new TotoToolHost(new SynchronizationContext(), paths);
         Assert.True(host.EnsureReady());
-        host.Items.Add(Item("due", "需要提醒", DateTime.Now.AddMinutes(-1)));
-        var notifications = new List<TodoItem>();
+        repository.Add(Item("due", "需要提醒", DateTime.Now.AddMinutes(-1)));
+        var notifications = new List<TotoItemSnapshot>();
         var delivered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         host.DueReminders += due =>
         {
@@ -254,8 +260,8 @@ public sealed class ItemRepositoryTests : IDisposable
         await delivered.Task.WaitAsync(TimeSpan.FromSeconds(5));
         host.Resume();
         lock (notifications) Assert.Single(notifications);
-        Assert.Equal(ReminderStatus.Reminded, host.Items.GetActive().Single().ReminderStatus);
-        Assert.Empty(host.Items.GetHistory(null, 1, 10).Items);
+        Assert.Equal(ReminderStatus.Reminded, repository.GetActive().Single().ReminderStatus);
+        Assert.Empty(repository.GetHistory(null, 1, 10).Items);
     }
 
     [Fact]
@@ -290,11 +296,11 @@ public sealed class ItemRepositoryTests : IDisposable
 
         repository.ArchiveHistoryThrough(new DateOnly(2026, 9, 1));
 
-        Assert.Equal(["aug-early", "aug-late"], CsvFile.Read(new AppPaths(dataDirectory)
+        Assert.Equal(["aug-early", "aug-late"], CsvFile.Read(new TotoPaths(dataDirectory)
             .HistoryArchiveCsvPath(202608)).Skip(1).Select(row => row[0]).ToArray());
-        Assert.Equal(["sep"], CsvFile.Read(new AppPaths(dataDirectory)
+        Assert.Equal(["sep"], CsvFile.Read(new TotoPaths(dataDirectory)
             .HistoryArchiveCsvPath(202609)).Skip(1).Select(row => row[0]).ToArray());
-        Assert.Equal(["oct"], CsvFile.Read(new AppPaths(dataDirectory).HistoryCsvPath)
+        Assert.Equal(["oct"], CsvFile.Read(new TotoPaths(dataDirectory).HistoryCsvPath)
             .Skip(1).Select(row => row[0]).ToArray());
 
         var history = repository.GetHistory(null, 1, 10);
@@ -316,7 +322,7 @@ public sealed class ItemRepositoryTests : IDisposable
     [Fact]
     public async Task Startup_resumes_an_existing_due_reminder_without_opening_a_window()
     {
-        var paths = new AppPaths(dataDirectory);
+        var paths = new TotoPaths(dataDirectory);
         var calendar = new HolidayCalendarDownloadService(paths);
         calendar.SaveLocal(DateTime.Today.Year, []);
         if (DateTime.Today.AddDays(7).Year != DateTime.Today.Year)
@@ -338,7 +344,7 @@ public sealed class ItemRepositoryTests : IDisposable
     [Fact]
     public async Task Daily_review_is_recorded_once_across_scheduler_resumes()
     {
-        var paths = new AppPaths(dataDirectory);
+        var paths = new TotoPaths(dataDirectory);
         var calendar = new HolidayCalendarDownloadService(paths);
         var today = DateOnly.FromDateTime(DateTime.Today);
         calendar.SaveLocal(today.Year, []);
@@ -346,10 +352,11 @@ public sealed class ItemRepositoryTests : IDisposable
             calendar.SaveLocal(today.Year + 1, []);
         using var host = new TotoToolHost(new SynchronizationContext(), paths);
         Assert.True(host.EnsureReady());
-        var values = host.ToolSettings.ToDictionary(item => item.Key, item => item.Value);
+        var settings = new SettingsRepository(paths);
+        var values = settings.Load().ToDictionary(item => item.Key, item => item.Value);
         values["daily_review_start_time"] = "00:00";
         values["daily_review_workdays"] = "0";
-        host.SaveToolSettings(values);
+        settings.SaveDailyReviewSettings(values, DateTime.Now);
         var shown = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var count = 0;
         host.ScheduledPopup += kind =>
@@ -361,26 +368,27 @@ public sealed class ItemRepositoryTests : IDisposable
         await shown.Task.WaitAsync(TimeSpan.FromSeconds(5));
         host.Resume();
         Assert.Equal(1, count);
-        Assert.True(host.Settings.WasScheduledPopupShown(today, ScheduledPopupKind.WorkStart));
+        Assert.True(settings.WasScheduledPopupShown(today, ScheduledPopupKind.WorkStart));
     }
 
     [Fact]
     public async Task Start_and_end_daily_reviews_are_independent_when_both_are_due()
     {
-        var paths = new AppPaths(Path.Combine(dataDirectory, "independent-daily-reviews"));
+        var paths = new TotoPaths(Path.Combine(dataDirectory, "independent-daily-reviews"));
         var calendar = new HolidayCalendarDownloadService(paths);
         calendar.SaveLocal(DateTime.Today.Year, []);
         if (DateTime.Today.AddDays(7).Year != DateTime.Today.Year)
             calendar.SaveLocal(DateTime.Today.Year + 1, []);
         using var host = new TotoToolHost(new SynchronizationContext(), paths);
         Assert.True(host.EnsureReady());
-        var values = host.ToolSettings.ToDictionary(item => item.Key, item => item.Value);
+        var settings = new SettingsRepository(paths);
+        var values = settings.Load().ToDictionary(item => item.Key, item => item.Value);
         values["daily_review_start_time"] = "00:00";
         values["daily_review_end_time"] = "00:00";
         values["daily_review_workdays"] = "0";
-        host.SaveToolSettings(values);
+        settings.SaveDailyReviewSettings(values, DateTime.Now);
 
-        var kinds = new System.Collections.Concurrent.ConcurrentBag<ScheduledPopupKind>();
+        var kinds = new System.Collections.Concurrent.ConcurrentBag<TotoScheduledPopupKind>();
         var bothDelivered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         host.ScheduledPopup += kind =>
         {
@@ -391,10 +399,10 @@ public sealed class ItemRepositoryTests : IDisposable
         await bothDelivered.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
         var today = DateOnly.FromDateTime(DateTime.Today);
-        Assert.Contains(ScheduledPopupKind.WorkStart, kinds);
-        Assert.Contains(ScheduledPopupKind.WorkEnd, kinds);
-        Assert.True(host.Settings.WasScheduledPopupShown(today, ScheduledPopupKind.WorkStart));
-        Assert.True(host.Settings.WasScheduledPopupShown(today, ScheduledPopupKind.WorkEnd));
+        Assert.Contains(TotoScheduledPopupKind.WorkStart, kinds);
+        Assert.Contains(TotoScheduledPopupKind.WorkEnd, kinds);
+        Assert.True(settings.WasScheduledPopupShown(today, ScheduledPopupKind.WorkStart));
+        Assert.True(settings.WasScheduledPopupShown(today, ScheduledPopupKind.WorkEnd));
         host.Resume();
         await Task.Delay(100);
         Assert.Equal(2, kinds.Count);

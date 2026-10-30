@@ -3,10 +3,10 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using Juju.Platform.Windows;
-using Toto.App;
 using Toto.App.Data;
-using Toto.App.Domain;
 using Toto.App.Services;
+using Juju.Tools.Toto.Application;
+using Juju.Tools.Toto.Application.Items;
 using Brush = System.Windows.Media.Brush;
 using Brushes = System.Windows.Media.Brushes;
 using MessageBox = System.Windows.MessageBox;
@@ -20,17 +20,17 @@ internal enum TotoItemWindowMode { Add, Edit, Complete, Cancel, Detail }
 
 public partial class TotoItemWindow : Window
 {
-    private readonly TotoToolHost _host;
+    private readonly ITotoApplicationService _toto;
     private readonly int _defaultMinutes;
     private readonly TotoItemWindowMode _mode;
-    private readonly TodoItem? _item;
+    private readonly TotoItemSnapshot? _item;
     private bool _initializingFields;
     private bool _saving;
 
-    internal TotoItemWindow(TotoToolHost host, TotoItemWindowMode mode, TodoItem? item = null)
+    internal TotoItemWindow(ITotoApplicationService toto, TotoItemWindowMode mode, TotoItemSnapshot? item = null)
     {
-        _host = host;
-        _defaultMinutes = int.TryParse(host.ToolSettings.GetValueOrDefault("default_remind_minutes"), out var minutes)
+        _toto = toto;
+        _defaultMinutes = int.TryParse(toto.Settings.GetValueOrDefault("default_remind_minutes"), out var minutes)
             ? minutes : 5;
         _mode = mode;
         _item = item;
@@ -46,7 +46,7 @@ public partial class TotoItemWindow : Window
         {
             TotoItemWindowMode.Add => "新增事项", TotoItemWindowMode.Edit => "编辑事项",
             TotoItemWindowMode.Complete => "完成事项", TotoItemWindowMode.Cancel => "取消事项",
-            _ => item?.Status == ItemStatus.Active ? "事项详情" : "历史事项详情"
+            _ => item?.Status == TotoItemStatus.Active ? "事项详情" : "历史事项详情"
         };
         if (item is not null)
         {
@@ -134,7 +134,7 @@ public partial class TotoItemWindow : Window
         textBox.CaretIndex = start + lineBreak.Length;
     }
 
-    private void LoadEdit(TodoItem item)
+    private void LoadEdit(TotoItemSnapshot item)
     {
         _initializingFields = true;
         ContentInput.Text = item.Content;
@@ -148,19 +148,19 @@ public partial class TotoItemWindow : Window
         _initializingFields = false;
     }
 
-    private void LoadDetail(TodoItem item)
+    private void LoadDetail(TotoItemSnapshot item)
     {
         foreach (var (label, value) in new[]
                  {
                      ("事项内容", item.Content), ("计划时间", Format(item.PlannedAt)),
                      ("提醒时间", Format(item.RemindAt)), ("创建时间", Format(item.CreatedAt)),
-                     (item.Status == ItemStatus.Active ? "提醒状态" : "结束状态",
-                         item.Status == ItemStatus.Active ? item.ReminderStatus switch
-                         {
-                             ReminderStatus.Pending => "未提醒", ReminderStatus.Reminded => "已提醒", _ => "无提醒"
-                         } : item.Status == ItemStatus.Completed ? "已完成" : "已取消"),
-                     (item.Status == ItemStatus.Active ? "响铃时间" : "结束时间",
-                         Format(item.Status == ItemStatus.Active ? item.RemindedAt : item.EndedAt)),
+                      (item.Status == TotoItemStatus.Active ? "提醒状态" : "结束状态",
+                          item.Status == TotoItemStatus.Active ? item.ReminderStatus switch
+                          {
+                              TotoReminderStatus.Pending => "未提醒", TotoReminderStatus.Reminded => "已提醒", _ => "无提醒"
+                          } : item.Status == TotoItemStatus.Completed ? "已完成" : "已取消"),
+                      (item.Status == TotoItemStatus.Active ? "响铃时间" : "结束时间",
+                          Format(item.Status == TotoItemStatus.Active ? item.RemindedAt : item.EndedAt)),
                      ("备注", string.IsNullOrWhiteSpace(item.Note) ? "—" : item.Note)
                  })
         {
@@ -261,9 +261,7 @@ public partial class TotoItemWindow : Window
                     if (!QuickItemParser.TryParse(QuickInput.Text, DefaultMinutes(), out var content,
                             out var plan, out var remind, out var error))
                         throw new InvalidOperationException(error);
-                    _host.Items.Add(new TodoItem(Guid.NewGuid().ToString(), content, plan, remind, DateTime.Now, 0,
-                        ItemStatus.Active, remind is null ? ReminderStatus.None : ReminderStatus.Pending,
-                        null, null, ""));
+                    _toto.AddItem(new NewTotoItem(content, plan, remind));
                     break;
                 case TotoItemWindowMode.Edit when _item is not null:
                     var text = ContentInput.Text.Trim();
@@ -272,18 +270,18 @@ public partial class TotoItemWindow : Window
                     var newPlan = ReadTime(UsePlan.IsChecked == true, PlanDate, PlanHour, PlanMinute);
                     var newRemind = ReadTime(UseRemind.IsChecked == true, RemindDate, RemindHour, RemindMinute);
                     var changed = newRemind != _item.RemindAt;
-                    if (!_host.Items.Update(_item with
+                    if (!_toto.UpdateItem(_item with
                         {
                             Content = text, PlannedAt = newPlan, RemindAt = newRemind,
-                            ReminderStatus = newRemind is null ? ReminderStatus.None :
-                                changed ? ReminderStatus.Pending : _item.ReminderStatus,
+                            ReminderStatus = newRemind is null ? TotoReminderStatus.None :
+                                changed ? TotoReminderStatus.Pending : _item.ReminderStatus,
                             RemindedAt = changed || newRemind is null ? null : _item.RemindedAt,
                             Note = NoteInput.Text
                         })) throw new InvalidOperationException("事项不存在或已被处理。");
                     break;
                 case TotoItemWindowMode.Complete or TotoItemWindowMode.Cancel when _item is not null:
-                    var status = _mode == TotoItemWindowMode.Complete ? ItemStatus.Completed : ItemStatus.Cancelled;
-                    if (!_host.Items.End(_item.Id, status, EndNote.Text, DateTime.Now))
+                    var status = _mode == TotoItemWindowMode.Complete ? TotoItemStatus.Completed : TotoItemStatus.Cancelled;
+                    if (!_toto.EndItem(_item.Id, status, EndNote.Text, DateTime.Now))
                         throw new InvalidOperationException("事项不存在或已被处理。");
                     break;
             }

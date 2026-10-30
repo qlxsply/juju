@@ -3,25 +3,25 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using Juju.Platform.Windows;
-using Toto.App;
 using Toto.App.Data;
-using Toto.App.Domain;
+using Juju.Tools.Toto.Application;
+using Juju.Tools.Toto.Application.Items;
 using KeyEventArgs = System.Windows.Input.KeyEventArgs;
 
 namespace Juju.App.Views;
 
 public partial class TotoHistoryWindow : Window
 {
-    private readonly TotoToolHost _host;
+    private readonly ITotoApplicationService _toto;
     private readonly ObservableCollection<TotoHistoryRow> _historyItems = [];
-    private QueryCriteria _criteria = new();
+    private TotoHistoryQuery _criteria = new();
     private int _page = 1;
     private int _total;
     private bool _updatingPeriod;
 
-    internal TotoHistoryWindow(TotoToolHost host)
+    internal TotoHistoryWindow(ITotoApplicationService toto)
     {
-        _host = host;
+        _toto = toto;
         InitializeComponent();
         DataContext = this;
         SourceInitialized += (_, _) => WindowAppearance.UseSystemCorners(new System.Windows.Interop.WindowInteropHelper(this).Handle);
@@ -48,12 +48,12 @@ public partial class TotoHistoryWindow : Window
 
     private void LoadPage()
     {
-        var page = _host.Items.GetHistory(_criteria, _page, SelectedPageSize);
+        var page = _toto.GetHistory(_criteria, _page, SelectedPageSize);
         _total = page.TotalCount;
         if (_page > MaxPage)
         {
             _page = MaxPage;
-            page = _host.Items.GetHistory(_criteria, _page, SelectedPageSize);
+            page = _toto.GetHistory(_criteria, _page, SelectedPageSize);
         }
         _historyItems.Clear();
         foreach (var item in page.Items) _historyItems.Add(new TotoHistoryRow(item));
@@ -87,10 +87,15 @@ public partial class TotoHistoryWindow : Window
         LoadPage();
     }
 
-    private QueryCriteria CreateCriteria() => new()
+    private TotoHistoryQuery CreateCriteria() => new()
     {
         SearchText = SearchFilter.Text.Trim(),
-        Status = StatusFilter.SelectedIndex switch { 1 => ItemStatus.Completed, 2 => ItemStatus.Cancelled, _ => null },
+        Status = StatusFilter.SelectedIndex switch
+        {
+            1 => TotoItemStatus.Completed,
+            2 => TotoItemStatus.Cancelled,
+            _ => null
+        },
         EndedFrom = FromDate.SelectedDate?.Date,
         EndedTo = ToDate.SelectedDate?.Date.AddDays(1)
     };
@@ -192,7 +197,7 @@ public partial class TotoHistoryWindow : Window
         if (e.Key == Key.Enter && History.SelectedItem is TotoHistoryRow row)
         {
             e.Handled = true;
-            new TotoItemWindow(_host, TotoItemWindowMode.Detail, row.Item) { Owner = this }.ShowDialog();
+            new TotoItemWindow(_toto, TotoItemWindowMode.Detail, row.Item) { Owner = this }.ShowDialog();
         }
     }
 
@@ -205,19 +210,19 @@ public partial class TotoHistoryWindow : Window
     {
         if (ItemsControl.ContainerFromElement(History, e.OriginalSource as DependencyObject) is DataGridRow &&
             History.SelectedItem is TotoHistoryRow row)
-            new TotoItemWindow(_host, TotoItemWindowMode.Detail, row.Item) { Owner = this }.ShowDialog();
+            new TotoItemWindow(_toto, TotoItemWindowMode.Detail, row.Item) { Owner = this }.ShowDialog();
     }
 }
 
 public sealed class TotoHistoryRow
 {
-    internal TotoHistoryRow(TodoItem item) => Item = item;
-    internal TodoItem Item { get; }
+    internal TotoHistoryRow(TotoItemSnapshot item) => Item = item;
+    internal TotoItemSnapshot Item { get; }
     public string Content => Item.Content;
     public string PlannedText => Item.PlannedAt?.ToString(DateTimeText.DisplayFormat) ?? "—";
     public string RemindText => Item.RemindAt?.ToString(DateTimeText.DisplayFormat) ?? "—";
     public string CreatedText => Item.CreatedAt.ToString(DateTimeText.DisplayFormat);
     public string EndedText => Item.EndedAt?.ToString(DateTimeText.DisplayFormat) ?? "—";
-    public string StatusText => Item.Status == ItemStatus.Completed ? "已完成" : "已取消";
+    public string StatusText => Item.Status == TotoItemStatus.Completed ? "已完成" : "已取消";
     public string Note => string.IsNullOrWhiteSpace(Item.Note) ? "—" : Item.Note;
 }

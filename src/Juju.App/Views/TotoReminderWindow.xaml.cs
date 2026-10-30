@@ -5,7 +5,8 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using Juju.Platform.Windows;
-using Toto.App.Domain;
+using Juju.Tools.Toto.Application;
+using Juju.Tools.Toto.Application.Items;
 using DataGrid = System.Windows.Controls.DataGrid;
 using Key = System.Windows.Input.Key;
 using KeyEventArgs = System.Windows.Input.KeyEventArgs;
@@ -25,8 +26,8 @@ public partial class TotoReminderWindow : Window
     private bool _syncingSelection;
     private bool _notified;
 
-    internal TotoReminderWindow(string title, IReadOnlyList<TodoItem> items, bool highlightTodayGreen = false,
-        IReadOnlyList<TodoItem>? completedItems = null, bool highlightTodayRed = false)
+    internal TotoReminderWindow(string title, IReadOnlyList<TotoItemSnapshot> items, bool highlightTodayGreen = false,
+        IReadOnlyList<TotoItemSnapshot>? completedItems = null, bool highlightTodayRed = false)
     {
         Title = title;
         InitializeComponent();
@@ -178,7 +179,7 @@ public partial class TotoReminderWindow : Window
         e.Handled = true;
     }
 
-    private static IEnumerable<TodoItem> SortReviewItems(IEnumerable<TodoItem> items) => items
+    private static IEnumerable<TotoItemSnapshot> SortReviewItems(IEnumerable<TotoItemSnapshot> items) => items
         .OrderBy(item => item.PlannedAt is null)
         .ThenByDescending(item => item.PlannedAt)
         .ThenBy(item => item.CreatedAt)
@@ -206,7 +207,7 @@ public sealed class TotoReminderRow
 {
     private static readonly Brush Normal = (Brush)new BrushConverter().ConvertFromString("#25344D")!;
 
-    internal TotoReminderRow(TodoItem item, string? emphasis)
+    internal TotoReminderRow(TotoItemSnapshot item, string? emphasis)
     {
         Content = item.Content;
         PlannedText = item.PlannedAt?.ToString(Toto.App.Data.DateTimeText.DisplayFormat) ?? "—";

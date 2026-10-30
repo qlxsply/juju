@@ -3,6 +3,7 @@ using Juju.App.Views;
 using Juju.Core.Settings;
 using Juju.Core.Tools;
 using Juju.Tools.Json.Settings;
+using Juju.Tools.Toto.Application;
 using Toto.App;
 
 namespace Juju.App.Settings;
@@ -13,14 +14,14 @@ public sealed class ShortcutSettingsSection : ISettingsSection
     private readonly ISettingsService _settings;
     private readonly SettingsDialogService _dialogs;
     private readonly IJsonToolSettingsService _json;
-    private readonly TotoToolHost _toto;
+    private readonly ITotoApplicationService _toto;
     private readonly Action<string> _render;
     public string Id => "shortcut";
     public string DisplayName => "快捷键";
     public FrameworkElement View { get; }
 
     public ShortcutSettingsSection(ISettingsService settings, SettingsDialogService dialogs,
-        IJsonToolSettingsService json, TotoToolHost toto)
+        IJsonToolSettingsService json, ITotoApplicationService toto)
     {
         _settings = settings;
         _dialogs = dialogs;
@@ -40,7 +41,7 @@ public sealed class ShortcutSettingsSection : ISettingsSection
             try
             {
                 GlobalHotkeyPolicy.EnsureDistinct(value,
-                    new[] { _json.Current.GlobalShortcut, _toto.Hotkey }
+                    new[] { _json.Current.GlobalShortcut, _toto.GlobalHotkey }
                         .Concat(_settings.Current.ToolGlobalShortcuts.Values).ToArray());
                 return null;
             }

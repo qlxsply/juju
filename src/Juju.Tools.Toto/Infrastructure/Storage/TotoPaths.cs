@@ -1,17 +1,13 @@
-namespace Toto.App;
+namespace Juju.Tools.Toto.Infrastructure.Storage;
 
 /// <summary>
 /// 集中计算 Juju 数据根目录下 tools/toto 的文件路径。
 /// 对 Java 开发者而言，它类似于保存应用配置目录的不可继承值对象；<c>sealed</c> 禁止继承。
 /// </summary>
-internal sealed class AppPaths
+internal sealed class TotoPaths
 {
-    public AppPaths() : this(Juju.Core.Storage.ApplicationPaths.ToolDataDirectory("toto"))
-    {
-    }
-
     /// <summary>使用指定数据目录创建路径集合，便于隔离测试且不影响实际用户数据。</summary>
-    internal AppPaths(string dataDirectory) => DataDirectory = dataDirectory;
+    internal TotoPaths(string dataDirectory) => DataDirectory = dataDirectory;
 
     /// <summary>获取 toto 数据、配置和日志的根目录。</summary>
     public string DataDirectory { get; }

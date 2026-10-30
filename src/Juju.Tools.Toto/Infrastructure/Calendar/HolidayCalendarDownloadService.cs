@@ -1,12 +1,13 @@
 using System.Net.Http.Json;
 using System.Text.Json;
+using Juju.Tools.Toto.Infrastructure.Storage;
 using Toto.App.Domain;
 
-namespace Toto.App.Services;
+namespace Juju.Tools.Toto.Infrastructure.Calendar;
 
 /// <summary>下载、验证并以 JSON 文件保存中国法定节假日数据。</summary>
 /// <remarks>主构造函数参数 <c>paths</c> 提供数据文件位置，等同于 Java 中手写依赖字段与构造函数。</remarks>
-internal sealed class HolidayCalendarDownloadService(AppPaths paths)
+internal sealed class HolidayCalendarDownloadService(TotoPaths paths)
 {
     private const string UrlFormat = "https://raw.githubusercontent.com/NateScarlet/holiday-cn/master/{0}.json";
 

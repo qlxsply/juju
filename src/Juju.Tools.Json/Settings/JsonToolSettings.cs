@@ -213,7 +213,7 @@ public interface IJsonToolSettingsService
 }
 
 /// <summary>以 camelCase JSON 和字符串枚举持久化 JSON 工具设置的实现。</summary>
-public sealed class JsonToolSettingsService(IAtomicFileWriter writer) : IJsonToolSettingsService
+public sealed class JsonToolSettingsService(string path, IAtomicFileWriter writer) : IJsonToolSettingsService
 {
     private static readonly JsonSerializerOptions Options = new()
     {
@@ -221,7 +221,7 @@ public sealed class JsonToolSettingsService(IAtomicFileWriter writer) : IJsonToo
         Converters = { new JsonStringEnumConverter() }
     };
 
-    private readonly string _path = Path.Combine(ApplicationPaths.ToolDataDirectory("json"), "settings.json");
+    private readonly string _path = path;
     public JsonToolSettings Current { get; private set; } = new();
     public event Action<JsonToolSettings>? Changed;
 

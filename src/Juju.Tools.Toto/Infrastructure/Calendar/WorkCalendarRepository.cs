@@ -1,11 +1,11 @@
+using Juju.Tools.Toto.Application.Ports;
 using Toto.App.Domain;
-using Toto.App.Services;
 
-namespace Toto.App.Data;
+namespace Juju.Tools.Toto.Infrastructure.Calendar;
 
 /// <summary>为工作日判断提供节假日数据的读取、更新和下载入口。</summary>
 /// <remarks>该类型使用 C# 主构造函数保存下载服务依赖，效果类似 Java 中显式赋值的构造函数。</remarks>
-internal sealed class WorkCalendarRepository(HolidayCalendarDownloadService downloader)
+internal sealed class WorkCalendarRepository(HolidayCalendarDownloadService downloader) : ITotoCalendarRepository
 {
     /// <summary>确保指定年份的数据已存在，必要时下载。</summary>
     public void EnsureYear(int year) => downloader.EnsureYear(year);
