@@ -5,6 +5,7 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Shapes;
 using Juju.App.Settings;
 using Juju.Core.Tools;
 using Juju.Platform.Windows;
@@ -29,6 +30,7 @@ public partial class SettingsWindow : Window
 {
     private readonly IReadOnlyDictionary<string, ISettingsSection> _sections;
     private readonly Dictionary<string, Button> _navigation;
+    private readonly HashSet<string> _toolSectionIds;
     private string _selectedId = "system";
     private bool _appExpanded = true;
     private bool _toolsExpanded;
@@ -54,9 +56,16 @@ public partial class SettingsWindow : Window
         _navigation = new Dictionary<string, Button>
         {
             ["system"] = NavGeneral, ["shortcut"] = NavShortcut, ["storage"] = NavStorage,
-            ["display"] = NavDisplay, ["about"] = NavAbout,
-            ["json"] = NavJson, ["toto"] = NavToto, ["echo-http"] = NavEcho, ["kairos"] = NavKairos
+            ["display"] = NavDisplay, ["about"] = NavAbout
         };
+        _toolSectionIds = _sections.Keys.Except(_navigation.Keys, StringComparer.Ordinal)
+            .ToHashSet(StringComparer.Ordinal);
+        foreach (var section in _sections.Values.Where(section => _toolSectionIds.Contains(section.Id)))
+        {
+            var navigation = CreateToolNavigation(section);
+            ToolChildren.Children.Add(navigation);
+            _navigation.Add(section.Id, navigation);
+        }
         Select("system");
         ExpandTools(true);
         // CheckBox 和 ComboBox 是标准 WPF 控件；路由事件在窗口集中触发即时保存。
@@ -75,7 +84,36 @@ public partial class SettingsWindow : Window
         ContentScroll.ScrollToTop();
         foreach (var (key, button) in _navigation) button.Tag = key == id ? "Active" : null;
         NavAppGroup.Tag = id is "system" or "shortcut" or "storage" or "display" or "about" ? "Active" : null;
-        NavTools.Tag = id is "json" or "toto" or "echo-http" or "kairos" ? "Active" : null;
+        NavTools.Tag = _toolSectionIds.Contains(id) ? "Active" : null;
+    }
+
+    private Button CreateToolNavigation(ISettingsSection section)
+    {
+        var dot = new Ellipse
+        {
+            Width = 8,
+            Height = 8,
+            Fill = (Brush)new System.Windows.Media.BrushConverter().ConvertFromString(section.NavigationColor)!,
+            Margin = new Thickness(0, 0, 10, 0)
+        };
+        var label = new TextBlock
+        {
+            Text = section.NavigationName,
+            FontSize = 11,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        var button = new Button
+        {
+            Style = (Style)FindResource("ToolboxSubItem"),
+            CommandParameter = section.Id,
+            Content = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Children = { dot, label }
+            }
+        };
+        button.Click += Navigate_Click;
+        return button;
     }
 
     public void NavigateToGeneral()

@@ -120,36 +120,7 @@
                                     </Path>
                                 </Grid>
                             </Button>
-                            <StackPanel x:Name="ToolChildren" Margin="0,4,0,0">
-                                <Button x:Name="NavJson" Style="{StaticResource ToolboxSubItem}"
-                                        CommandParameter="json" Click="Navigate_Click">
-                                    <StackPanel Orientation="Horizontal">
-                                        <Ellipse Width="8" Height="8" Fill="#6189DF" Margin="0,0,10,0"/>
-                                        <TextBlock Text="JSON 格式化" FontSize="11" VerticalAlignment="Center"/>
-                                    </StackPanel>
-                                </Button>
-                                <Button x:Name="NavToto" Style="{StaticResource ToolboxSubItem}"
-                                        CommandParameter="toto" Click="Navigate_Click">
-                                    <StackPanel Orientation="Horizontal">
-                                        <Ellipse Width="8" Height="8" Fill="#409C95" Margin="0,0,10,0"/>
-                                        <TextBlock Text="Toto 日程提醒" FontSize="11" VerticalAlignment="Center"/>
-                                    </StackPanel>
-                                </Button>
-                                <Button x:Name="NavEcho" Style="{StaticResource ToolboxSubItem}"
-                                        CommandParameter="echo-http" Click="Navigate_Click">
-                                    <StackPanel Orientation="Horizontal">
-                                        <Ellipse Width="8" Height="8" Fill="#ED9848" Margin="0,0,10,0"/>
-                                        <TextBlock Text="EchoHttp" FontSize="11" VerticalAlignment="Center"/>
-                                    </StackPanel>
-                                </Button>
-                                <Button x:Name="NavKairos" Style="{StaticResource ToolboxSubItem}"
-                                        CommandParameter="kairos" Click="Navigate_Click">
-                                    <StackPanel Orientation="Horizontal">
-                                        <Ellipse Width="8" Height="8" Fill="#8066D9" Margin="0,0,10,0"/>
-                                        <TextBlock Text="Kairos" FontSize="11" VerticalAlignment="Center"/>
-                                    </StackPanel>
-                                </Button>
-                            </StackPanel>
+                            <StackPanel x:Name="ToolChildren" Margin="0,4,0,0"/>
                         </StackPanel>
                     </ScrollViewer>
                 </Border>

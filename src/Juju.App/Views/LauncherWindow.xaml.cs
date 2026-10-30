@@ -1,11 +1,13 @@
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Interop;
+using System.Windows.Media;
 using System.Windows.Threading;
 using Juju.App.Bootstrap;
-using Juju.Core.App;
+using Juju.App.Contracts.Windows;
 using Juju.Core.Settings;
 using Juju.Core.Tools;
+using Juju.App.Tools.Contracts;
 using Juju.Tools.Json.Settings;
 using Juju.Platform.Windows.HotKey;
 using Juju.Platform.Windows;
@@ -19,7 +21,8 @@ namespace Juju.App.Views;
 // 对应 XAML 的 partial 代码隐藏类；InitializeComponent 会创建并命名 XAML 中声明的元素。
 public partial class LauncherWindow : Window
 {
-    private readonly IWindowManager _windows;
+    private readonly IAppWindowManager _windows;
+    private readonly IToolManager _tools;
     private readonly ISettingsService _settings;
     private readonly GlobalShortcutService _shortcut = new();
     private readonly GlobalShortcutService _jsonShortcut = new();
@@ -33,18 +36,20 @@ public partial class LauncherWindow : Window
     private readonly DispatcherTimer _timeout = new();
     private bool _armed;
     private bool _settingsOpen;
-    private bool _compact;
     private int _shortcutCaptureDepth;
+    public double ToolRowHeight { get; private set; } = 53;
 
     // 构造函数依赖由窗口管理器传入；ThemeService 参数用于保持依赖图一致，主题资源由 WPF 全局资源解析。
-    public LauncherWindow(IWindowManager windows, ISettingsService settings, ThemeService themes, TotoToolHost toto,
-        IJsonToolSettingsService jsonSettings)
+    public LauncherWindow(IToolManager tools, IAppWindowManager windows, ISettingsService settings,
+        ThemeService themes, TotoToolHost toto, IJsonToolSettingsService jsonSettings)
     {
+        _tools = tools;
         _windows = windows;
         _settings = settings;
         _toto = toto;
         _jsonSettings = jsonSettings;
         InitializeComponent();
+        DataContext = this;
         // DispatcherTimer 在 WPF UI 线程触发，不需要额外 Dispatcher.Invoke 即可安全隐藏窗口。
         _timeout.Tick += (_, _) => { if (!_settingsOpen) Hide(); };
         IsVisibleChanged += (_, _) =>
@@ -102,16 +107,11 @@ public partial class LauncherWindow : Window
         }
         // 只有所有验证/注册都成功后才更新屏幕状态；失败时界面与持久化值保持一致。
         _timeout.Interval = TimeSpan.FromMilliseconds(Math.Clamp(settings.LauncherTimeoutMilliseconds, 250, 30000));
-        if (_compact != settings.CompactLauncher)
+        ToolRowHeight = settings.CompactLauncher ? 45 : 53;
+        ToolRows.ItemsSource = _tools.Catalog.All.Select(tool => tool with
         {
-            _compact = settings.CompactLauncher;
-            foreach (var row in new[] { JsonRow, TotoRow, EchoRow, KairosRow })
-                row.Height = _compact ? 45 : 53;
-        }
-        JsonKey.Text = keys[nameof(ToolId.Json)];
-        TotoKey.Text = keys[nameof(ToolId.Toto)];
-        EchoKey.Text = keys[nameof(ToolId.EchoHttp)];
-        KairosKey.Text = keys[nameof(ToolId.Kairos)];
+            DefaultLauncherKey = keys[tool.Id.ToString()]
+        }).ToArray();
         return true;
     }
 
@@ -293,7 +293,10 @@ public partial class LauncherWindow : Window
 
     private void MoveToolFocus(bool down)
     {
-        var rows = new[] { JsonRow, TotoRow, EchoRow, KairosRow };
+        var rows = Enumerable.Range(0, ToolRows.Items.Count)
+            .Select(index => FindVisualChild<Button>(ToolRows.ItemContainerGenerator.ContainerFromIndex(index)))
+            .Where(row => row is not null).Cast<Button>().ToArray();
+        if (rows.Length == 0) return;
         var current = Array.FindIndex(rows, row => row.IsKeyboardFocusWithin);
         var next = current < 0
             ? down ? 0 : rows.Length - 1
@@ -315,20 +318,23 @@ public partial class LauncherWindow : Window
 
     private void Tool_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is not Button { Tag: string value } ||
-            !Enum.TryParse<ToolId>(value, out var tool)) return;
+        if (sender is not Button { Tag: ToolId tool }) return;
         OpenTool(tool);
     }
 
     private void OpenTool(ToolId tool)
     {
-        if (tool is ToolId.Json or ToolId.Toto)
-        {
-            _windows.ShowTool(tool);
-            Hide();
-            return;
-        }
-        MessageBox.Show($"{tool} 正在开发中。", "juju", MessageBoxButton.OK, MessageBoxImage.Information);
+        _tools.Open(tool);
+    }
+
+    private static T? FindVisualChild<T>(DependencyObject? parent) where T : DependencyObject
+    {
+        if (parent is null) return null;
+        if (parent is T match) return match;
+        for (var index = 0; index < VisualTreeHelper.GetChildrenCount(parent); index++)
+            if (FindVisualChild<T>(VisualTreeHelper.GetChild(parent, index)) is { } child)
+                return child;
+        return null;
     }
 
     // HwndSourceHook 是 WPF 到原生 Win32 消息循环的桥梁；处理热键消息后标记 handled 阻止继续分发。
@@ -341,12 +347,12 @@ public partial class LauncherWindow : Window
         }
         else if (_jsonShortcut.IsHotKeyMessage(message, wParam))
         {
-            _windows.ShowTool(ToolId.Json);
+            _tools.Open(ToolId.Json);
             handled = true;
         }
         else if (_totoShortcut.IsHotKeyMessage(message, wParam))
         {
-            _windows.ShowTool(ToolId.Toto);
+            _tools.Open(ToolId.Toto);
             handled = true;
         }
         else

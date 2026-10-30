@@ -323,6 +323,7 @@ public sealed class ItemRepositoryTests : IDisposable
             calendar.SaveLocal(DateTime.Today.Year + 1, []);
         repository.Add(Item("restored", "重启后到期", DateTime.Now.AddMinutes(-1)));
         using var host = new TotoToolHost(new SynchronizationContext(), paths);
+        Assert.True(host.EnsureReady());
         var delivered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         host.DueReminders += due =>
         {
@@ -344,6 +345,7 @@ public sealed class ItemRepositoryTests : IDisposable
         if (DateTime.Today.AddDays(7).Year != today.Year)
             calendar.SaveLocal(today.Year + 1, []);
         using var host = new TotoToolHost(new SynchronizationContext(), paths);
+        Assert.True(host.EnsureReady());
         var values = host.ToolSettings.ToDictionary(item => item.Key, item => item.Value);
         values["daily_review_start_time"] = "00:00";
         values["daily_review_workdays"] = "0";
@@ -371,6 +373,7 @@ public sealed class ItemRepositoryTests : IDisposable
         if (DateTime.Today.AddDays(7).Year != DateTime.Today.Year)
             calendar.SaveLocal(DateTime.Today.Year + 1, []);
         using var host = new TotoToolHost(new SynchronizationContext(), paths);
+        Assert.True(host.EnsureReady());
         var values = host.ToolSettings.ToDictionary(item => item.Key, item => item.Value);
         values["daily_review_start_time"] = "00:00";
         values["daily_review_end_time"] = "00:00";

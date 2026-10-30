@@ -1,4 +1,4 @@
-using Juju.Core.App;
+using Juju.App.Contracts.Windows;
 using Juju.Core.Settings;
 using Juju.Core.Tools;
 using Juju.Tools.Json.Documents;
@@ -8,12 +8,11 @@ using Juju.Tools.Json.Settings;
 using Toto.App;
 using Toto.App.Domain;
 using Microsoft.Extensions.DependencyInjection;
-using MessageBox = System.Windows.MessageBox;
 
 namespace Juju.App.Bootstrap;
 
 // 窗口管理器是 App 层的 DI 适配器：延迟创建窗口、复用隐藏窗口，并协调主题和持久化位置。
-public sealed class DesktopWindowManager : IWindowManager
+public sealed class DesktopWindowManager : IAppWindowManager, IJsonToolWindow, ITotoToolWindow
 {
     private readonly JsonDocumentService documents;
     private readonly ISettingsService settings;
@@ -55,7 +54,8 @@ public sealed class DesktopWindowManager : IWindowManager
     // 启动时先创建并完成 HWND 相关初始化，再隐藏；这样全局热键可在首次唤起前注册。
     public void InitializeLauncher()
     {
-        _launcher ??= new LauncherWindow(this, settings, themes, toto, jsonSettings);
+        _launcher ??= new LauncherWindow(services.GetRequiredService<Juju.App.Tools.Contracts.IToolManager>(),
+            this, settings, themes, toto, jsonSettings);
 
         // Loaded 时 SizeToContent 已经算出真实高度；仅恢复拖动位置，不从旧配置覆盖自适应宽高。
         _launcher.Loaded += (_, _) => windowState.RestorePosition(_launcher, "launcher");
@@ -76,7 +76,9 @@ public sealed class DesktopWindowManager : IWindowManager
         _launcher?.SetSettingsOpen(true);
         if (_settings is null)
         {
-            _settings = new SettingsWindow(services.GetServices<ISettingsSection>(), dialogs);
+            var sections = services.GetServices<ISettingsSection>()
+                .Concat(services.GetRequiredService<Juju.App.Tools.Contracts.IToolManager>().SettingsSections);
+            _settings = new SettingsWindow(sections, dialogs);
             var hasSavedPosition = windowState.HasPlacement("settings");
             windowState.Restore(_settings, "settings");
             // 原型将设置覆盖在 Launcher 右侧；Owner 令两个原生窗口保持同一前后层级。
@@ -102,50 +104,34 @@ public sealed class DesktopWindowManager : IWindowManager
         Show(_settings);
     }
 
-    public void ShowToolSettings(ToolId tool)
+    public void PrepareToolWindowOpen()
     {
-        ShowSettings();
-        _settings?.NavigateToTool(tool switch
+        if (_settings?.IsVisible == true) _settings.Hide();
+        _launcher?.SetSettingsOpen(false);
+        if (_launcher?.IsVisible == true) _launcher.Hide();
+    }
+
+    public void ShowToto()
+    {
+        if (_toto is null)
         {
-            ToolId.Json => "json", ToolId.Toto => "toto", ToolId.EchoHttp => "echo-http", _ => "kairos"
-        });
+            _toto = new TotoMainWindow(toto, ShowHistory);
+            var window = _toto;
+            if (windowState.HasPlacement("toto")) windowState.Restore(window, "toto");
+            window.Closed += (_, _) => { if (ReferenceEquals(_toto, window)) _toto = null; };
+            window.IsVisibleChanged += (_, _) =>
+            {
+                if (!window.IsVisible) OnToolHidden(ToolId.Toto);
+            };
+        }
+        _toto.RefreshItems();
+        Show(_toto);
+        _toto.FocusItems();
     }
 
     // JSON 工具惰性创建。主题事件订阅只发生一次，因此不会随重复打开累计处理器。
-    public void ShowTool(ToolId tool)
+    public void ShowJson()
     {
-        if (tool is ToolId.Json or ToolId.Toto)
-        {
-            // 与 HTML openTool 一致：打开真实工具时退出设置叠层并收起入口。
-            if (_settings?.IsVisible == true) _settings.Hide();
-            _launcher?.SetSettingsOpen(false);
-            if (_launcher?.IsVisible == true) _launcher.Hide();
-        }
-        if (tool == ToolId.Toto)
-        {
-            if (!toto.EnsureReady())
-            {
-                MessageBox.Show($"节假日日历尚未就绪，Toto 将继续重试：\n{toto.InitializationError}",
-                    "Toto", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
-                return;
-            }
-            if (_toto is null)
-            {
-                _toto = new TotoMainWindow(toto, ShowHistory);
-                var window = _toto;
-                if (windowState.HasPlacement("toto")) windowState.Restore(window, "toto");
-                window.Closed += (_, _) => { if (ReferenceEquals(_toto, window)) _toto = null; };
-                window.IsVisibleChanged += (_, _) =>
-                {
-                    if (!window.IsVisible) OnToolHidden(ToolId.Toto);
-                };
-            }
-            _toto.RefreshItems();
-            Show(_toto);
-            _toto.FocusItems();
-            return;
-        }
-        if (tool != ToolId.Json) return;
         if (_json is null)
         {
             _json = new JsonToolWindow(documents, jsonSettings) { FileClipboard = fileClipboard };

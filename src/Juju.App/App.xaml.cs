@@ -3,14 +3,21 @@ using System.IO.Pipes;
 using System.Text;
 using System.Windows;
 using Juju.App.Bootstrap;
+using Juju.App.Contracts.Bootstrap;
+using Juju.App.Contracts.Windows;
 using Juju.App.Services;
 using Juju.App.Settings;
 using Juju.App.Views;
-using Juju.Core.App;
 using Juju.Core.Logging;
 using Juju.Core.Settings;
 using Juju.Core.Storage;
 using Juju.Core.Tools;
+using Juju.App.Tools.Catalog;
+using Juju.App.Tools.Contracts;
+using Juju.App.Tools.Json;
+using Juju.App.Tools.Placeholders;
+using Juju.App.Tools.Routing;
+using Juju.App.Tools.Toto;
 using Juju.Platform.Windows.Startup;
 using Juju.Tools.Json.Documents;
 using Juju.Tools.Json.Metadata;
@@ -32,7 +39,7 @@ public partial class App
     private bool _ownsMutex;
     private CancellationTokenSource? _shutdown;
     private ServiceProvider? _services;
-    private IWindowManager? _windows;
+    private IAppWindowManager? _windows;
     private IToolManager? _tools;
     private IAppLifecycle? _lifecycle;
 
@@ -80,28 +87,16 @@ public partial class App
         services.AddSingleton<ISettingsSection>(provider => new ShortcutSettingsSection(
             provider.GetRequiredService<ISettingsService>(), provider.GetRequiredService<SettingsDialogService>(),
             provider.GetRequiredService<IJsonToolSettingsService>(), provider.GetRequiredService<TotoToolHost>()));
+        services.AddSingleton<JsonSettingsSection>(provider => new JsonSettingsSection(
+            provider.GetRequiredService<IJsonToolSettingsService>(), provider.GetRequiredService<ISettingsService>(),
+            provider.GetRequiredService<DataDirectoryChangeService>(),
+            (tool, shortcut) => provider.GetRequiredService<DesktopWindowManager>().TryRegisterToolHotkey(tool, shortcut),
+            provider.GetRequiredService<SettingsDialogService>(), provider.GetRequiredService<TotoToolHost>()));
         services.AddSingleton<ISettingsSection>(provider => new StorageSettingsSection(
             provider.GetRequiredService<DataDirectoryChangeService>(),
             provider.GetRequiredService<SettingsDialogService>(), provider.GetRequiredService<ISettingsService>()));
         services.AddSingleton<ISettingsSection, DisplaySettingsSection>();
         services.AddSingleton<ISettingsSection, AboutSettingsSection>();
-        services.AddSingleton<ISettingsSection>(provider => new JsonSettingsSection(
-            provider.GetRequiredService<IJsonToolSettingsService>(), provider.GetRequiredService<ISettingsService>(),
-            provider.GetRequiredService<DataDirectoryChangeService>(),
-            (tool, shortcut) => provider.GetRequiredService<DesktopWindowManager>().TryRegisterToolHotkey(tool, shortcut),
-            provider.GetRequiredService<SettingsDialogService>(),
-            provider.GetRequiredService<TotoToolHost>()));
-        services.AddSingleton<ISettingsSection, TotoSettingsSection>();
-        services.AddSingleton<ISettingsSection>(provider => new PlaceholderToolSettingsSection(ToolId.EchoHttp,
-            provider.GetRequiredService<ISettingsService>(), provider.GetRequiredService<DataDirectoryChangeService>(),
-            (tool, shortcut) => provider.GetRequiredService<DesktopWindowManager>().TryRegisterToolHotkey(tool, shortcut),
-            provider.GetRequiredService<SettingsDialogService>(), provider.GetRequiredService<IJsonToolSettingsService>(),
-            provider.GetRequiredService<TotoToolHost>()));
-        services.AddSingleton<ISettingsSection>(provider => new PlaceholderToolSettingsSection(ToolId.Kairos,
-            provider.GetRequiredService<ISettingsService>(), provider.GetRequiredService<DataDirectoryChangeService>(),
-            (tool, shortcut) => provider.GetRequiredService<DesktopWindowManager>().TryRegisterToolHotkey(tool, shortcut),
-            provider.GetRequiredService<SettingsDialogService>(), provider.GetRequiredService<IJsonToolSettingsService>(),
-            provider.GetRequiredService<TotoToolHost>()));
         services.AddSingleton(roots);
         services.AddSingleton<DataDirectoryChangeService>();
         services.AddSingleton<IStorageManager>(storage);
@@ -109,16 +104,26 @@ public partial class App
         // 先创建 TotoToolHost 再显示 Launcher：提醒调度独立于 Toto 主窗口一直运行。
         services.AddSingleton(_ => new TotoToolHost(
             new System.Windows.Threading.DispatcherSynchronizationContext(Application.Current.Dispatcher)));
-        services.AddSingleton<IToolRegistry, ToolRegistry>();
-        services.AddSingleton<IRuntimeManager, RuntimeManager>();
         services.AddSingleton<DesktopWindowManager>();
         services.AddSingleton<WindowStateService>();
         services.AddSingleton<SettingsDialogService>();
         services.AddSingleton<ThemeService>();
         services.AddSingleton<IJsonFileClipboard, JsonFileClipboard>();
         services.AddSingleton<IStartupService, StartupService>();
-        // 以接口暴露同一个具体单例，避免 IWindowManager 与 DesktopWindowManager 各创建一份窗口缓存。
-        services.AddSingleton<IWindowManager>(provider => provider.GetRequiredService<DesktopWindowManager>());
+        // 所有窗口端口共享一个适配器实例，避免重复创建工具窗口缓存。
+        services.AddSingleton<IAppWindowManager>(provider => provider.GetRequiredService<DesktopWindowManager>());
+        services.AddSingleton<IJsonToolWindow>(provider => provider.GetRequiredService<DesktopWindowManager>());
+        services.AddSingleton<ITotoToolWindow>(provider => provider.GetRequiredService<DesktopWindowManager>());
+        services.AddJsonToolModule();
+        services.AddTotoToolModule();
+        services.AddPlaceholderToolModule(ToolId.EchoHttp, "EchoHttp", "HTTP 工具 · 正在开发中",
+            "⇄", "#DF9952", 24, ToolLaunchKeys.EchoHttp);
+        services.AddPlaceholderToolModule(ToolId.Kairos, "Kairos", "时间工具 · 正在开发中",
+            "◷", "#6B66DC", 26, ToolLaunchKeys.Kairos);
+        services.AddSingleton<ToolRegistry>();
+        services.AddSingleton<IToolCatalog>(provider => provider.GetRequiredService<ToolRegistry>());
+        services.AddSingleton<IToolRegistry>(provider => provider.GetRequiredService<ToolRegistry>());
+        services.AddSingleton<IToolOpenFeedback, ToolOpenFeedback>();
         services.AddSingleton<IToolManager, ToolManager>();
         services.AddLogging(builder =>
             builder.AddProvider(
@@ -126,17 +131,17 @@ public partial class App
         // 托盘菜单只能接收同步 Action；丢弃 Task 是有意的 fire-and-forget 适配，
         // ExitAsync 自己负责完整关闭流程，而非在 UI 回调中阻塞线程。
         services.AddSingleton<TrayService>(provider => new TrayService(
-            provider.GetRequiredService<IWindowManager>(), () => _ = ExitAsync()));
+            provider.GetRequiredService<IAppWindowManager>(), () => _ = ExitAsync()));
         services.AddSingleton<IAppLifecycle, DesktopAppLifecycle>();
         _services = services.BuildServiceProvider();
         _services.GetRequiredService<DataDirectoryChangeService>().LoadPending(
             settings.Current.PendingDataRoot, settings.Current.PendingToolDataDirectories);
-        _windows = _services.GetRequiredService<IWindowManager>();
+        _windows = _services.GetRequiredService<IAppWindowManager>();
         _tools = _services.GetRequiredService<IToolManager>();
         _lifecycle = _services.GetRequiredService<IAppLifecycle>();
         await _services.GetRequiredService<WindowStateService>().LoadAsync(_shutdown.Token);
         _services.GetRequiredService<ThemeService>().Apply(settings.Current.Theme);
-        _services.GetRequiredService<TotoToolHost>();
+        await _tools.StartAsync(_shutdown.Token);
         _services.GetRequiredService<DesktopWindowManager>().InitializeLauncher();
         _ = _services.GetRequiredService<TrayService>();
         // 后台管道监听与 UI 生命周期并行运行；其取消令牌由退出流程统一触发。

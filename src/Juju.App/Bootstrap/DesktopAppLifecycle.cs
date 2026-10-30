@@ -1,9 +1,9 @@
-using Juju.Core.App;
+using Juju.App.Contracts.Bootstrap;
 using Juju.Core.Settings;
 using Juju.Core.Storage;
+using Juju.App.Tools.Contracts;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Toto.App;
 
 namespace Juju.App.Bootstrap;
 
@@ -11,11 +11,10 @@ namespace Juju.App.Bootstrap;
 public sealed class DesktopAppLifecycle(
     IServiceProvider services,
     DesktopWindowManager windows,
-    IRuntimeManager runtimes,
+    IToolManager tools,
     ISettingsService settings,
     WindowStateService states,
     TrayService tray,
-    TotoToolHost toto,
     DataDirectoryChangeService dataChanges,
     ILogger<DesktopAppLifecycle> log) : IAppLifecycle
 {
@@ -30,8 +29,7 @@ public sealed class DesktopAppLifecycle(
             log.LogInformation("Application shutdown started");
             await windows.ShutdownAsync(states, cancellationToken);
             await settings.SaveAsync(settings.Current, cancellationToken);
-            await runtimes.StopAllAsync(cancellationToken);
-            toto.Dispose();
+            await tools.StopAllAsync(cancellationToken);
             tray.Dispose();
             // JSON 窗口已写盘、Toto 调度器已停止；此时复制并提交下一次启动的数据目录。
             await dataChanges.CommitAsync(settings, cancellationToken);

@@ -35,6 +35,7 @@ public sealed class JsonSettingsSection : ISettingsSection
 
     public string Id => "json";
     public string DisplayName => "JSON";
+    public string NavigationName => "JSON 格式化";
     public FrameworkElement View { get; }
 
     // 设置服务由 DI 注入；控件只编辑内存中的行模型，点击总保存时才写入持久化配置。

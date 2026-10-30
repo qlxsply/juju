@@ -1,12 +1,14 @@
 using System.Windows;
 
-namespace Juju.App.Settings;
+namespace Juju.App.Contracts.Settings;
 
 // 设置窗口依赖此小接口而非具体页面，DI 可以注入多个实现并按 Id 分组展示。
 public interface ISettingsSection
 {
     string Id { get; }
     string DisplayName { get; }
+    string NavigationName => DisplayName;
+    string NavigationColor => "#6189DF";
 
     FrameworkElement View { get; }
 

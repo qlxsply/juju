@@ -23,6 +23,7 @@ public sealed class PlaceholderToolSettingsSection : ISettingsSection
     private readonly Action<string> _renderDirectory;
     public string Id => _tool == ToolId.EchoHttp ? "echo-http" : "kairos";
     public string DisplayName => _tool.ToString();
+    public string NavigationColor => _tool == ToolId.EchoHttp ? "#ED9848" : "#8066D9";
     public FrameworkElement View { get; }
 
     public PlaceholderToolSettingsSection(ToolId tool, ISettingsService settings,

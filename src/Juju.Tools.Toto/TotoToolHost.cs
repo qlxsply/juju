@@ -136,7 +136,7 @@ public sealed class TotoToolHost : IDisposable
         SystemEvents.SessionSwitch += SessionSwitch;
         SystemEvents.PowerModeChanged += PowerModeChanged;
         SystemEvents.TimeChanged += TimeChanged;
-        TryStart();
+        // 由 Juju.App 的 TotoToolModule.StartAsync 启动；构造只组装资源，不隐式运行后台调度。
     }
 
     private bool TryStart()

@@ -49,6 +49,7 @@ public sealed class TotoSettingsSection : ISettingsSection
 
     public string Id => "toto";
     public string DisplayName => "Toto 日程提醒";
+    public string NavigationColor => "#409C95";
     public FrameworkElement View { get; }
 
     public TotoSettingsSection(TotoToolHost toto, ISettingsService application, IJsonToolSettingsService jsonSettings,

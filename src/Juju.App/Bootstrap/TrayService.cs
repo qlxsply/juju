@@ -1,6 +1,6 @@
 using System.Drawing;
 using System.Windows.Forms;
-using Juju.Core.App;
+using Juju.App.Contracts.Windows;
 
 namespace Juju.App.Bootstrap;
 
@@ -14,7 +14,7 @@ public sealed class TrayService : IDisposable
     private readonly Icon _trayImage;
     private readonly ContextMenuStrip _menu;
 
-    public TrayService(IWindowManager windows, Action exit)
+    public TrayService(IAppWindowManager windows, Action exit)
     {
         using var stream = System.Windows.Application.GetResourceStream(
             new Uri("pack://application:,,,/Assets/juju.ico"))!.Stream;
