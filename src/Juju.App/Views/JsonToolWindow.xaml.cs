@@ -369,6 +369,9 @@ public partial class JsonToolWindow : Window
                     }
 
                     break;
+                case "foldStateReset":
+                    _foldDepth = 0;
+                    break;
                 case "cursorChanged":
                     if (TryGetPosition(message.Payload, out var line, out var column))
                         CursorStatus.Text = $"Ln {line}, Col {column}";
@@ -624,7 +627,7 @@ public partial class JsonToolWindow : Window
 
     private async Task UnfoldLevelAsync()
     {
-        _foldDepth = _foldDepth == 7 ? 1 : _foldDepth + 1;
+        _foldDepth++;
         await SendEditorCommandAsync("unfoldLevel", new { level = _foldDepth });
         SaveStateStatus.Text = $"已展开至第 {_foldDepth} 层";
     }
@@ -1428,8 +1431,8 @@ public partial class JsonToolWindow : Window
     {
         private static readonly HashSet<string> Types =
         [
-            "ready", "contentChanged", "cursorChanged", "validationChanged", "saveRequested", "shortcut",
-            "editorFocused", "commandResult"
+            "ready", "contentChanged", "cursorChanged", "validationChanged", "foldStateReset", "saveRequested",
+            "shortcut", "editorFocused", "commandResult"
         ];
 
         public static bool TryParse(JsonElement root, out BridgeMessage message)

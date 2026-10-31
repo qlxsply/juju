@@ -90,6 +90,7 @@ export type EditorEvent =
   | "contentChanged"
   | "cursorChanged"
   | "validationChanged"
+  | "foldStateReset"
   | "saveRequested"
   | "shortcut"
   | "editorFocused"

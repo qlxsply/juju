@@ -23,6 +23,7 @@ export class EditorAdapter {
   private indentSize = 2;
   private inDiffMode = false;
   private suppressContentChanged = false;
+  private unfoldLevelInProgress = 0;
   private monacoBindings: MonacoBinding[] = [];
   private jujuBindings: JujuBinding[] = [];
   private pendingShortcut: string | null = null;
@@ -73,10 +74,12 @@ export class EditorAdapter {
 
   async foldAll(): Promise<void> {
     await this.runAction("editor.foldAll");
+    this.bridge.send("foldStateReset", {});
   }
 
   async unfoldAll(): Promise<void> {
     await this.runAction("editor.unfoldAll");
+    this.bridge.send("foldStateReset", {});
   }
 
   async unfoldLevel(payload: FoldLevelPayload): Promise<void> {
@@ -84,7 +87,12 @@ export class EditorAdapter {
     editor.setPosition({ lineNumber: 1, column: 1 });
     const action = editor.getAction("editor.unfold");
     if (!action) throw new Error("Monaco action 'editor.unfold' is unavailable.");
-    await action.run({ levels: Math.max(1, Math.min(7, Math.trunc(payload.level))), direction: "down", selectionLines: [0] });
+    this.unfoldLevelInProgress++;
+    try {
+      await action.run({ levels: Math.max(1, Math.trunc(payload.level)), direction: "down", selectionLines: [0] });
+    } finally {
+      this.unfoldLevelInProgress--;
+    }
   }
 
   async foldLevel(payload: FoldLevelPayload): Promise<void> {
@@ -155,6 +163,9 @@ export class EditorAdapter {
         lineNumber: event.position.lineNumber,
         column: event.position.column,
       });
+    });
+    this.editor.onDidChangeHiddenAreas(() => {
+      if (this.unfoldLevelInProgress === 0) this.bridge.send("foldStateReset", {});
     });
     this.editor.onDidFocusEditorText(() => this.bridge.send("editorFocused", {}));
     this.configureMonacoBindings();
