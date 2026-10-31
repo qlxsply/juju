@@ -32,7 +32,9 @@ public sealed class StartupService : IStartupService
     public void SetEnabled(bool enabled)
     {
         using var key = Registry.CurrentUser.CreateSubKey(KeyPath, writable: true);
-        if (enabled) key.SetValue(ValueName, $"\"{Environment.ProcessPath}\"");
-        else key.DeleteValue(ValueName, throwOnMissingValue: false);
+        if ( enabled )
+            key.SetValue(ValueName, $"\"{Environment.ProcessPath}\"");
+        else
+            key.DeleteValue(ValueName, throwOnMissingValue: false);
     }
 }

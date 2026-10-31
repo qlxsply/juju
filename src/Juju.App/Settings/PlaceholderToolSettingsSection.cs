@@ -69,7 +69,7 @@ public sealed class PlaceholderToolSettingsSection : ISettingsSection
             ToolLaunchKeys.Normalize(keys);
             return null;
         }
-        catch (InvalidOperationException ex) { return ex.Message; }
+        catch ( InvalidOperationException ex ) { return ex.Message; }
     }
 
     private async Task SaveKeyAsync(string candidate)
@@ -79,7 +79,7 @@ public sealed class PlaceholderToolSettingsSection : ISettingsSection
         keys[_tool.ToString()] = candidate;
         var next = old with { ToolKeys = ToolLaunchKeys.Normalize(keys) };
         var launcher = System.Windows.Application.Current.Windows.OfType<LauncherWindow>().FirstOrDefault();
-        if (launcher is not null && !launcher.ApplySettings(next))
+        if ( launcher is not null && !launcher.ApplySettings(next) )
         {
             launcher.ApplySettings(old);
             throw new InvalidOperationException("单键与其他入口按键冲突，原设置保持不变。");
@@ -113,16 +113,18 @@ public sealed class PlaceholderToolSettingsSection : ISettingsSection
                         .Select(item => item.Value)).ToArray());
             return null;
         }
-        catch (InvalidOperationException ex) { return ex.Message; }
+        catch ( InvalidOperationException ex ) { return ex.Message; }
     }
 
     private async Task SaveHotkeyAsync(string candidate)
     {
-        if (!_tryRegister(_tool, candidate)) throw new InvalidOperationException("全局直达快捷键已被占用。");
+        if ( !_tryRegister(_tool, candidate) )
+            throw new InvalidOperationException("全局直达快捷键已被占用。");
         var old = _settings.Current;
         var all = old.ToolGlobalShortcuts.ToDictionary(item => item.Key, item => item.Value);
         all[_tool.ToString()] = candidate;
-        try { await _settings.SaveAsync(old with { ToolGlobalShortcuts = all }); }
+        try
+        { await _settings.SaveAsync(old with { ToolGlobalShortcuts = all }); }
         catch
         {
             _tryRegister(_tool, old.ToolGlobalShortcuts.GetValueOrDefault(_tool.ToString(), GlobalHotkeyPolicy.None));

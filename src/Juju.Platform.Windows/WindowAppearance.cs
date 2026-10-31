@@ -10,7 +10,8 @@ public static class WindowAppearance
 
     public static void UseSystemCorners(IntPtr window)
     {
-        if (!OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000)) return;
+        if ( !OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000) )
+            return;
         var preference = Round;
         _ = DwmSetWindowAttribute(window, WindowCornerPreference, ref preference, sizeof(int));
     }

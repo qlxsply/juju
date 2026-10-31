@@ -1,12 +1,12 @@
-using Juju.Tools.Toto.Infrastructure.Calendar;
-using Juju.Tools.Toto.Infrastructure.Items;
-using Juju.Tools.Toto.Infrastructure.Settings;
-using Juju.Tools.Toto.Infrastructure.Storage;
 using Juju.Tools.Toto.Application;
 using Juju.Tools.Toto.Application.Items;
 using Juju.Tools.Toto.Application.Reminders;
 using Juju.Tools.Toto.Application.Settings;
 using Juju.Tools.Toto.Domain;
+using Juju.Tools.Toto.Infrastructure.Calendar;
+using Juju.Tools.Toto.Infrastructure.Items;
+using Juju.Tools.Toto.Infrastructure.Settings;
+using Juju.Tools.Toto.Infrastructure.Storage;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
@@ -207,7 +207,7 @@ public sealed class ItemRepositoryTests : IDisposable
         EndAt("startup-archive", oldMonth.AddDays(2).ToDateTime(new TimeOnly(12, 0)));
         var calendar = new HolidayCalendarDownloadService(paths);
         calendar.SaveLocal(DateTime.Today.Year, []);
-        if (DateTime.Today.AddDays(7).Year != DateTime.Today.Year)
+        if ( DateTime.Today.AddDays(7).Year != DateTime.Today.Year )
             calendar.SaveLocal(DateTime.Today.Year + 1, []);
 
         using var host = CreateRuntime(paths);
@@ -259,7 +259,7 @@ public sealed class ItemRepositoryTests : IDisposable
         var paths = new TotoPaths(dataDirectory);
         var calendar = new HolidayCalendarDownloadService(paths);
         calendar.SaveLocal(DateTime.Today.Year, []);
-        if (DateTime.Today.AddDays(7).Year != DateTime.Today.Year)
+        if ( DateTime.Today.AddDays(7).Year != DateTime.Today.Year )
             calendar.SaveLocal(DateTime.Today.Year + 1, []);
         using var host = CreateRuntime(paths);
         await host.StartAsync();
@@ -268,13 +268,15 @@ public sealed class ItemRepositoryTests : IDisposable
         var delivered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         host.DueReminders += due =>
         {
-            lock (notifications) notifications.AddRange(due);
+            lock ( notifications )
+                notifications.AddRange(due);
             delivered.TrySetResult();
         };
         host.Reschedule();
         await delivered.Task.WaitAsync(TimeSpan.FromSeconds(5));
         host.Resume();
-        lock (notifications) Assert.Single(notifications);
+        lock ( notifications )
+            Assert.Single(notifications);
         Assert.Equal(ReminderStatus.Reminded, repository.GetActive().Single().ReminderStatus);
         Assert.Empty(repository.GetHistory(null, 1, 10).Items);
     }
@@ -283,7 +285,7 @@ public sealed class ItemRepositoryTests : IDisposable
     public void History_filters_and_paginates_existing_csv_records()
     {
         var endedAt = new DateTime(2026, 10, 22, 12, 0, 0);
-        for (var index = 0; index < 15; index++)
+        for ( var index = 0; index < 15; index++ )
         {
             var id = $"historical-{index}";
             repository.Add(Item(id, index % 2 == 0 ? "项目会议" : "开发事项"));
@@ -294,8 +296,11 @@ public sealed class ItemRepositoryTests : IDisposable
         Assert.Equal(5, repository.GetHistory(null, 2, 10).Items.Count);
         var meetings = repository.GetHistory(new QueryCriteria
         {
-            Content = "会议", Note = "会议记录", Status = ItemStatus.Completed,
-            EndedFrom = endedAt.Date, EndedTo = endedAt.Date.AddDays(1)
+            Content = "会议",
+            Note = "会议记录",
+            Status = ItemStatus.Completed,
+            EndedFrom = endedAt.Date,
+            EndedTo = endedAt.Date.AddDays(1)
         }, 1, 10);
         Assert.Equal(8, meetings.TotalCount);
         Assert.All(meetings.Items, item => Assert.Equal(ItemStatus.Completed, item.Status));
@@ -323,7 +328,8 @@ public sealed class ItemRepositoryTests : IDisposable
         Assert.Equal(["oct", "sep", "aug-late", "aug-early"], history.Items.Select(item => item.Id).ToArray());
         var august = repository.GetHistory(new QueryCriteria
         {
-            EndedFrom = new DateTime(2026, 8, 1), EndedTo = new DateTime(2026, 9, 1)
+            EndedFrom = new DateTime(2026, 8, 1),
+            EndedTo = new DateTime(2026, 9, 1)
         }, 1, 10);
         Assert.Equal(["aug-late", "aug-early"], august.Items.Select(item => item.Id).ToArray());
     }
@@ -340,7 +346,7 @@ public sealed class ItemRepositoryTests : IDisposable
         var paths = new TotoPaths(dataDirectory);
         var calendar = new HolidayCalendarDownloadService(paths);
         calendar.SaveLocal(DateTime.Today.Year, []);
-        if (DateTime.Today.AddDays(7).Year != DateTime.Today.Year)
+        if ( DateTime.Today.AddDays(7).Year != DateTime.Today.Year )
             calendar.SaveLocal(DateTime.Today.Year + 1, []);
         repository.Add(Item("restored", "重启后到期", DateTime.Now.AddMinutes(-1)));
         using var host = CreateRuntime(paths);
@@ -348,7 +354,8 @@ public sealed class ItemRepositoryTests : IDisposable
         var delivered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         host.DueReminders += due =>
         {
-            if (due.Any(item => item.Id == "restored")) delivered.TrySetResult();
+            if ( due.Any(item => item.Id == "restored") )
+                delivered.TrySetResult();
         };
 
         await delivered.Task.WaitAsync(TimeSpan.FromSeconds(5));
@@ -363,7 +370,7 @@ public sealed class ItemRepositoryTests : IDisposable
         var calendar = new HolidayCalendarDownloadService(paths);
         var today = DateOnly.FromDateTime(DateTime.Today);
         calendar.SaveLocal(today.Year, []);
-        if (DateTime.Today.AddDays(7).Year != today.Year)
+        if ( DateTime.Today.AddDays(7).Year != today.Year )
             calendar.SaveLocal(today.Year + 1, []);
         using var host = CreateRuntime(paths);
         await host.StartAsync();
@@ -392,7 +399,7 @@ public sealed class ItemRepositoryTests : IDisposable
         var paths = new TotoPaths(Path.Combine(dataDirectory, "independent-daily-reviews"));
         var calendar = new HolidayCalendarDownloadService(paths);
         calendar.SaveLocal(DateTime.Today.Year, []);
-        if (DateTime.Today.AddDays(7).Year != DateTime.Today.Year)
+        if ( DateTime.Today.AddDays(7).Year != DateTime.Today.Year )
             calendar.SaveLocal(DateTime.Today.Year + 1, []);
         using var host = CreateRuntime(paths);
         await host.StartAsync();
@@ -408,7 +415,8 @@ public sealed class ItemRepositoryTests : IDisposable
         host.ScheduledPopup += kind =>
         {
             kinds.Add(kind);
-            if (kinds.Count >= 2) bothDelivered.TrySetResult();
+            if ( kinds.Count >= 2 )
+                bothDelivered.TrySetResult();
         };
         host.Resume();
         await bothDelivered.Task.WaitAsync(TimeSpan.FromSeconds(5));
@@ -440,6 +448,7 @@ public sealed class ItemRepositoryTests : IDisposable
 
     public void Dispose()
     {
-        if (Directory.Exists(dataDirectory)) Directory.Delete(dataDirectory, true);
+        if ( Directory.Exists(dataDirectory) )
+            Directory.Delete(dataDirectory, true);
     }
 }

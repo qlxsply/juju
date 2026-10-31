@@ -65,7 +65,11 @@ public static class JsonToolShortcuts
     private static readonly IReadOnlyDictionary<string, string> KeyAliases =
         new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
-            ["Esc"] = "Escape", ["Del"] = "Delete", ["Return"] = "Enter", ["PgUp"] = "PageUp", ["PgDn"] = "PageDown",
+            ["Esc"] = "Escape",
+            ["Del"] = "Delete",
+            ["Return"] = "Enter",
+            ["PgUp"] = "PageUp",
+            ["PgDn"] = "PageDown",
         };
 
     /// <summary>所有支持命令的权威定义；集合表达式创建初始只读列表。</summary>
@@ -120,14 +124,15 @@ public static class JsonToolShortcuts
     /// <summary>检查完整性、保留组合键和同一 UI 上下文内的重复绑定，失败时抛出说明性异常。</summary>
     public static void Validate(IReadOnlyDictionary<JsonToolCommand, string>? shortcuts)
     {
-        if (shortcuts is null || Commands.Any(command => !shortcuts.ContainsKey(command)))
+        if ( shortcuts is null || Commands.Any(command => !shortcuts.ContainsKey(command)) )
             throw new InvalidOperationException("每个 JSON 命令都必须配置快捷键。");
         var normalized = Commands.ToDictionary(command => command, command => NormalizeCombination(shortcuts[command]));
-        if (normalized.Values.Any(IsReserved)) throw new InvalidOperationException("JSON 快捷键不能使用系统或启动器保留组合键。");
-        foreach (var context in Definitions.GroupBy(definition => definition.Context))
+        if ( normalized.Values.Any(IsReserved) )
+            throw new InvalidOperationException("JSON 快捷键不能使用系统或启动器保留组合键。");
+        foreach ( var context in Definitions.GroupBy(definition => definition.Context) )
         {
             var bindings = context.Select(definition => normalized[definition.Command]).ToArray();
-            if (bindings.Distinct(StringComparer.OrdinalIgnoreCase).Count() != bindings.Length)
+            if ( bindings.Distinct(StringComparer.OrdinalIgnoreCase).Count() != bindings.Length )
                 throw new InvalidOperationException("同一上下文中的 JSON 快捷键不能重复。");
         }
     }
@@ -139,9 +144,11 @@ public static class JsonToolShortcuts
     /// <summary>规范化一到两个按键步骤，并统一加号周围的空白。</summary>
     private static string NormalizeCombination(string? shortcut)
     {
-        if (string.IsNullOrWhiteSpace(shortcut)) throw new InvalidOperationException("JSON 快捷键不能为空。");
+        if ( string.IsNullOrWhiteSpace(shortcut) )
+            throw new InvalidOperationException("JSON 快捷键不能为空。");
         var strokes = Regex.Split(Regex.Replace(shortcut.Trim(), @"\s*\+\s*", "+"), @"\s+");
-        if (strokes.Length is < 1 or > 2) throw new InvalidOperationException("JSON 快捷键最多支持两个按键序列。");
+        if ( strokes.Length is < 1 or > 2 )
+            throw new InvalidOperationException("JSON 快捷键最多支持两个按键序列。");
         return string.Join(" ", strokes.Select(NormalizeStroke));
     }
 
@@ -149,20 +156,26 @@ public static class JsonToolShortcuts
     private static string NormalizeStroke(string stroke)
     {
         var parts = stroke.Split('+', StringSplitOptions.TrimEntries);
-        if (parts.Length == 0 || parts.Any(string.IsNullOrEmpty)) throw new InvalidOperationException("JSON 快捷键格式无效。");
+        if ( parts.Length == 0 || parts.Any(string.IsNullOrEmpty) )
+            throw new InvalidOperationException("JSON 快捷键格式无效。");
         var modifiers = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         string? key = null;
-        foreach (var part in parts)
+        foreach ( var part in parts )
         {
-            if (part.Equals("Control", StringComparison.OrdinalIgnoreCase)) modifiers.Add("Ctrl");
-            else if (part.Equals("Ctrl", StringComparison.OrdinalIgnoreCase) ||
+            if ( part.Equals("Control", StringComparison.OrdinalIgnoreCase) )
+                modifiers.Add("Ctrl");
+            else if ( part.Equals("Ctrl", StringComparison.OrdinalIgnoreCase) ||
                      part.Equals("Alt", StringComparison.OrdinalIgnoreCase) ||
-                     part.Equals("Shift", StringComparison.OrdinalIgnoreCase)) modifiers.Add(part);
-            else if (key is null) key = NormalizeKey(part);
-            else throw new InvalidOperationException("每个 JSON 快捷键步骤只能包含一个按键。");
+                     part.Equals("Shift", StringComparison.OrdinalIgnoreCase) )
+                modifiers.Add(part);
+            else if ( key is null )
+                key = NormalizeKey(part);
+            else
+                throw new InvalidOperationException("每个 JSON 快捷键步骤只能包含一个按键。");
         }
 
-        if (key is null || modifiers.Count != parts.Length - 1) throw new InvalidOperationException("JSON 快捷键格式无效。");
+        if ( key is null || modifiers.Count != parts.Length - 1 )
+            throw new InvalidOperationException("JSON 快捷键格式无效。");
         return string.Join('+', new[] { "Ctrl", "Alt", "Shift" }.Where(modifiers.Contains).Append(key));
     }
 
@@ -171,7 +184,8 @@ public static class JsonToolShortcuts
     {
         var key = KeyAliases.TryGetValue(value, out var alias) ? alias :
             value.Length == 1 ? value.ToUpperInvariant() : value;
-        if (!Keys.Contains(key)) throw new InvalidOperationException($"不支持的 JSON 快捷键按键: {value}。");
+        if ( !Keys.Contains(key) )
+            throw new InvalidOperationException($"不支持的 JSON 快捷键按键: {value}。");
         return key;
     }
 
@@ -217,7 +231,8 @@ public sealed class JsonToolSettingsService(string path, IAtomicFileWriter write
 {
     private static readonly JsonSerializerOptions Options = new()
     {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase, WriteIndented = true,
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        WriteIndented = true,
         Converters = { new JsonStringEnumConverter() }
     };
 
@@ -228,7 +243,7 @@ public sealed class JsonToolSettingsService(string path, IAtomicFileWriter write
     /// <summary>异步加载设置并用 <see cref="JsonToolShortcuts.Normalize"/> 修复缺失或非规范快捷键。</summary>
     public async Task LoadAsync(CancellationToken cancellationToken = default)
     {
-        if (!File.Exists(_path))
+        if ( !File.Exists(_path) )
         {
             await SaveAsync(Current, cancellationToken);
             return;

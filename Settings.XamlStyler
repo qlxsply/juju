@@ -1,0 +1,15 @@
+{
+  "IndentSize": 4,
+  "IndentWithTabs": false,
+  "AttributesTolerance": 0,
+  "KeepFirstAttributeOnSameLine": false,
+  "MaxAttributeCharactersPerLine": 0,
+  "MaxAttributesPerLine": 1,
+  "OrderAttributesByName": false,
+  "PutEndingBracketOnNewLine": false,
+  "RemoveEndingTagOfEmptyElement": true,
+  "SpaceBeforeClosingSlash": true,
+  "ReorderGridChildren": false,
+  "ReorderCanvasChildren": false,
+  "FormatMarkupExtension": true
+}

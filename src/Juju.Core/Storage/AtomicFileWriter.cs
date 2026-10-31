@@ -22,26 +22,28 @@ public sealed class AtomicFileWriter : IAtomicFileWriter
         var temporary = path + ".tmp." + Guid.NewGuid().ToString("N");
         try
         {
-            await using (var stream = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None,
-                             4096, FileOptions.Asynchronous | FileOptions.WriteThrough))
-            await using (var writer = new StreamWriter(stream))
+            await using ( var stream = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None,
+                             4096, FileOptions.Asynchronous | FileOptions.WriteThrough) )
+            await using ( var writer = new StreamWriter(stream) )
             {
                 await writer.WriteAsync(content.AsMemory(), cancellationToken);
                 await writer.FlushAsync(cancellationToken);
                 stream.Flush(flushToDisk: true);
             }
 
-            if (File.Exists(path))
+            if ( File.Exists(path) )
             {
                 // 目标文件不会在临时文件持久化前被截断，因此崩溃时仍保留旧版本。
                 File.Replace(temporary, path, null, ignoreMetadataErrors: true);
             }
-            else File.Move(temporary, path);
+            else
+                File.Move(temporary, path);
         }
         finally
         {
             // 无论写入、替换或取消如何结束，都尽力移除未发布的临时文件。
-            if (File.Exists(temporary)) File.Delete(temporary);
+            if ( File.Exists(temporary) )
+                File.Delete(temporary);
         }
     }
 }

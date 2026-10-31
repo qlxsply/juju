@@ -2,11 +2,11 @@ using Juju.Tools.Toto.Application;
 using Juju.Tools.Toto.Application.Calendar;
 using Juju.Tools.Toto.Application.Items;
 using Juju.Tools.Toto.Application.Ports;
+using Juju.Tools.Toto.Domain;
 using Juju.Tools.Toto.Infrastructure.Calendar;
 using Juju.Tools.Toto.Infrastructure.Items;
 using Juju.Tools.Toto.Infrastructure.Settings;
 using Juju.Tools.Toto.Infrastructure.Storage;
-using Juju.Tools.Toto.Domain;
 using Xunit;
 
 namespace Juju.Tools.Toto.Tests;
@@ -102,7 +102,8 @@ public sealed class TotoApplicationServiceTests : IDisposable
 
     public void Dispose()
     {
-        if (Directory.Exists(_root)) Directory.Delete(_root, recursive: true);
+        if ( Directory.Exists(_root) )
+            Directory.Delete(_root, recursive: true);
     }
 
     private sealed class RecordingRuntimeControl : ITotoRuntimeControl
@@ -117,7 +118,8 @@ public sealed class TotoApplicationServiceTests : IDisposable
         public bool TryRegisterHotkey(string candidate)
         {
             var accepted = HotkeyChanging?.Invoke(candidate) ?? AllowHotkey;
-            if (accepted) LastRegisteredHotkey = candidate;
+            if ( accepted )
+                LastRegisteredHotkey = candidate;
             return accepted;
         }
 

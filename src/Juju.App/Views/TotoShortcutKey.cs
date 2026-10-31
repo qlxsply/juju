@@ -12,10 +12,21 @@ internal static class TotoShortcutKey
         var name = key switch
         {
             >= Key.D0 and <= Key.D9 => key.ToString()[1..],
-            Key.Return => "Enter", Key.Back => "Backspace", Key.Prior => "PageUp", Key.Next => "PageDown",
-            Key.Escape => "Escape", Key.Space => "Space", Key.Tab => "Tab", Key.Delete => "Delete",
-            Key.Left => "Left", Key.Right => "Right", Key.Up => "Up", Key.Down => "Down",
-            Key.Home => "Home", Key.End => "End", Key.Insert => "Insert",
+            Key.Return => "Enter",
+            Key.Back => "Backspace",
+            Key.Prior => "PageUp",
+            Key.Next => "PageDown",
+            Key.Escape => "Escape",
+            Key.Space => "Space",
+            Key.Tab => "Tab",
+            Key.Delete => "Delete",
+            Key.Left => "Left",
+            Key.Right => "Right",
+            Key.Up => "Up",
+            Key.Down => "Down",
+            Key.Home => "Home",
+            Key.End => "End",
+            Key.Insert => "Insert",
             _ => key.ToString()
         };
         var modifiers = Keyboard.Modifiers;

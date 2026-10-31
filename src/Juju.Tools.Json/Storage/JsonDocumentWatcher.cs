@@ -58,7 +58,8 @@ public sealed class JsonDocumentWatcher : IAsyncDisposable
     private void OnChanged(object sender, FileSystemEventArgs e)
     {
         // NTFS 原子替换会产生不可靠的删除/创建对；协调流程拥有删除恢复的最终决定权。
-        if (e.ChangeType != WatcherChangeTypes.Deleted) Queue(e.FullPath, e.ChangeType, null);
+        if ( e.ChangeType != WatcherChangeTypes.Deleted )
+            Queue(e.FullPath, e.ChangeType, null);
     }
 
     /// <summary>将重命名的新路径入队，同时用旧文件名解析原文档 ID。</summary>
@@ -79,21 +80,24 @@ public sealed class JsonDocumentWatcher : IAsyncDisposable
     /// </summary>
     private async Task PublishAsync()
     {
-        foreach (var item in _pending.ToArray())
+        foreach ( var item in _pending.ToArray() )
         {
-            if (!_pending.TryRemove(item.Key, out var pending)) continue;
+            if ( !_pending.TryRemove(item.Key, out var pending) )
+                continue;
             var kind = pending.Kind;
             var id = pending.Id ?? _documentIdForFile(Path.GetFileName(item.Key));
-            if (id is null) continue;
+            if ( id is null )
+                continue;
             // 原子替换时，新文件出现前可能暂时报告 Deleted。
-            if (kind == WatcherChangeTypes.Deleted)
+            if ( kind == WatcherChangeTypes.Deleted )
             {
                 await Task.Delay(300).ConfigureAwait(false);
-                if (!File.Exists(item.Key))
+                if ( !File.Exists(item.Key) )
                 {
                     // Windows 甚至可能在新文件事件之后才报告原子替换的移除半边。
-                    if (_selfWriteIntents.TryGetValue(item.Key, out var intent) &&
-                        intent >= DateTimeOffset.UtcNow) continue;
+                    if ( _selfWriteIntents.TryGetValue(item.Key, out var intent) &&
+                        intent >= DateTimeOffset.UtcNow )
+                        continue;
                     _selfWrites.TryRemove(item.Key, out _);
                     Changed?.Invoke(this,
                         new JsonDocumentExternalChange(id.Value, ExternalDocumentChangeKind.Deleted, null));
@@ -104,10 +108,12 @@ public sealed class JsonDocumentWatcher : IAsyncDisposable
             try
             {
                 var revision = await _revisions.GetAsync(item.Key).ConfigureAwait(false);
-                if (_selfWrites.TryGetValue(item.Key, out var self) && self.Revision == revision)
+                if ( _selfWrites.TryGetValue(item.Key, out var self) && self.Revision == revision )
                 {
-                    if (self.Events <= 1) _selfWrites.TryRemove(item.Key, out _);
-                    else _selfWrites.TryUpdate(item.Key, (self.Revision, self.Events - 1), self);
+                    if ( self.Events <= 1 )
+                        _selfWrites.TryRemove(item.Key, out _);
+                    else
+                        _selfWrites.TryUpdate(item.Key, (self.Revision, self.Events - 1), self);
                     continue;
                 }
 
@@ -117,13 +123,13 @@ public sealed class JsonDocumentWatcher : IAsyncDisposable
                             ? ExternalDocumentChangeKind.Renamed
                             : ExternalDocumentChangeKind.Changed, revision));
             }
-            catch (IOException)
+            catch ( IOException )
             {
                 /* 原子替换造成的短暂读取失败会由其后续事件或协调流程修复。 */
             }
         }
 
-        foreach (var intent in _selfWriteIntents.Where(item => item.Value < DateTimeOffset.UtcNow).ToArray())
+        foreach ( var intent in _selfWriteIntents.Where(item => item.Value < DateTimeOffset.UtcNow).ToArray() )
             _selfWriteIntents.TryRemove(intent.Key, out _);
     }
 

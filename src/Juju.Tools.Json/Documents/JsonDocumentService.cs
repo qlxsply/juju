@@ -99,12 +99,12 @@ public sealed class JsonDocumentService : IJsonDocumentService, IAsyncDisposable
         {
             var document = await GetAsync(id, cancellationToken);
             var path = DocumentPath(document.FileName);
-            if (!File.Exists(path))
+            if ( !File.Exists(path) )
                 throw new JujuException(ErrorCode.DocumentNotFound, "The document file no longer exists.");
             return new JsonDocumentSnapshot(id, await File.ReadAllTextAsync(path, cancellationToken),
                 await _revisions.GetAsync(path, cancellationToken));
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        catch ( Exception ex ) when ( ex is IOException or UnauthorizedAccessException )
         {
             throw new JujuException(ErrorCode.DocumentReadFailed, "The document could not be read.", ex);
         }
@@ -128,7 +128,7 @@ public sealed class JsonDocumentService : IJsonDocumentService, IAsyncDisposable
             {
                 fileName = $"{today}{next:D3}.json";
                 next++;
-            } while (File.Exists(DocumentPath(fileName)));
+            } while ( File.Exists(DocumentPath(fileName)) );
 
             var sequence = next - 1;
             var now = DateTimeOffset.UtcNow;
@@ -165,7 +165,7 @@ public sealed class JsonDocumentService : IJsonDocumentService, IAsyncDisposable
             _watcher.RegisterSelfWrite(path, await _revisions.GetAsync(path, cancellationToken));
             return document;
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        catch ( Exception ex ) when ( ex is IOException or UnauthorizedAccessException )
         {
             throw new JujuException(ErrorCode.DocumentWriteFailed, "The document could not be created.", ex);
         }
@@ -188,7 +188,7 @@ public sealed class JsonDocumentService : IJsonDocumentService, IAsyncDisposable
         {
             var document = await GetAsync(id, cancellationToken);
             var path = DocumentPath(document.FileName);
-            if (!Equals(await _revisions.GetAsync(path, cancellationToken), expectedRevision))
+            if ( !Equals(await _revisions.GetAsync(path, cancellationToken), expectedRevision) )
                 throw new JujuException(ErrorCode.ExternalModificationConflict,
                     "The file changed outside juju and was not overwritten.");
             _watcher.MarkSelfWrite(path);
@@ -201,7 +201,7 @@ public sealed class JsonDocumentService : IJsonDocumentService, IAsyncDisposable
                 }, cancellationToken);
             _watcher.RegisterSelfWrite(path, await _revisions.GetAsync(path, cancellationToken));
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        catch ( Exception ex ) when ( ex is IOException or UnauthorizedAccessException )
         {
             throw new JujuException(ErrorCode.DocumentWriteFailed, "The document could not be saved.", ex);
         }
@@ -229,7 +229,7 @@ public sealed class JsonDocumentService : IJsonDocumentService, IAsyncDisposable
                         item.Id == id ? item with { UpdatedAtUtc = DateTimeOffset.UtcNow } : item).ToList()
                 }, cancellationToken);
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        catch ( Exception ex ) when ( ex is IOException or UnauthorizedAccessException )
         {
             throw new JujuException(ErrorCode.DocumentWriteFailed, "The document could not be saved.", ex);
         }
@@ -250,10 +250,11 @@ public sealed class JsonDocumentService : IJsonDocumentService, IAsyncDisposable
         {
             var document = await GetAsync(id, cancellationToken);
             var targetName = JsonDocumentName.Normalize(name);
-            if (string.Equals(targetName, document.FileName, StringComparison.OrdinalIgnoreCase)) return;
+            if ( string.Equals(targetName, document.FileName, StringComparison.OrdinalIgnoreCase) )
+                return;
             var oldPath = DocumentPath(document.FileName);
             var targetPath = DocumentPath(targetName);
-            if (File.Exists(targetPath))
+            if ( File.Exists(targetPath) )
                 throw new JujuException(ErrorCode.DocumentAlreadyExists, "A document with that name already exists.");
             try
             {
@@ -268,11 +269,12 @@ public sealed class JsonDocumentService : IJsonDocumentService, IAsyncDisposable
                     }, cancellationToken);
                 _watcher.RegisterSelfWrite(targetPath, await _revisions.GetAsync(targetPath, cancellationToken));
             }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            catch ( Exception ex ) when ( ex is IOException or UnauthorizedAccessException )
             {
                 try
                 {
-                    if (File.Exists(targetPath) && !File.Exists(oldPath)) File.Move(targetPath, oldPath);
+                    if ( File.Exists(targetPath) && !File.Exists(oldPath) )
+                        File.Move(targetPath, oldPath);
                 }
                 catch
                 {
@@ -310,11 +312,12 @@ public sealed class JsonDocumentService : IJsonDocumentService, IAsyncDisposable
                             .Select((item, order) => item with { Order = order }).ToList()
                     }, cancellationToken);
             }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            catch ( Exception ex ) when ( ex is IOException or UnauthorizedAccessException )
             {
                 try
                 {
-                    if (File.Exists(trash) && !File.Exists(source)) File.Move(trash, source);
+                    if ( File.Exists(trash) && !File.Exists(source) )
+                        File.Move(trash, source);
                 }
                 catch
                 {
@@ -344,24 +347,26 @@ public sealed class JsonDocumentService : IJsonDocumentService, IAsyncDisposable
         {
             var metadata = await _metadata.ReadAsync(cancellationToken);
             var copiedPaths = new List<string>();
-            foreach (var source in sourcePaths)
+            foreach ( var source in sourcePaths )
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                if (!string.Equals(Path.GetExtension(source), ".json", StringComparison.OrdinalIgnoreCase)) continue;
+                if ( !string.Equals(Path.GetExtension(source), ".json", StringComparison.OrdinalIgnoreCase) )
+                    continue;
                 var baseName = JsonDocumentName.Normalize(Path.GetFileName(source));
                 var candidate = baseName;
-                for (var suffix = 2;
+                for ( var suffix = 2;
                      File.Exists(DocumentPath(candidate)) ||
                      metadata.Documents.Any(item =>
                          string.Equals(item.FileName, candidate, StringComparison.OrdinalIgnoreCase)) ||
                      imported.Any(item => string.Equals(item.FileName, candidate, StringComparison.OrdinalIgnoreCase));
-                     suffix++) candidate = $"{Path.GetFileNameWithoutExtension(baseName)}-{suffix}.json";
+                     suffix++ )
+                    candidate = $"{Path.GetFileNameWithoutExtension(baseName)}-{suffix}.json";
                 try
                 {
                     await _writer.WriteTextAsync(DocumentPath(candidate),
                         await File.ReadAllTextAsync(source, cancellationToken), cancellationToken);
                 }
-                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                catch ( Exception ex ) when ( ex is IOException or UnauthorizedAccessException )
                 {
                     throw new JujuException(ErrorCode.ImportFailed, "A document could not be imported.", ex);
                 }
@@ -373,7 +378,7 @@ public sealed class JsonDocumentService : IJsonDocumentService, IAsyncDisposable
                 imported.Add(item);
             }
 
-            if (imported.Count > 0)
+            if ( imported.Count > 0 )
             {
                 try
                 {
@@ -382,7 +387,7 @@ public sealed class JsonDocumentService : IJsonDocumentService, IAsyncDisposable
                 }
                 catch
                 {
-                    foreach (var path in copiedPaths)
+                    foreach ( var path in copiedPaths )
                         try
                         {
                             File.Delete(path);
@@ -395,7 +400,7 @@ public sealed class JsonDocumentService : IJsonDocumentService, IAsyncDisposable
                     throw;
                 }
 
-                foreach (var path in copiedPaths)
+                foreach ( var path in copiedPaths )
                     _watcher.RegisterSelfWrite(path, await _revisions.GetAsync(path, cancellationToken));
             }
 
@@ -416,9 +421,9 @@ public sealed class JsonDocumentService : IJsonDocumentService, IAsyncDisposable
             var metadata = await _metadata.ReadAsync(cancellationToken);
             var documents = metadata.Documents.OrderBy(item => item.Order).ToList();
             var current = documents.FindIndex(item => item.Id == id);
-            if (current < 0)
+            if ( current < 0 )
                 throw new JujuException(ErrorCode.DocumentNotFound, "The selected document no longer exists.");
-            if (order < 0 || order >= documents.Count)
+            if ( order < 0 || order >= documents.Count )
                 throw new JujuException(ErrorCode.InvalidDocumentOrder,
                     "The document order is outside the available range.");
             var document = documents[current];
@@ -444,8 +449,8 @@ public sealed class JsonDocumentService : IJsonDocumentService, IAsyncDisposable
     {
         var safeName = JsonDocumentName.Normalize(fileName);
         var path = Path.GetFullPath(Path.Combine(_documents, safeName));
-        if (!path.StartsWith(Path.GetFullPath(_documents) + Path.DirectorySeparatorChar,
-                StringComparison.OrdinalIgnoreCase))
+        if ( !path.StartsWith(Path.GetFullPath(_documents) + Path.DirectorySeparatorChar,
+                StringComparison.OrdinalIgnoreCase) )
             throw new JujuException(ErrorCode.InvalidDocumentName, "Document path escapes the documents directory.");
         return path;
     }
@@ -465,7 +470,7 @@ public sealed class JsonDocumentService : IJsonDocumentService, IAsyncDisposable
             {
                 metadata = await _metadata.ReadAsync(cancellationToken);
             }
-            catch (JujuException ex) when (ex.Code == ErrorCode.MetadataCorrupted)
+            catch ( JujuException ex ) when ( ex.Code == ErrorCode.MetadataCorrupted )
             {
                 metadata = JsonMetadata.Empty();
             }
@@ -475,9 +480,9 @@ public sealed class JsonDocumentService : IJsonDocumentService, IAsyncDisposable
                 .ThenBy(file => file, StringComparer.Ordinal).ToArray();
             var existing = metadata.Documents
                 .Where(document => files.Contains(document.FileName, StringComparer.OrdinalIgnoreCase)).ToList();
-            foreach (var file in files.Where(file =>
+            foreach ( var file in files.Where(file =>
                          existing.All(document =>
-                             !string.Equals(document.FileName, file, StringComparison.OrdinalIgnoreCase))))
+                             !string.Equals(document.FileName, file, StringComparison.OrdinalIgnoreCase))) )
             {
                 var stamp = new DateTimeOffset(File.GetCreationTimeUtc(DocumentPath(file)));
                 existing.Add(new(JsonDocumentId.New(), file, existing.Count, stamp, stamp, new("recovered")));
@@ -492,7 +497,8 @@ public sealed class JsonDocumentService : IJsonDocumentService, IAsyncDisposable
                 Sequence = sequence,
                 Documents = existing.Select((document, order) => document with { Order = order }).ToList()
             };
-            if (!Equals(metadata, reconciled)) await _metadata.SaveAsync(reconciled, cancellationToken);
+            if ( !Equals(metadata, reconciled) )
+                await _metadata.SaveAsync(reconciled, cancellationToken);
         }
         finally
         {

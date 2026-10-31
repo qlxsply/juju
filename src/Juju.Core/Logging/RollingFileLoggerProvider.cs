@@ -38,7 +38,8 @@ public sealed class RollingFileLoggerProvider(string directory) : ILoggerProvide
             Directory.CreateDirectory(directory);
             var line =
                 $"{DateTimeOffset.UtcNow:O} [{level}] {category}: {formatter(state, exception)}{Environment.NewLine}";
-            lock (gate) File.AppendAllText(Path.Combine(directory, $"juju-{DateTime.UtcNow:yyyyMMdd}.log"), line);
+            lock ( gate )
+                File.AppendAllText(Path.Combine(directory, $"juju-{DateTime.UtcNow:yyyyMMdd}.log"), line);
         }
     }
 }

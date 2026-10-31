@@ -21,7 +21,7 @@ public sealed class ProjectReferenceGraphTests
         var actual = ReadProductProjectGraph(FindRepositoryRoot());
 
         Assert.Equal(Baseline.Keys.Order(), actual.Keys.Order());
-        foreach (var (project, expectedReferences) in Baseline)
+        foreach ( var (project, expectedReferences) in Baseline )
             Assert.Equal(expectedReferences.Order(), actual[project].Order());
     }
 
@@ -34,17 +34,20 @@ public sealed class ProjectReferenceGraphTests
 
         bool Visit(string project)
         {
-            if (active.Contains(project)) return false;
-            if (!visited.Add(project)) return true;
+            if ( active.Contains(project) )
+                return false;
+            if ( !visited.Add(project) )
+                return true;
 
             active.Add(project);
-            foreach (var dependency in graph[project])
-                if (!Visit(dependency)) return false;
+            foreach ( var dependency in graph[project] )
+                if ( !Visit(dependency) )
+                    return false;
             active.Remove(project);
             return true;
         }
 
-        foreach (var project in graph.Keys)
+        foreach ( var project in graph.Keys )
             Assert.True(Visit(project), $"ProjectReference cycle includes {project}.");
     }
 
@@ -89,12 +92,12 @@ public sealed class ProjectReferenceGraphTests
         var source = string.Join('\n', Directory.GetFiles(appRoot, "*.cs", SearchOption.AllDirectories)
             .Select(File.ReadAllText));
 
-        foreach (var forbidden in new[]
+        foreach ( var forbidden in new[]
                  {
                      "ItemRepository", "SettingsRepository", "WorkCalendarRepository",
                      "HolidayCalendarDownloadService", "TotoPaths", "_host.Items.", "toto.Items.",
                      "_toto.Items."
-                 })
+                 } )
             Assert.DoesNotContain(forbidden, source, StringComparison.Ordinal);
     }
 
@@ -110,11 +113,11 @@ public sealed class ProjectReferenceGraphTests
         Assert.DoesNotContain("UseWPF", project, StringComparison.Ordinal);
         Assert.DoesNotContain("UseWindowsForms", project, StringComparison.Ordinal);
         Assert.DoesNotContain("EmbeddedResource", project, StringComparison.Ordinal);
-        foreach (var forbidden in new[]
+        foreach ( var forbidden in new[]
                  {
                      "System.Windows", "System.Windows.Forms", "Microsoft.Win32", "SystemEvents",
                      "SynchronizationContext", "ApplicationPaths", "Toto.App.", "TotoToolHost"
-                 })
+                 } )
             Assert.DoesNotContain(forbidden, source, StringComparison.Ordinal);
     }
 
@@ -154,7 +157,7 @@ public sealed class ProjectReferenceGraphTests
                 .Descendants("ProjectReference")
                 .Select(reference =>
                 {
-                    var include = (string?)reference.Attribute("Include")
+                    var include = (string?) reference.Attribute("Include")
                         ?? throw new InvalidOperationException($"ProjectReference without Include in {path}.");
                     var targetPath = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(path)!, include));
                     var targetName = ProjectName(targetPath);
@@ -170,9 +173,9 @@ public sealed class ProjectReferenceGraphTests
 
     private static string FindRepositoryRoot()
     {
-        for (var directory = new DirectoryInfo(AppContext.BaseDirectory); directory is not null;
-             directory = directory.Parent)
-            if (File.Exists(Path.Combine(directory.FullName, "Juju.sln")))
+        for ( var directory = new DirectoryInfo(AppContext.BaseDirectory); directory is not null;
+             directory = directory.Parent )
+            if ( File.Exists(Path.Combine(directory.FullName, "Juju.sln")) )
                 return directory.FullName;
 
         throw new DirectoryNotFoundException("Could not find Juju.sln above the test output directory.");

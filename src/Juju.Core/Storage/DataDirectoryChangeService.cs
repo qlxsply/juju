@@ -37,8 +37,8 @@ public sealed class DataDirectoryChangeService(DataRootService roots, IAtomicFil
     {
         _pendingRequested = true;
         var target = Validate(path, _activeRoot, allowExistingValidRoot: true);
-        if (new[] { "json", "toto", "echohttp", "kairos" }.Any(name =>
-                string.Equals(target, DisplayToolDirectory(name), StringComparison.OrdinalIgnoreCase)))
+        if ( new[] { "json", "toto", "echohttp", "kairos" }.Any(name =>
+                string.Equals(target, DisplayToolDirectory(name), StringComparison.OrdinalIgnoreCase)) )
             throw new InvalidOperationException("工具箱数据根目录不能与工具数据目录相同。");
         _nextRoot = string.Equals(target, _activeRoot, StringComparison.OrdinalIgnoreCase)
             ? null : target;
@@ -49,8 +49,10 @@ public sealed class DataDirectoryChangeService(DataRootService roots, IAtomicFil
         _pendingRequested = true;
         var current = ToolDirectory(name);
         var target = ValidateToolCandidate(name, path);
-        if (string.Equals(target, current, StringComparison.OrdinalIgnoreCase)) _nextTools.Remove(name);
-        else _nextTools[name] = target;
+        if ( string.Equals(target, current, StringComparison.OrdinalIgnoreCase) )
+            _nextTools.Remove(name);
+        else
+            _nextTools[name] = target;
     }
 
     public void ValidateTool(string name, string path) => _ = ValidateToolCandidate(name, path);
@@ -62,10 +64,10 @@ public sealed class DataDirectoryChangeService(DataRootService roots, IAtomicFil
                     !string.Equals(Path.GetFullPath(root), _activeRoot, StringComparison.OrdinalIgnoreCase)
             ? Path.GetFullPath(root) : null;
         _nextTools.Clear();
-        if (tools is not null)
-            foreach (var (name, path) in tools)
-                if (!string.IsNullOrWhiteSpace(path) &&
-                    !string.Equals(path, ToolDirectory(name), StringComparison.OrdinalIgnoreCase))
+        if ( tools is not null )
+            foreach ( var (name, path) in tools )
+                if ( !string.IsNullOrWhiteSpace(path) &&
+                    !string.Equals(path, ToolDirectory(name), StringComparison.OrdinalIgnoreCase) )
                     _nextTools[name] = Path.GetFullPath(path);
         _pendingRequested = !string.IsNullOrWhiteSpace(root) || (tools?.Count ?? 0) > 0;
     }
@@ -73,10 +75,10 @@ public sealed class DataDirectoryChangeService(DataRootService roots, IAtomicFil
     private string ValidateToolCandidate(string name, string path)
     {
         var target = Validate(path, ToolDirectory(name), allowEmptySubdirectories: true, allowExistingToolData: true);
-        foreach (var other in new[] { "json", "toto", "echohttp", "kairos" }.Where(other => other != name))
-            if (string.Equals(target, DisplayToolDirectory(other), StringComparison.OrdinalIgnoreCase))
+        foreach ( var other in new[] { "json", "toto", "echohttp", "kairos" }.Where(other => other != name) )
+            if ( string.Equals(target, DisplayToolDirectory(other), StringComparison.OrdinalIgnoreCase) )
                 throw new InvalidOperationException("不同工具不能共用同一个数据目录。");
-        if (string.Equals(target, DisplayRoot, StringComparison.OrdinalIgnoreCase))
+        if ( string.Equals(target, DisplayRoot, StringComparison.OrdinalIgnoreCase) )
             throw new InvalidOperationException("工具数据目录不能直接使用工具箱数据根目录。");
         return target;
     }
@@ -84,20 +86,22 @@ public sealed class DataDirectoryChangeService(DataRootService roots, IAtomicFil
     private static string Validate(string path, string source, bool allowEmptySubdirectories = false,
         bool allowExistingValidRoot = false, bool allowExistingToolData = false)
     {
-        if (string.IsNullOrWhiteSpace(path) || !Path.IsPathFullyQualified(path))
+        if ( string.IsNullOrWhiteSpace(path) || !Path.IsPathFullyQualified(path) )
             throw new InvalidOperationException("请输入绝对目录路径。");
         var target = Path.GetFullPath(path.Trim());
-        if (target.StartsWith(Path.GetFullPath(source) + Path.DirectorySeparatorChar,
-                StringComparison.OrdinalIgnoreCase))
+        if ( target.StartsWith(Path.GetFullPath(source) + Path.DirectorySeparatorChar,
+                StringComparison.OrdinalIgnoreCase) )
             throw new InvalidOperationException("新目录不能位于当前目录内。");
-        if (!Directory.Exists(target)) return target;
-        if (new DirectoryInfo(target).Attributes.HasFlag(FileAttributes.ReparsePoint))
+        if ( !Directory.Exists(target) )
+            return target;
+        if ( new DirectoryInfo(target).Attributes.HasFlag(FileAttributes.ReparsePoint) )
             throw new InvalidOperationException("数据目录不能是符号链接或联接目录。");
-        if (string.Equals(target, source, StringComparison.OrdinalIgnoreCase)) return target;
+        if ( string.Equals(target, source, StringComparison.OrdinalIgnoreCase) )
+            return target;
         var hasEntries = allowEmptySubdirectories
             ? Directory.EnumerateFiles(target, "*", SearchOption.AllDirectories).Any()
             : Directory.EnumerateFileSystemEntries(target).Any();
-        if (hasEntries && !allowExistingToolData && !(allowExistingValidRoot && HasValidMarker(target)))
+        if ( hasEntries && !allowExistingToolData && !(allowExistingValidRoot && HasValidMarker(target)) )
             throw new InvalidOperationException("工具箱数据根必须为空或已有有效的 juju.json 标记。");
         return target;
     }
@@ -115,24 +119,27 @@ public sealed class DataDirectoryChangeService(DataRootService roots, IAtomicFil
 
     public async Task CommitAsync(ISettingsService settings, CancellationToken cancellationToken)
     {
-        if (!_pendingRequested && _nextRoot is null && _nextTools.Count == 0) return;
+        if ( !_pendingRequested && _nextRoot is null && _nextTools.Count == 0 )
+            return;
         var destinationRoot = _nextRoot ?? _activeRoot;
         var previous = settings.Current;
         try
         {
-            if (_nextRoot is not null)
+            if ( _nextRoot is not null )
             {
                 await roots.EnsureInitializedAsync(destinationRoot, cancellationToken);
                 await DataLayoutMigration.CopyMissingAsync(_activeRoot, destinationRoot, cancellationToken);
             }
             var overrides = new Dictionary<string, string>(previous.ToolDataDirectories, StringComparer.OrdinalIgnoreCase);
-            foreach (var (name, destination) in _nextTools)
+            foreach ( var (name, destination) in _nextTools )
             {
                 var source = ToolDirectory(name);
                 await DataLayoutMigration.CopyMissingAsync(source, destination, cancellationToken);
-                if (string.Equals(destination, Path.Combine(destinationRoot, "tools", name),
-                        StringComparison.OrdinalIgnoreCase)) overrides.Remove(name);
-                else overrides[name] = destination;
+                if ( string.Equals(destination, Path.Combine(destinationRoot, "tools", name),
+                        StringComparison.OrdinalIgnoreCase) )
+                    overrides.Remove(name);
+                else
+                    overrides[name] = destination;
             }
             // 自定义工具目录未变但整个根移动时，仍要复制外部工具目录吗？它保留原路径，不需要复制。
             var nextSettings = previous with
@@ -142,7 +149,7 @@ public sealed class DataDirectoryChangeService(DataRootService roots, IAtomicFil
                 PendingToolDataDirectories = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             };
             await settings.SaveAsync(nextSettings, cancellationToken);
-            if (_nextRoot is not null)
+            if ( _nextRoot is not null )
             {
                 // 目标 config.json 必须包含刚提交的工具覆盖目录，指针必须最后落盘。
                 await writer.WriteTextAsync(Path.Combine(destinationRoot, "config.json"),
@@ -153,7 +160,8 @@ public sealed class DataDirectoryChangeService(DataRootService roots, IAtomicFil
         }
         catch
         {
-            try { await settings.SaveAsync(previous, CancellationToken.None); }
+            try
+            { await settings.SaveAsync(previous, CancellationToken.None); }
             catch { /* 保留原始目录迁移错误；源目录与数据文件不会被删除。 */ }
             throw;
         }

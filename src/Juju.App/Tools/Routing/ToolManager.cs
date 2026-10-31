@@ -18,7 +18,7 @@ public sealed class ToolManager : IToolManager
         IAppWindowManager windows, IToolOpenFeedback feedback)
     {
         var registered = modules.OrderBy(module => module.Launcher.Order).ToArray();
-        if (registered.Select(module => module.Descriptor.Id).Distinct().Count() != registered.Length)
+        if ( registered.Select(module => module.Descriptor.Id).Distinct().Count() != registered.Length )
             throw new InvalidOperationException("每个 ToolId 只能注册一个工具模块。");
         _modules = registered.ToDictionary(module => module.Descriptor.Id);
         _orderedModules = Array.AsReadOnly(registered);
@@ -34,11 +34,12 @@ public sealed class ToolManager : IToolManager
     public void Open(ToolId tool)
     {
         var module = _modules[tool];
-        if (module.Launcher.HideLauncherOnOpen) _windows.PrepareToolWindowOpen();
+        if ( module.Launcher.HideLauncherOnOpen )
+            _windows.PrepareToolWindowOpen();
         var readiness = module.CheckReadiness();
-        if (!readiness.IsReady)
+        if ( !readiness.IsReady )
         {
-            if (!string.IsNullOrWhiteSpace(readiness.Message))
+            if ( !string.IsNullOrWhiteSpace(readiness.Message) )
                 _feedback.Show(readiness.MessageTitle ?? module.Launcher.Name,
                     readiness.Message, readiness.MessageKind);
             return;
@@ -50,13 +51,15 @@ public sealed class ToolManager : IToolManager
     /// <summary>启动声明为 Required 的后台模块；同一实例重复调用不会重复启动。</summary>
     public async Task StartAsync(CancellationToken cancellationToken = default)
     {
-        if (_stopping) throw new InvalidOperationException("工具运行时已经停止，不能重新启动。");
-        if (_started.Count != 0) return;
+        if ( _stopping )
+            throw new InvalidOperationException("工具运行时已经停止，不能重新启动。");
+        if ( _started.Count != 0 )
+            return;
 
         try
         {
-            foreach (var module in _orderedModules.Where(module =>
-                         module.Descriptor.Background == BackgroundCapability.Required))
+            foreach ( var module in _orderedModules.Where(module =>
+                         module.Descriptor.Background == BackgroundCapability.Required) )
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 await module.StartAsync(cancellationToken);
@@ -72,7 +75,8 @@ public sealed class ToolManager : IToolManager
 
     public async Task StopAllAsync(CancellationToken cancellationToken = default)
     {
-        if (_stopping) return;
+        if ( _stopping )
+            return;
         _stopping = true;
         await StopStartedAsync(cancellationToken);
     }
@@ -80,13 +84,13 @@ public sealed class ToolManager : IToolManager
     private async Task StopStartedAsync(CancellationToken cancellationToken)
     {
         List<Exception>? errors = null;
-        foreach (var module in _started.AsEnumerable().Reverse().ToArray())
+        foreach ( var module in _started.AsEnumerable().Reverse().ToArray() )
         {
             try
             {
                 await module.StopAsync(cancellationToken);
             }
-            catch (Exception error)
+            catch ( Exception error )
             {
                 (errors ??= []).Add(error);
             }
@@ -96,6 +100,7 @@ public sealed class ToolManager : IToolManager
             }
         }
 
-        if (errors is not null) throw new AggregateException("一个或多个工具模块停止失败。", errors);
+        if ( errors is not null )
+            throw new AggregateException("一个或多个工具模块停止失败。", errors);
     }
 }

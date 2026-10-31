@@ -1,7 +1,7 @@
 using System.Net.Http.Json;
 using System.Text.Json;
-using Juju.Tools.Toto.Infrastructure.Storage;
 using Juju.Tools.Toto.Domain;
+using Juju.Tools.Toto.Infrastructure.Storage;
 
 namespace Juju.Tools.Toto.Infrastructure.Calendar;
 
@@ -12,12 +12,16 @@ internal sealed class HolidayCalendarDownloadService(TotoPaths paths)
     private const string UrlFormat = "https://raw.githubusercontent.com/NateScarlet/holiday-cn/master/{0}.json";
 
     private static readonly JsonSerializerOptions JsonOptions = new()
-        { PropertyNamingPolicy = JsonNamingPolicy.CamelCase, WriteIndented = true };
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        WriteIndented = true
+    };
 
     /// <summary>确保指定年份的本地 JSON 数据存在；缺失时下载。</summary>
     public void EnsureYear(int year)
     {
-        if (File.Exists(paths.CalendarPath(year))) return;
+        if ( File.Exists(paths.CalendarPath(year)) )
+            return;
         DownloadAndSave(year);
     }
 
@@ -32,12 +36,12 @@ internal sealed class HolidayCalendarDownloadService(TotoPaths paths)
             client.Timeout = TimeSpan.FromSeconds(15);
             // System.Net.Http.Json 直接按 JsonSerializerOptions 反序列化响应，类似 Java 中 ObjectMapper.readValue。
             var source = client.GetFromJsonAsync<HolidaySource>(url, JsonOptions).GetAwaiter().GetResult();
-            if (source is null || source.Year != year || source.Days is null)
+            if ( source is null || source.Year != year || source.Days is null )
                 throw new InvalidOperationException("上游文件内容无效。");
             SaveLocal(year, source.Days.Select(day => ToLocalDay(day, year)).OrderBy(day => day.Date).ToArray());
         }
-        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or JsonException
-                                              or InvalidOperationException)
+        catch ( Exception exception ) when ( exception is HttpRequestException or TaskCanceledException or JsonException
+                                                or InvalidOperationException )
         {
             throw new InvalidOperationException($"本地 {year}.json 不存在，且无法从 {url} 下载有效的法定节假日数据。请检查网络后重试，或手动创建该文件。",
                 exception);
@@ -52,11 +56,11 @@ internal sealed class HolidayCalendarDownloadService(TotoPaths paths)
         {
             // JsonSerializer 根据属性名策略在 JSON 和 C# record 属性之间映射字段。
             var days = JsonSerializer.Deserialize<HolidayCalendarDay[]>(File.ReadAllText(path), JsonOptions);
-            if (days is null || days.Any(day => day.Date.Year != year || string.IsNullOrWhiteSpace(day.Name)))
+            if ( days is null || days.Any(day => day.Date.Year != year || string.IsNullOrWhiteSpace(day.Name)) )
                 throw new JsonException();
             return days.OrderBy(day => day.Date).ToArray();
         }
-        catch (Exception exception) when (exception is IOException or JsonException or NotSupportedException)
+        catch ( Exception exception ) when ( exception is IOException or JsonException or NotSupportedException )
         {
             throw new InvalidOperationException($"本地节假日文件无效：{path}。请删除或修复该文件后重试。", exception);
         }
@@ -65,7 +69,7 @@ internal sealed class HolidayCalendarDownloadService(TotoPaths paths)
     /// <summary>验证并原子保存指定年份的本地节假日数据。</summary>
     public void SaveLocal(int year, IReadOnlyList<HolidayCalendarDay> days)
     {
-        if (days.Any(day => day.Date.Year != year || string.IsNullOrWhiteSpace(day.Name)))
+        if ( days.Any(day => day.Date.Year != year || string.IsNullOrWhiteSpace(day.Name)) )
             throw new InvalidOperationException($"{year} 年本地节假日数据格式无效。");
         var path = paths.CalendarPath(year);
         Directory.CreateDirectory(paths.DataDirectory);
@@ -77,8 +81,9 @@ internal sealed class HolidayCalendarDownloadService(TotoPaths paths)
     /// <summary>将远程数据项验证并转换为本地领域对象。</summary>
     private static HolidayCalendarDay ToLocalDay(HolidaySourceDay source, int year)
     {
-        if (string.IsNullOrWhiteSpace(source.Name) || !DateOnly.TryParse(source.Date, out var date) ||
-            date.Year != year || source.IsOffDay is null) throw new InvalidOperationException($"{year} 年节假日数据格式无效。");
+        if ( string.IsNullOrWhiteSpace(source.Name) || !DateOnly.TryParse(source.Date, out var date) ||
+             date.Year != year || source.IsOffDay is null )
+            throw new InvalidOperationException($"{year} 年节假日数据格式无效。");
         return new HolidayCalendarDay(source.Name, date, source.IsOffDay.Value);
     }
 

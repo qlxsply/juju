@@ -19,22 +19,24 @@ public sealed class WindowsSystemLifecycleEvents : ISystemLifecycleEvents, IDisp
 
     private void OnSessionSwitch(object? sender, SessionSwitchEventArgs args)
     {
-        if (args.Reason == SessionSwitchReason.SessionLock)
+        if ( args.Reason == SessionSwitchReason.SessionLock )
             Changed?.Invoke(SystemLifecycleSignal.SessionLocked);
-        else if (args.Reason == SessionSwitchReason.SessionUnlock)
+        else if ( args.Reason == SessionSwitchReason.SessionUnlock )
             Changed?.Invoke(SystemLifecycleSignal.SessionUnlocked);
     }
 
     private void OnPowerModeChanged(object? sender, PowerModeChangedEventArgs args)
     {
-        if (args.Mode == PowerModes.Resume) Changed?.Invoke(SystemLifecycleSignal.Resumed);
+        if ( args.Mode == PowerModes.Resume )
+            Changed?.Invoke(SystemLifecycleSignal.Resumed);
     }
 
     private void OnTimeChanged(object? sender, EventArgs args) => Changed?.Invoke(SystemLifecycleSignal.TimeChanged);
 
     public void Dispose()
     {
-        if (_disposed) return;
+        if ( _disposed )
+            return;
         _disposed = true;
         SystemEvents.SessionSwitch -= OnSessionSwitch;
         SystemEvents.PowerModeChanged -= OnPowerModeChanged;

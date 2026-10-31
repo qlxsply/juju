@@ -24,10 +24,13 @@ public sealed class DisplaySettingsSection : ISettingsSection
         _themes = themes;
         var page = SettingsViewFactory.Page();
         var card = SettingsViewFactory.Group(page, "外观与布局");
-        _theme.Items.Add("跟随系统"); _theme.Items.Add("浅色"); _theme.Items.Add("深色");
-        _theme.SelectedIndex = (int)settings.Current.Theme;
+        _theme.Items.Add("跟随系统");
+        _theme.Items.Add("浅色");
+        _theme.Items.Add("深色");
+        _theme.SelectedIndex = (int) settings.Current.Theme;
         SettingsViewFactory.Row(card, "应用主题", "", _theme);
-        _density.Items.Add("舒适"); _density.Items.Add("紧凑");
+        _density.Items.Add("舒适");
+        _density.Items.Add("紧凑");
         _density.SelectedIndex = settings.Current.CompactLauncher ? 1 : 0;
         SettingsViewFactory.Row(card, "工具列表密度", "", _density);
         View = page;
@@ -37,7 +40,7 @@ public sealed class DisplaySettingsSection : ISettingsSection
     {
         var value = _settings.Current with
         {
-            Theme = (ThemePreference)Math.Max(0, _theme.SelectedIndex),
+            Theme = (ThemePreference) Math.Max(0, _theme.SelectedIndex),
             CompactLauncher = _density.SelectedIndex == 1
         };
         await _settings.SaveAsync(value);
@@ -49,7 +52,7 @@ public sealed class DisplaySettingsSection : ISettingsSection
     {
         var previous = _settings.Current;
         var next = ReferenceEquals(source, _theme)
-            ? previous with { Theme = (ThemePreference)Math.Max(0, _theme.SelectedIndex) }
+            ? previous with { Theme = (ThemePreference) Math.Max(0, _theme.SelectedIndex) }
             : ReferenceEquals(source, _density)
                 ? previous with { CompactLauncher = _density.SelectedIndex == 1 }
                 : previous;
@@ -61,7 +64,7 @@ public sealed class DisplaySettingsSection : ISettingsSection
         }
         catch
         {
-            _theme.SelectedIndex = (int)previous.Theme;
+            _theme.SelectedIndex = (int) previous.Theme;
             _density.SelectedIndex = previous.CompactLauncher ? 1 : 0;
             throw;
         }

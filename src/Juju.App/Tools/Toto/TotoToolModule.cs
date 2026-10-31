@@ -2,8 +2,8 @@ using Juju.App.Contracts.Windows;
 using Juju.App.Settings;
 using Juju.App.Tools.Contracts;
 using Juju.Core.Tools;
-using Microsoft.Extensions.DependencyInjection;
 using Juju.Tools.Toto.Application.Reminders;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Juju.App.Tools.Toto;
 

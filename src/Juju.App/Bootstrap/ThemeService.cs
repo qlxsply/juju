@@ -1,6 +1,6 @@
-using Microsoft.Win32;
 using System.Windows;
 using Juju.Core.Settings;
+using Microsoft.Win32;
 
 namespace Juju.App.Bootstrap;
 

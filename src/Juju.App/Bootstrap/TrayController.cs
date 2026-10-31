@@ -22,13 +22,23 @@ public sealed class TrayController : IDisposable
 
     private void OnCommandRequested(TrayCommand command)
     {
-        switch (command)
+        switch ( command )
         {
-            case TrayCommand.ShowLauncher: _windows.ShowLauncher(); break;
-            case TrayCommand.ShowSettings: _windows.ShowSettings(); break;
-            case TrayCommand.Help: ShowHelp(); break;
-            case TrayCommand.CheckForUpdates: ShowUpdateStatus(); break;
-            case TrayCommand.Exit: _exit(); break;
+            case TrayCommand.ShowLauncher:
+                _windows.ShowLauncher();
+                break;
+            case TrayCommand.ShowSettings:
+                _windows.ShowSettings();
+                break;
+            case TrayCommand.Help:
+                ShowHelp();
+                break;
+            case TrayCommand.CheckForUpdates:
+                ShowUpdateStatus();
+                break;
+            case TrayCommand.Exit:
+                _exit();
+                break;
         }
     }
 
@@ -42,7 +52,8 @@ public sealed class TrayController : IDisposable
 
     public void Dispose()
     {
-        if (_disposed) return;
+        if ( _disposed )
+            return;
         _disposed = true;
         _tray.CommandRequested -= OnCommandRequested;
         _tray.Dispose();

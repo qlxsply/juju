@@ -1,6 +1,6 @@
 using Juju.Core.Contracts.Platform;
-using Juju.Tools.Toto.Application.Ports;
 using Juju.Tools.Toto.Application.Items;
+using Juju.Tools.Toto.Application.Ports;
 using Juju.Tools.Toto.Application.Reminders;
 using Juju.Tools.Toto.Domain;
 using Juju.Tools.Toto.Infrastructure.Calendar;
@@ -26,7 +26,7 @@ public sealed class TotoReminderRuntimeTests : IDisposable
         items.EnsureFiles();
         settings.EnsureExists();
         calendars.SaveLocal(DateTime.Today.Year, []);
-        if (DateTime.Today.AddDays(7).Year != DateTime.Today.Year)
+        if ( DateTime.Today.AddDays(7).Year != DateTime.Today.Year )
             calendars.SaveLocal(DateTime.Today.Year + 1, []);
         items.Add(new TodoItem("due", "锁屏期间到期", null, DateTime.Now.AddMinutes(-1), DateTime.Now, 0,
             ItemStatus.Active, ReminderStatus.Pending, null, null, ""));
@@ -58,7 +58,7 @@ public sealed class TotoReminderRuntimeTests : IDisposable
         var settings = new SettingsRepository(paths);
         var calendars = new HolidayCalendarDownloadService(paths);
         calendars.SaveLocal(DateTime.Today.Year, []);
-        if (DateTime.Today.AddDays(7).Year != DateTime.Today.Year)
+        if ( DateTime.Today.AddDays(7).Year != DateTime.Today.Year )
             calendars.SaveLocal(DateTime.Today.Year + 1, []);
         var systemEvents = new FakeSystemLifecycleEvents();
         var runtime = new TotoReminderRuntime(items, settings, new WorkCalendarRepository(calendars),
@@ -83,7 +83,7 @@ public sealed class TotoReminderRuntimeTests : IDisposable
         items.EnsureFiles();
         settings.EnsureExists();
         calendars.SaveLocal(DateTime.Today.Year, []);
-        if (DateTime.Today.AddDays(7).Year != DateTime.Today.Year)
+        if ( DateTime.Today.AddDays(7).Year != DateTime.Today.Year )
             calendars.SaveLocal(DateTime.Today.Year + 1, []);
         var systemEvents = new FakeSystemLifecycleEvents();
         using var runtime = new TotoReminderRuntime(items, settings, new WorkCalendarRepository(calendars),
@@ -96,7 +96,8 @@ public sealed class TotoReminderRuntimeTests : IDisposable
             TaskCreationOptions.RunContinuationsAsynchronously);
         runtime.DueReminders += due =>
         {
-            if (due.Any(item => item.Id == "resume")) resumed.TrySetResult(due);
+            if ( due.Any(item => item.Id == "resume") )
+                resumed.TrySetResult(due);
         };
         systemEvents.Raise(SystemLifecycleSignal.Resumed);
         Assert.Contains(await resumed.Task.WaitAsync(TimeSpan.FromSeconds(2)), item => item.Id == "resume");
@@ -107,7 +108,8 @@ public sealed class TotoReminderRuntimeTests : IDisposable
             TaskCreationOptions.RunContinuationsAsynchronously);
         runtime.DueReminders += due =>
         {
-            if (due.Any(item => item.Id == "time-change")) timeChanged.TrySetResult(due);
+            if ( due.Any(item => item.Id == "time-change") )
+                timeChanged.TrySetResult(due);
         };
         systemEvents.Raise(SystemLifecycleSignal.TimeChanged);
 
@@ -116,7 +118,8 @@ public sealed class TotoReminderRuntimeTests : IDisposable
 
     public void Dispose()
     {
-        if (Directory.Exists(_root)) Directory.Delete(_root, recursive: true);
+        if ( Directory.Exists(_root) )
+            Directory.Delete(_root, recursive: true);
     }
 
     private sealed class FakeSystemLifecycleEvents : ISystemLifecycleEvents

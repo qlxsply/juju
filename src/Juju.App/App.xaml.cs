@@ -5,32 +5,32 @@ using System.Windows;
 using Juju.App.Bootstrap;
 using Juju.App.Contracts.Bootstrap;
 using Juju.App.Contracts.Windows;
+using Juju.App.Presentation.Json;
+using Juju.App.Presentation.Toto;
 using Juju.App.Services;
 using Juju.App.Settings;
-using Juju.App.Views;
-using Juju.Core.Logging;
-using Juju.Core.Settings;
-using Juju.Core.Storage;
-using Juju.Core.Tools;
 using Juju.App.Tools.Catalog;
 using Juju.App.Tools.Contracts;
 using Juju.App.Tools.Json;
 using Juju.App.Tools.Placeholders;
 using Juju.App.Tools.Routing;
 using Juju.App.Tools.Toto;
-using Juju.App.Presentation.Json;
-using Juju.App.Presentation.Toto;
-using Juju.Tools.Toto.Application;
-using Juju.Platform.Windows.Startup;
+using Juju.App.Views;
+using Juju.Core.Contracts.Platform;
+using Juju.Core.Logging;
+using Juju.Core.Settings;
+using Juju.Core.Storage;
+using Juju.Core.Tools;
 using Juju.Platform.Windows.Dialogs;
 using Juju.Platform.Windows.Lifecycle;
 using Juju.Platform.Windows.Shell;
+using Juju.Platform.Windows.Startup;
 using Juju.Platform.Windows.Windowing;
-using Juju.Core.Contracts.Platform;
 using Juju.Tools.Json.Documents;
 using Juju.Tools.Json.Metadata;
 using Juju.Tools.Json.Settings;
 using Juju.Tools.Json.Storage;
+using Juju.Tools.Toto.Application;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Application = System.Windows.Application;
@@ -58,7 +58,7 @@ public partial class App
         // 命名 Mutex 由操作系统跨进程共享，作用相当于 Java 中基于文件锁实现的单实例守卫。
         _mutex = new Mutex(true, InstanceName, out var firstInstance);
         _ownsMutex = firstInstance;
-        if (!firstInstance)
+        if ( !firstInstance )
         {
             await ActivateExistingInstanceAsync();
             Shutdown();
@@ -70,8 +70,8 @@ public partial class App
         await new DataRootService(writer).EnsureInitializedAsync(ApplicationPaths.DataRoot, _shutdown.Token);
         var settings = new SettingsService(writer);
         await settings.LoadAsync(_shutdown.Token);
-        if (Array.Exists(e.Args, argument => string.Equals(argument, "--show-launcher",
-                StringComparison.OrdinalIgnoreCase)) && settings.Current.StartMinimized)
+        if ( Array.Exists(e.Args, argument => string.Equals(argument, "--show-launcher",
+                StringComparison.OrdinalIgnoreCase)) && settings.Current.StartMinimized )
             await settings.SaveAsync(settings.Current with { StartMinimized = false }, _shutdown.Token);
         ApplicationPaths.ConfigureToolDirectories(settings.Current.ToolDataDirectories);
         Directory.CreateDirectory(Path.Combine(ApplicationPaths.ToolDataDirectory("json"), "documents"));
@@ -172,7 +172,8 @@ public partial class App
     // 托盘等多条路径都可请求退出；实际幂等性由 IAppLifecycle 实现保证。
     private async Task ExitAsync()
     {
-        if (_shutdown is null) return;
+        if ( _shutdown is null )
+            return;
         await _lifecycle!.ShutdownAsync(_shutdown.Token);
         _shutdown.Cancel();
         Shutdown();
@@ -182,7 +183,8 @@ public partial class App
     protected override void OnExit(ExitEventArgs e)
     {
         _shutdown?.Cancel();
-        if (_ownsMutex) _mutex?.ReleaseMutex();
+        if ( _ownsMutex )
+            _mutex?.ReleaseMutex();
         _mutex?.Dispose();
         base.OnExit(e);
     }
@@ -190,7 +192,7 @@ public partial class App
     // 首实例作为命名管道服务端，后续进程只发送一条激活消息后退出。
     private async Task ListenForActivationAsync(CancellationToken cancellationToken)
     {
-        while (!cancellationToken.IsCancellationRequested)
+        while ( !cancellationToken.IsCancellationRequested )
         {
             try
             {
@@ -199,10 +201,10 @@ public partial class App
                 await pipe.WaitForConnectionAsync(cancellationToken);
                 using var reader = new StreamReader(pipe, Encoding.UTF8, leaveOpen: true);
                 // 管道 I/O 不保证在 WPF Dispatcher 线程上完成；修改窗口必须切回 UI 线程。
-                if (await reader.ReadLineAsync(cancellationToken) == "ActivateLauncher")
+                if ( await reader.ReadLineAsync(cancellationToken) == "ActivateLauncher" )
                     Dispatcher.Invoke(() => _windows?.ShowLauncher());
             }
-            catch (OperationCanceledException)
+            catch ( OperationCanceledException )
             {
                 return;
             }
@@ -220,7 +222,7 @@ public partial class App
             await using var writer = new StreamWriter(pipe, Encoding.UTF8, leaveOpen: true) { AutoFlush = true };
             await writer.WriteLineAsync("ActivateLauncher");
         }
-        catch (IOException)
+        catch ( IOException )
         {
         }
     }

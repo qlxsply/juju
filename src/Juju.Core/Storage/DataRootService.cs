@@ -16,25 +16,27 @@ public sealed class DataRootService(IAtomicFileWriter writer)
     public async Task<DataRootValidationResult> ValidateAsync(string dataRoot, bool initializeEmptyDirectory = false,
         CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(dataRoot)) return new(null, false, false, "A data root is required.");
+        if ( string.IsNullOrWhiteSpace(dataRoot) )
+            return new(null, false, false, "A data root is required.");
         try
         {
             var root = Path.GetFullPath(dataRoot);
-            if (!Directory.Exists(root))
+            if ( !Directory.Exists(root) )
             {
-                if (!initializeEmptyDirectory) return new(root, false, false, "The data root does not exist.");
+                if ( !initializeEmptyDirectory )
+                    return new(root, false, false, "The data root does not exist.");
                 Directory.CreateDirectory(root);
             }
 
             var marker = Path.Combine(root, "juju.json");
-            if (!File.Exists(marker))
+            if ( !File.Exists(marker) )
             {
-                if (Directory.EnumerateFileSystemEntries(root).Any())
+                if ( Directory.EnumerateFileSystemEntries(root).Any() )
                 {
                     return new DataRootValidationResult(root, false, false,
                         $"The non-empty directory '{root}' is not a Juju data root and cannot be initialized.");
                 }
-                else if (!initializeEmptyDirectory)
+                else if ( !initializeEmptyDirectory )
                     return new DataRootValidationResult(root, false, true,
                         "The empty directory has not been initialized.");
                 else
@@ -46,12 +48,12 @@ public sealed class DataRootService(IAtomicFileWriter writer)
                 try
                 {
                     using var document = JsonDocument.Parse(await File.ReadAllTextAsync(marker, cancellationToken));
-                    if (!document.RootElement.TryGetProperty("schemaVersion", out var version) ||
-                        version.ValueKind != JsonValueKind.Number || version.GetInt32() != 1)
+                    if ( !document.RootElement.TryGetProperty("schemaVersion", out var version) ||
+                        version.ValueKind != JsonValueKind.Number || version.GetInt32() != 1 )
                         return new DataRootValidationResult(root, false, false,
                             "The selected data root has an unsupported schema.");
                 }
-                catch (JsonException)
+                catch ( JsonException )
                 {
                     return new DataRootValidationResult(root, false, false,
                         "The selected data root marker is invalid.");
@@ -62,12 +64,12 @@ public sealed class DataRootService(IAtomicFileWriter writer)
             Directory.CreateDirectory(Path.Combine(root, "tools", "json", ".trash"));
             return new DataRootValidationResult(root, true, false, null);
         }
-        catch (OperationCanceledException)
+        catch ( OperationCanceledException )
         {
             throw;
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException
-                                       or NotSupportedException)
+        catch ( Exception ex ) when ( ex is IOException or UnauthorizedAccessException or ArgumentException
+                                       or NotSupportedException )
         {
             return new DataRootValidationResult(null, false, false, "The data root is unavailable.");
         }
@@ -77,7 +79,8 @@ public sealed class DataRootService(IAtomicFileWriter writer)
     public async Task EnsureInitializedAsync(string dataRoot, CancellationToken cancellationToken = default)
     {
         var result = await ValidateAsync(dataRoot, initializeEmptyDirectory: true, cancellationToken);
-        if (result.IsValid) return;
+        if ( result.IsValid )
+            return;
         throw new JujuException(result.Path is null ? ErrorCode.DataRootUnavailable : ErrorCode.DataRootInvalid,
             result.Error ?? "The data root is invalid.");
     }

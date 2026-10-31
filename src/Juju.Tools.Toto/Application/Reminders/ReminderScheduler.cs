@@ -38,8 +38,9 @@ internal sealed class ReminderScheduler : IDisposable
     /// <summary>根据下一次待提醒事项、工作日弹窗和兜底唤醒时间安排一次回调。</summary>
     public void Reschedule()
     {
-        if (disposed) return;
-        if (locked)
+        if ( disposed )
+            return;
+        if ( locked )
         {
             timer.Change(Timeout.Infinite, Timeout.Infinite);
             return;
@@ -48,7 +49,7 @@ internal sealed class ReminderScheduler : IDisposable
         var now = DateTime.Now;
         var next = new[] { items.GetNextReminder(), NextWorkPopup(now) }.Where(x => x is not null).Select(x => x!.Value)
             .Append(now.AddHours(6)).Min();
-        var delay = Math.Max(1000, (long)(next - now).TotalMilliseconds);
+        var delay = Math.Max(1000, (long) (next - now).TotalMilliseconds);
         timer.Change(delay, Timeout.Infinite);
     }
 
@@ -61,19 +62,20 @@ internal sealed class ReminderScheduler : IDisposable
         var values = settings.Load();
         var weekdaysOnly = values.GetValueOrDefault("daily_review_workdays") == "1";
         var candidates = new List<DateTime>();
-        for (var dayOffset = 0; dayOffset <= 7; dayOffset++)
+        for ( var dayOffset = 0; dayOffset <= 7; dayOffset++ )
         {
             var date = now.Date.AddDays(dayOffset);
-            if (weekdaysOnly && date.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday) continue;
-            foreach (var pair in new[]
+            if ( weekdaysOnly && date.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday )
+                continue;
+            foreach ( var pair in new[]
                      {
                          ("daily_review_start_time", ScheduledPopupKind.WorkStart),
                          ("daily_review_end_time", ScheduledPopupKind.WorkEnd)
-                     })
-                if (TimeOnly.TryParseExact(values.GetValueOrDefault(pair.Item1), "HH:mm", out var time))
+                     } )
+                if ( TimeOnly.TryParseExact(values.GetValueOrDefault(pair.Item1), "HH:mm", out var time) )
                 {
                     var due = date.Add(time.ToTimeSpan());
-                    if (due > now && !settings.WasScheduledPopupShown(DateOnly.FromDateTime(date), pair.Item2))
+                    if ( due > now && !settings.WasScheduledPopupShown(DateOnly.FromDateTime(date), pair.Item2) )
                         candidates.Add(due);
                 }
         }
@@ -84,14 +86,16 @@ internal sealed class ReminderScheduler : IDisposable
     /// <summary>处理到期提醒和计划弹窗，然后安排下一次检查。</summary>
     private void Tick()
     {
-        if (disposed || locked) return;
+        if ( disposed || locked )
+            return;
         var now = DateTime.Now;
         var due = items.MarkDueReminders(now);
-        if (due.Count > 0) DueReminders?.Invoke(due);
+        if ( due.Count > 0 )
+            DueReminders?.Invoke(due);
         var values = settings.Load();
         var date = DateOnly.FromDateTime(now);
         var weekdaysOnly = values.GetValueOrDefault("daily_review_workdays") == "1";
-        if (!weekdaysOnly || date.DayOfWeek is not DayOfWeek.Saturday and not DayOfWeek.Sunday)
+        if ( !weekdaysOnly || date.DayOfWeek is not DayOfWeek.Saturday and not DayOfWeek.Sunday )
         {
             var candidates =
                 new[]
@@ -101,8 +105,8 @@ internal sealed class ReminderScheduler : IDisposable
                 }.Where(x =>
                     TimeOnly.TryParseExact(values.GetValueOrDefault(x.Item1), "HH:mm", out var time) &&
                     now.TimeOfDay >= time.ToTimeSpan()).OrderBy(x => x.Item2).ToArray();
-            foreach (var candidate in candidates)
-                if (settings.TryMarkScheduledPopupShown(date, candidate.Item2, now))
+            foreach ( var candidate in candidates )
+                if ( settings.TryMarkScheduledPopupShown(date, candidate.Item2, now) )
                     ScheduledPopup?.Invoke(candidate.Item2);
         }
 

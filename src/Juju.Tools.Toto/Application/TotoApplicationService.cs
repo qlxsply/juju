@@ -1,7 +1,7 @@
 using Juju.Core.Tools;
-using Juju.Tools.Toto.Application.Ports;
 using Juju.Tools.Toto.Application.Calendar;
 using Juju.Tools.Toto.Application.Items;
+using Juju.Tools.Toto.Application.Ports;
 using Juju.Tools.Toto.Application.Reminders;
 using Juju.Tools.Toto.Application.Settings;
 using Juju.Tools.Toto.Domain;
@@ -35,7 +35,7 @@ internal sealed class TotoApplicationService(
         };
         var firstPage = items.GetHistory(criteria, 1, 500);
         var completed = firstPage.Items.ToList();
-        for (var page = 2; completed.Count < firstPage.TotalCount; page++)
+        for ( var page = 2; completed.Count < firstPage.TotalCount; page++ )
             completed.AddRange(items.GetHistory(criteria, page, 500).Items);
         return completed.Select(ToSnapshot).ToArray();
     }
@@ -46,7 +46,8 @@ internal sealed class TotoApplicationService(
             DateTime.Now, 0, ItemStatus.Active,
             request.RemindAt is null ? ReminderStatus.None : ReminderStatus.Pending, null, null, request.Note);
         items.Add(item);
-        if (runtime.CalendarReady) runtime.Reschedule();
+        if ( runtime.CalendarReady )
+            runtime.Reschedule();
     }
 
     public bool UpdateItem(TotoItemSnapshot item)
@@ -54,15 +55,18 @@ internal sealed class TotoApplicationService(
         var updated = items.Update(new TodoItem(item.Id, item.Content, item.PlannedAt, item.RemindAt, item.CreatedAt,
             item.CreatedSeq, ToDomain(item.Status), item.ReminderStatus is { } reminder ? ToDomain(reminder) : null,
             item.RemindedAt, item.EndedAt, item.Note));
-        if (updated && runtime.CalendarReady) runtime.Reschedule();
+        if ( updated && runtime.CalendarReady )
+            runtime.Reschedule();
         return updated;
     }
 
     public bool EndItem(string id, TotoItemStatus status, string note, DateTime endedAt)
     {
-        if (status == TotoItemStatus.Active) throw new ArgumentOutOfRangeException(nameof(status));
+        if ( status == TotoItemStatus.Active )
+            throw new ArgumentOutOfRangeException(nameof(status));
         var ended = items.End(id, ToDomain(status), note, endedAt);
-        if (ended && runtime.CalendarReady) runtime.Reschedule();
+        if ( ended && runtime.CalendarReady )
+            runtime.Reschedule();
         return ended;
     }
 
@@ -84,23 +88,23 @@ internal sealed class TotoApplicationService(
 
     public void SaveSettings(IReadOnlyDictionary<string, string> values)
     {
-        if (!int.TryParse(values.GetValueOrDefault("default_remind_minutes"), out var minutes) || minutes < 0 ||
+        if ( !int.TryParse(values.GetValueOrDefault("default_remind_minutes"), out var minutes) || minutes < 0 ||
             !OptionalTime(values.GetValueOrDefault("daily_review_start_time")) ||
             !OptionalTime(values.GetValueOrDefault("daily_review_end_time")) ||
-            values.GetValueOrDefault("daily_review_workdays") is not ("0" or "1"))
+            values.GetValueOrDefault("daily_review_workdays") is not ("0" or "1") )
             throw new InvalidOperationException("默认提醒分钟或每日事项盘点设置无效。");
 
         var shortcuts = values.Where(item => item.Key.StartsWith("shortcut_", StringComparison.Ordinal))
             .Select(item => item.Value).ToArray();
         var normalizedShortcuts = shortcuts.Select(value => WindowShortcut.TryNormalize(value, out var shortcut)
             ? shortcut : "").ToArray();
-        if (shortcuts.Length != 7 || normalizedShortcuts.Any(string.IsNullOrEmpty) ||
-            normalizedShortcuts.Distinct(StringComparer.OrdinalIgnoreCase).Count() != normalizedShortcuts.Length)
+        if ( shortcuts.Length != 7 || normalizedShortcuts.Any(string.IsNullOrEmpty) ||
+            normalizedShortcuts.Distinct(StringComparer.OrdinalIgnoreCase).Count() != normalizedShortcuts.Length )
             throw new InvalidOperationException("Toto 的七个窗口内快捷键必须有效且不能重复。");
 
         var newHotkey = GlobalHotkeyPolicy.Normalize(values.GetValueOrDefault("hotkey"), optional: true);
         var previous = settings.Load();
-        if (!runtime.TryRegisterHotkey(newHotkey))
+        if ( !runtime.TryRegisterHotkey(newHotkey) )
             throw new InvalidOperationException("Toto 全局直达热键无效或已占用。");
         try
         {
@@ -124,21 +128,25 @@ internal sealed class TotoApplicationService(
 
     public async Task DownloadHolidaysAsync(int year)
     {
-        if (year > LatestCalendarYear) throw new InvalidOperationException("该年份的节假日尚未开放下载。");
+        if ( year > LatestCalendarYear )
+            throw new InvalidOperationException("该年份的节假日尚未开放下载。");
         await Task.Run(() => calendar.Download(year));
-        if (runtime.CalendarReady) runtime.Reschedule();
+        if ( runtime.CalendarReady )
+            runtime.Reschedule();
     }
 
     public void SaveHoliday(TotoHolidaySnapshot holiday)
     {
         calendar.Upsert(new HolidayCalendarDay(holiday.Name, holiday.Date, holiday.IsOffDay));
-        if (runtime.CalendarReady) runtime.Reschedule();
+        if ( runtime.CalendarReady )
+            runtime.Reschedule();
     }
 
     public void DeleteHoliday(DateOnly date)
     {
         calendar.Delete(date);
-        if (runtime.CalendarReady) runtime.Reschedule();
+        if ( runtime.CalendarReady )
+            runtime.Reschedule();
     }
 
     internal static TotoItemSnapshot ToSnapshot(TodoItem item) => new(item.Id, item.Content, item.PlannedAt,

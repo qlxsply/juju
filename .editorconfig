@@ -1,0 +1,79 @@
+root = true
+
+[*]
+charset = utf-8
+end_of_line = crlf
+indent_style = space
+indent_size = 4
+tab_width = 4
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.cs]
+# 缩进与换行
+indent_style = space
+indent_size = 4
+
+csharp_new_line_before_open_brace = all
+csharp_new_line_before_else = true
+csharp_new_line_before_catch = true
+csharp_new_line_before_finally = true
+csharp_new_line_before_members_in_object_initializers = true
+csharp_new_line_between_query_expression_clauses = true
+
+csharp_indent_block_contents = true
+csharp_indent_braces = false
+csharp_indent_case_contents = true
+csharp_indent_case_contents_when_block = true
+csharp_indent_switch_labels = true
+csharp_indent_labels = one_less_than_current
+
+# 空格
+csharp_space_after_cast = true
+csharp_space_after_comma = true
+csharp_space_after_dot = false
+csharp_space_after_keywords_in_control_flow_statements = true
+csharp_space_around_binary_operators = before_and_after
+csharp_space_between_method_call_parameter_list_parentheses = false
+csharp_space_between_method_declaration_parameter_list_parentheses = false
+csharp_space_between_parentheses = control_flow_statements
+
+# 保留单行形式
+csharp_preserve_single_line_blocks = true
+csharp_preserve_single_line_statements = false
+
+# using
+dotnet_sort_system_directives_first = true
+dotnet_separate_import_directive_groups = false
+
+# 类型风格
+csharp_style_var_for_built_in_types = false
+csharp_style_var_when_type_is_apparent = false
+csharp_style_var_elsewhere = false
+
+# 命名空间
+csharp_style_namespace_declarations = file_scoped:suggestion
+
+# 显式访问修饰符
+dotnet_style_require_accessibility_modifiers = for_non_interface_members:suggestion
+
+# 格式诊断
+dotnet_diagnostic.IDE0055.severity = error
+
+# Rider 专属设置：与标准大括号规则保持一致
+resharper_csharp_brace_style = next_line
+
+[*.xaml]
+indent_style = space
+indent_size = 4
+tab_width = 4
+
+[*.{csproj,props,targets}]
+indent_style = space
+indent_size = 2
+
+[*.{json,yml,yaml}]
+indent_style = space
+indent_size = 2
+
+

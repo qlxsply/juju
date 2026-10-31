@@ -32,9 +32,10 @@ public static class ApplicationPaths
     private static string ReadDataRoot()
     {
         var pointer = Path.Combine(InstallDirectory, "data-location.json");
-        if (!File.Exists(pointer)) return DefaultDataRoot;
+        if ( !File.Exists(pointer) )
+            return DefaultDataRoot;
         var location = System.Text.Json.JsonSerializer.Deserialize<DataRootPointer>(File.ReadAllText(pointer));
-        if (string.IsNullOrWhiteSpace(location?.DataRoot) || !Path.IsPathFullyQualified(location.DataRoot))
+        if ( string.IsNullOrWhiteSpace(location?.DataRoot) || !Path.IsPathFullyQualified(location.DataRoot) )
             throw new InvalidDataException("数据目录引导文件无效：" + pointer);
         return Path.GetFullPath(location.DataRoot);
     }

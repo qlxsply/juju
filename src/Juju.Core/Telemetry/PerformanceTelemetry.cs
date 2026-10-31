@@ -69,7 +69,8 @@ public sealed class PerformanceTelemetry(ILogger<PerformanceTelemetry> logger) :
         /// <summary>首次释放时停止计时并写入遥测；该同步释放不涉及异步资源。</summary>
         public void Dispose()
         {
-            if (Interlocked.Exchange(ref _disposed, 1) == 0) telemetry.Record(operation, _stopwatch.Elapsed);
+            if ( Interlocked.Exchange(ref _disposed, 1) == 0 )
+                telemetry.Record(operation, _stopwatch.Elapsed);
         }
     }
 }

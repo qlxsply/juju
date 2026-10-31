@@ -47,7 +47,7 @@ public sealed class SystemSettingsSection : ISettingsSection
 
     public async Task SaveAsync()
     {
-        if (!int.TryParse(_timeout.Text, out var timeout) || timeout is < 250 or > 30000)
+        if ( !int.TryParse(_timeout.Text, out var timeout) || timeout is < 250 or > 30000 )
             throw new InvalidOperationException("主界面超时必须在 250 到 30000 毫秒之间");
         var previous = _settings.Current;
         var value = previous with
@@ -65,9 +65,9 @@ public sealed class SystemSettingsSection : ISettingsSection
     public async Task SaveImmediateAsync(FrameworkElement source)
     {
         var previous = _settings.Current;
-        if (ReferenceEquals(source, _timeout))
+        if ( ReferenceEquals(source, _timeout) )
         {
-            if (!int.TryParse(_timeout.Text, out var delay) || delay is < 250 or > 30000)
+            if ( !int.TryParse(_timeout.Text, out var delay) || delay is < 250 or > 30000 )
             {
                 _timeout.Text = previous.LauncherTimeoutMilliseconds.ToString();
                 throw new InvalidOperationException("主界面超时必须在 250 到 30000 毫秒之间。");
@@ -78,18 +78,19 @@ public sealed class SystemSettingsSection : ISettingsSection
         var next = source switch
         {
             var control when ReferenceEquals(control, _startAtLogin) => previous with
-                { StartAtLogin = _startAtLogin.IsChecked == true },
+            { StartAtLogin = _startAtLogin.IsChecked == true },
             var control when ReferenceEquals(control, _startMinimized) => previous with
-                { StartMinimized = _startMinimized.IsChecked == true },
+            { StartMinimized = _startMinimized.IsChecked == true },
             var control when ReferenceEquals(control, _notifications) => previous with
-                { ShowToolNotifications = _notifications.IsChecked == true },
+            { ShowToolNotifications = _notifications.IsChecked == true },
             var control when ReferenceEquals(control, _autoHide) => previous with
-                { AutoHideLauncher = _autoHide.IsChecked == true },
+            { AutoHideLauncher = _autoHide.IsChecked == true },
             var control when ReferenceEquals(control, _returnAfterClose) => previous with
-                { ReturnToLauncherOnToolClose = _returnAfterClose.IsChecked == true },
+            { ReturnToLauncherOnToolClose = _returnAfterClose.IsChecked == true },
             _ => previous
         };
-        try { await CommitAsync(previous, next); }
+        try
+        { await CommitAsync(previous, next); }
         catch
         {
             _startAtLogin.IsChecked = previous.StartAtLogin;
@@ -105,13 +106,15 @@ public sealed class SystemSettingsSection : ISettingsSection
     {
         try
         {
-            if (previous.StartAtLogin != next.StartAtLogin) _startup.SetEnabled(next.StartAtLogin);
+            if ( previous.StartAtLogin != next.StartAtLogin )
+                _startup.SetEnabled(next.StartAtLogin);
             await _settings.SaveAsync(next);
             System.Windows.Application.Current.Windows.OfType<LauncherWindow>().FirstOrDefault()?.ApplySettings(next);
         }
         catch
         {
-            if (previous.StartAtLogin != next.StartAtLogin) _startup.SetEnabled(previous.StartAtLogin);
+            if ( previous.StartAtLogin != next.StartAtLogin )
+                _startup.SetEnabled(previous.StartAtLogin);
             throw;
         }
     }

@@ -1,5 +1,5 @@
-using Juju.App.Contracts.Windows;
 using Juju.App.Contracts.Settings;
+using Juju.App.Contracts.Windows;
 using Juju.App.Settings;
 using Juju.App.Tools.Catalog;
 using Juju.App.Tools.Contracts;

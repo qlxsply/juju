@@ -36,7 +36,7 @@ public sealed class TotoReminderRuntime : IDisposable, ITotoRuntimeControl
         _scheduler.ScheduledPopup += kind => ScheduledPopup?.Invoke(kind == ScheduledPopupKind.WorkStart
             ? TotoScheduledPopupKind.WorkStart
             : TotoScheduledPopupKind.WorkEnd);
-        _retry = new Timer(_ => { if (!_disposed) EnsureReady(); }, null,
+        _retry = new Timer(_ => { if ( !_disposed ) EnsureReady(); }, null,
             Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
     }
 
@@ -47,14 +47,16 @@ public sealed class TotoReminderRuntime : IDisposable, ITotoRuntimeControl
 
     public bool CalendarReady => _ready;
     public string? InitializationError => _initializationError?.Message;
-    internal void Reschedule() { if (_ready) _scheduler.Reschedule(); }
-    internal void Resume() { if (_ready) _scheduler.Resume(); }
+    internal void Reschedule() { if ( _ready ) _scheduler.Reschedule(); }
+    internal void Resume() { if ( _ready ) _scheduler.Resume(); }
 
     public Task StartAsync(CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        if (_disposed) throw new ObjectDisposedException(nameof(TotoReminderRuntime));
-        if (_started) return Task.CompletedTask;
+        if ( _disposed )
+            throw new ObjectDisposedException(nameof(TotoReminderRuntime));
+        if ( _started )
+            return Task.CompletedTask;
 
         _items.EnsureFiles();
         _settings.EnsureExists();
@@ -71,15 +73,16 @@ public sealed class TotoReminderRuntime : IDisposable, ITotoRuntimeControl
     {
         var cutoffMonth = new DateOnly(DateTime.Today.Year, DateTime.Today.Month, 1).AddMonths(-1);
         var cutoffText = cutoffMonth.ToString("yyyyMM", System.Globalization.CultureInfo.InvariantCulture);
-        if (!string.IsNullOrEmpty(_settings.ArchiveProgressMonth) &&
-            string.CompareOrdinal(_settings.ArchiveProgressMonth, cutoffText) >= 0) return;
+        if ( !string.IsNullOrEmpty(_settings.ArchiveProgressMonth) &&
+            string.CompareOrdinal(_settings.ArchiveProgressMonth, cutoffText) >= 0 )
+            return;
 
         try
         {
             _items.ArchiveHistoryThrough(cutoffMonth);
             _settings.SaveArchiveProgressMonth(cutoffText);
         }
-        catch (Exception error)
+        catch ( Exception error )
         {
             _log.LogError(error, "Toto history archive failed; it will be retried on the next start");
         }
@@ -87,20 +90,23 @@ public sealed class TotoReminderRuntime : IDisposable, ITotoRuntimeControl
 
     private bool TryStart()
     {
-        if (_disposed) return false;
-        if (_ready) return true;
+        if ( _disposed )
+            return false;
+        if ( _ready )
+            return true;
         try
         {
             _calendar.GetYear(DateTime.Today.Year);
             var end = DateTime.Today.AddDays(7);
-            if (end.Year != DateTime.Today.Year) _calendar.GetYear(end.Year);
+            if ( end.Year != DateTime.Today.Year )
+                _calendar.GetYear(end.Year);
             _scheduler.Reschedule();
             _ready = true;
             _initializationError = null;
             _retry.Change(Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
             return true;
         }
-        catch (Exception error)
+        catch ( Exception error )
         {
             _initializationError = error;
             _log.LogError(error, "Toto calendar initialization failed; retry scheduled");
@@ -111,18 +117,20 @@ public sealed class TotoReminderRuntime : IDisposable, ITotoRuntimeControl
 
     private void OnSystemLifecycleChanged(SystemLifecycleSignal signal)
     {
-        switch (signal)
+        switch ( signal )
         {
             case SystemLifecycleSignal.SessionLocked:
                 _scheduler.SetLocked(true);
                 break;
             case SystemLifecycleSignal.SessionUnlocked:
                 _scheduler.SetLocked(false);
-                if (TryStart()) _scheduler.Resume();
+                if ( TryStart() )
+                    _scheduler.Resume();
                 break;
             case SystemLifecycleSignal.Resumed:
             case SystemLifecycleSignal.TimeChanged:
-                if (TryStart()) _scheduler.Resume();
+                if ( TryStart() )
+                    _scheduler.Resume();
                 break;
         }
     }
@@ -131,20 +139,24 @@ public sealed class TotoReminderRuntime : IDisposable, ITotoRuntimeControl
 
     void ITotoRuntimeControl.SettingsSaved(string hotkey)
     {
-        if (_ready) _scheduler.Reschedule();
+        if ( _ready )
+            _scheduler.Reschedule();
         HotkeyChanged?.Invoke(hotkey);
     }
 
     void ITotoRuntimeControl.Reschedule()
     {
-        if (_ready) _scheduler.Reschedule();
+        if ( _ready )
+            _scheduler.Reschedule();
     }
 
     public void Dispose()
     {
-        if (_disposed) return;
+        if ( _disposed )
+            return;
         _disposed = true;
-        if (_started) _systemEvents.Changed -= OnSystemLifecycleChanged;
+        if ( _started )
+            _systemEvents.Changed -= OnSystemLifecycleChanged;
         _retry.Dispose();
         _scheduler.Dispose();
     }

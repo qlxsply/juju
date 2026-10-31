@@ -21,7 +21,7 @@ public interface ISettingsService
 public sealed class SettingsService(IAtomicFileWriter writer) : ISettingsService
 {
     private static readonly JsonSerializerOptions Options = new()
-        { PropertyNamingPolicy = JsonNamingPolicy.CamelCase, WriteIndented = true };
+    { PropertyNamingPolicy = JsonNamingPolicy.CamelCase, WriteIndented = true };
 
     private readonly string _path = ApplicationPaths.ConfigurationFile;
     public AppSettings Current { get; private set; } = AppSettings.CreateDefault();
@@ -29,7 +29,7 @@ public sealed class SettingsService(IAtomicFileWriter writer) : ISettingsService
     /// <summary>异步读取配置；不存在时写入默认值，取消令牌贯穿读取和首次保存。</summary>
     public async Task LoadAsync(CancellationToken cancellationToken = default)
     {
-        if (!File.Exists(_path))
+        if ( !File.Exists(_path) )
         {
             await SaveAsync(Current, cancellationToken);
             return;
@@ -37,12 +37,13 @@ public sealed class SettingsService(IAtomicFileWriter writer) : ISettingsService
 
         var json = await File.ReadAllTextAsync(_path, cancellationToken);
         var loaded = JsonSerializer.Deserialize<AppSettings>(json, Options);
-        if (loaded is not null) Current = loaded with
-        {
-            ToolKeys = ToolLaunchKeys.Normalize(loaded.ToolKeys),
-            LeaderShortcut = GlobalHotkeyPolicy.Normalize(loaded.LeaderShortcut),
-            ToolGlobalShortcuts = NormalizeExtraShortcuts(loaded.ToolGlobalShortcuts)
-        };
+        if ( loaded is not null )
+            Current = loaded with
+            {
+                ToolKeys = ToolLaunchKeys.Normalize(loaded.ToolKeys),
+                LeaderShortcut = GlobalHotkeyPolicy.Normalize(loaded.LeaderShortcut),
+                ToolGlobalShortcuts = NormalizeExtraShortcuts(loaded.ToolGlobalShortcuts)
+            };
     }
 
     /// <summary>先更新当前快照，再委托原子写入器避免磁盘上出现部分 JSON。</summary>

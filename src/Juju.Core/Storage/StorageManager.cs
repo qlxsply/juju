@@ -75,26 +75,27 @@ public sealed class StorageManager(DataRootService roots, IAtomicFileWriter writ
         var source = DataRoot ??
                      throw new JujuException(ErrorCode.DataRootUnavailable, "No data root is available to migrate.");
         var target = await roots.ValidateAsync(destination, false, cancellationToken);
-        if (target.Path is null ||
-            (Directory.Exists(target.Path) && Directory.EnumerateFileSystemEntries(target.Path).Any()))
+        if ( target.Path is null ||
+            (Directory.Exists(target.Path) && Directory.EnumerateFileSystemEntries(target.Path).Any()) )
             throw new JujuException(ErrorCode.DataRootInvalid, "The migration destination must be an empty directory.");
-        if (target.Path.StartsWith(source + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+        if ( target.Path.StartsWith(source + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) )
             throw new JujuException(ErrorCode.DataRootInvalid,
                 "The migration destination cannot be inside the source data root.");
         await roots.EnsureInitializedAsync(target.Path, cancellationToken);
         try
         {
-            foreach (var file in Directory.EnumerateFiles(source, "*", SearchOption.AllDirectories))
+            foreach ( var file in Directory.EnumerateFiles(source, "*", SearchOption.AllDirectories) )
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 var relative = Path.GetRelativePath(source, file);
-                if (string.Equals(relative, "juju.json", StringComparison.OrdinalIgnoreCase)) continue;
+                if ( string.Equals(relative, "juju.json", StringComparison.OrdinalIgnoreCase) )
+                    continue;
                 var copy = Path.Combine(target.Path, relative);
                 Directory.CreateDirectory(Path.GetDirectoryName(copy)!);
-                await using (var input = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.Read, 81920,
-                                 FileOptions.Asynchronous))
-                await using (var output = new FileStream(copy, FileMode.CreateNew, FileAccess.Write, FileShare.None,
-                                 81920, FileOptions.Asynchronous | FileOptions.WriteThrough))
+                await using ( var input = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.Read, 81920,
+                                 FileOptions.Asynchronous) )
+                await using ( var output = new FileStream(copy, FileMode.CreateNew, FileAccess.Write, FileShare.None,
+                                 81920, FileOptions.Asynchronous | FileOptions.WriteThrough) )
                 {
                     await input.CopyToAsync(output, cancellationToken);
                     await output.FlushAsync(cancellationToken);
@@ -103,8 +104,8 @@ public sealed class StorageManager(DataRootService roots, IAtomicFileWriter writ
 
                 var sourceHash = await HashAsync(file, cancellationToken);
                 var copyHash = await HashAsync(copy, cancellationToken);
-                if (new FileInfo(file).Length != new FileInfo(copy).Length ||
-                    !CryptographicOperations.FixedTimeEquals(sourceHash, copyHash))
+                if ( new FileInfo(file).Length != new FileInfo(copy).Length ||
+                    !CryptographicOperations.FixedTimeEquals(sourceHash, copyHash) )
                     throw new IOException("Copied file does not match source.");
             }
 
@@ -121,8 +122,8 @@ public sealed class StorageManager(DataRootService roots, IAtomicFileWriter writ
     {
         var root = DataRoot ?? throw new JujuException(ErrorCode.DataRootUnavailable, "The data root is unavailable.");
         var path = Path.GetFullPath(Path.Combine([root, .. segments]));
-        if (!path.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) &&
-            !string.Equals(path, root, StringComparison.OrdinalIgnoreCase))
+        if ( !path.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(path, root, StringComparison.OrdinalIgnoreCase) )
             throw new JujuException(ErrorCode.DataRootInvalid, "The storage path escapes the data root.");
         return path;
     }
@@ -134,11 +135,11 @@ public sealed class StorageManager(DataRootService roots, IAtomicFileWriter writ
         {
             return await File.ReadAllTextAsync(GetPath(relativePath), cancellationToken);
         }
-        catch (OperationCanceledException)
+        catch ( OperationCanceledException )
         {
             throw;
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        catch ( Exception ex ) when ( ex is IOException or UnauthorizedAccessException )
         {
             IsAvailable = false;
             throw new JujuException(ErrorCode.StorageIoError, "Storage could not be read.", ex);
@@ -154,11 +155,11 @@ public sealed class StorageManager(DataRootService roots, IAtomicFileWriter writ
             await writer.WriteTextAsync(path, content, cancellationToken);
             _selfWrites[path] = DateTimeOffset.UtcNow.AddSeconds(2);
         }
-        catch (OperationCanceledException)
+        catch ( OperationCanceledException )
         {
             throw;
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        catch ( Exception ex ) when ( ex is IOException or UnauthorizedAccessException )
         {
             IsAvailable = false;
             throw new JujuException(ErrorCode.StorageIoError, "Storage could not be written.", ex);
@@ -172,7 +173,7 @@ public sealed class StorageManager(DataRootService roots, IAtomicFileWriter writ
         try
         {
             var validated = await roots.ValidateAsync(root, initializeEmpty, cancellationToken);
-            if (!validated.IsValid)
+            if ( !validated.IsValid )
                 throw new JujuException(
                     validated.Path is null ? ErrorCode.DataRootUnavailable : ErrorCode.DataRootInvalid,
                     validated.Error ?? "The data root is invalid.");
@@ -186,7 +187,8 @@ public sealed class StorageManager(DataRootService roots, IAtomicFileWriter writ
             _watcher = new FileSystemWatcher(documents, "*.json")
             {
                 NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite | NotifyFilters.Size,
-                IncludeSubdirectories = false, EnableRaisingEvents = true
+                IncludeSubdirectories = false,
+                EnableRaisingEvents = true
             };
             _watcher.Changed += OnWatcher;
             _watcher.Created += OnWatcher;
@@ -205,7 +207,8 @@ public sealed class StorageManager(DataRootService roots, IAtomicFileWriter writ
     /// <summary>合并短时间内同一路径的嘈杂通知，延迟后只发布最终一次变更。</summary>
     private void Queue(string path, WatcherChangeTypes change)
     {
-        if (_selfWrites.TryGetValue(path, out var until) && until >= DateTimeOffset.UtcNow) return;
+        if ( _selfWrites.TryGetValue(path, out var until) && until >= DateTimeOffset.UtcNow )
+            return;
         _pending[path] = change;
         _debounce ??= new Timer(_ => PublishChanges(), null, Timeout.Infinite, Timeout.Infinite);
         _debounce.Change(150, Timeout.Infinite);
@@ -214,10 +217,10 @@ public sealed class StorageManager(DataRootService roots, IAtomicFileWriter writ
     /// <summary>在定时器线程提取待发布项，并清理过期的自身写入抑制标记。</summary>
     private void PublishChanges()
     {
-        foreach (var item in _pending.ToArray())
-            if (_pending.TryRemove(item.Key, out var change) && DataRoot is not null)
+        foreach ( var item in _pending.ToArray() )
+            if ( _pending.TryRemove(item.Key, out var change) && DataRoot is not null )
                 ExternalChanged?.Invoke(this, new(Path.GetRelativePath(DataRoot, item.Key), change));
-        foreach (var entry in _selfWrites.Where(entry => entry.Value < DateTimeOffset.UtcNow).ToArray())
+        foreach ( var entry in _selfWrites.Where(entry => entry.Value < DateTimeOffset.UtcNow).ToArray() )
             _selfWrites.TryRemove(entry.Key, out _);
     }
 

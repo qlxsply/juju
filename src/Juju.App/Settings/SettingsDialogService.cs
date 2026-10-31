@@ -1,10 +1,10 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Interop;
+using Juju.App.Views;
 using Juju.Core.Contracts.Platform;
 using Juju.Core.Storage;
 using Juju.Core.Tools;
-using Juju.App.Views;
 using TextBox = System.Windows.Controls.TextBox;
 
 namespace Juju.App.Settings;
@@ -35,9 +35,11 @@ public sealed class SettingsDialogService
     {
         var owner = Owner();
         var path = _folderPicker.PickFolder(title, current, new WindowInteropHelper(owner).Handle);
-        if (path is null) return;
-        try { await stage(path); }
-        catch (Exception ex)
+        if ( path is null )
+            return;
+        try
+        { await stage(path); }
+        catch ( Exception ex )
         {
             System.Windows.MessageBox.Show(owner, "保存目录设置失败：" + ex.Message, "Toolbox 设置",
                 MessageBoxButton.OK, MessageBoxImage.Error);

@@ -26,24 +26,26 @@ public static class ToolWindowChrome
         "ShowMaximizeButton", typeof(bool), typeof(ToolWindowChrome), new PropertyMetadata(true, OnTemplateOptionChanged));
 
     public static void SetIsEnabled(DependencyObject element, bool value) => element.SetValue(IsEnabledProperty, value);
-    public static bool GetIsEnabled(DependencyObject element) => (bool)element.GetValue(IsEnabledProperty);
+    public static bool GetIsEnabled(DependencyObject element) => (bool) element.GetValue(IsEnabledProperty);
     public static void SetStatusLeft(DependencyObject element, string value) => element.SetValue(StatusLeftProperty, value);
-    public static string GetStatusLeft(DependencyObject element) => (string)element.GetValue(StatusLeftProperty);
+    public static string GetStatusLeft(DependencyObject element) => (string) element.GetValue(StatusLeftProperty);
     public static void SetStatusCenter(DependencyObject element, string value) => element.SetValue(StatusCenterProperty, value);
-    public static string GetStatusCenter(DependencyObject element) => (string)element.GetValue(StatusCenterProperty);
+    public static string GetStatusCenter(DependencyObject element) => (string) element.GetValue(StatusCenterProperty);
     public static void SetStatusRight(DependencyObject element, string value) => element.SetValue(StatusRightProperty, value);
-    public static string GetStatusRight(DependencyObject element) => (string)element.GetValue(StatusRightProperty);
+    public static string GetStatusRight(DependencyObject element) => (string) element.GetValue(StatusRightProperty);
     public static void SetToolIcon(DependencyObject element, ImageSource value) => element.SetValue(ToolIconProperty, value);
-    public static ImageSource? GetToolIcon(DependencyObject element) => (ImageSource?)element.GetValue(ToolIconProperty);
+    public static ImageSource? GetToolIcon(DependencyObject element) => (ImageSource?) element.GetValue(ToolIconProperty);
     public static void SetShowStatusBar(DependencyObject element, bool value) => element.SetValue(ShowStatusBarProperty, value);
-    public static bool GetShowStatusBar(DependencyObject element) => (bool)element.GetValue(ShowStatusBarProperty);
+    public static bool GetShowStatusBar(DependencyObject element) => (bool) element.GetValue(ShowStatusBarProperty);
     public static void SetShowMaximizeButton(DependencyObject element, bool value) => element.SetValue(ShowMaximizeButtonProperty, value);
-    public static bool GetShowMaximizeButton(DependencyObject element) => (bool)element.GetValue(ShowMaximizeButtonProperty);
+    public static bool GetShowMaximizeButton(DependencyObject element) => (bool) element.GetValue(ShowMaximizeButtonProperty);
 
     private static void OnTemplateOptionChanged(DependencyObject owner, DependencyPropertyChangedEventArgs args)
     {
-        if (owner is not Window window) return;
-        if (window.IsLoaded) ApplyTemplateOptions(window);
+        if ( owner is not Window window )
+            return;
+        if ( window.IsLoaded )
+            ApplyTemplateOptions(window);
         else
         {
             RoutedEventHandler? loaded = null;
@@ -59,23 +61,27 @@ public static class ToolWindowChrome
     private static void ApplyTemplateOptions(Window window)
     {
         window.ApplyTemplate();
-        if (window.Template.FindName("StatusBar", window) is FrameworkElement statusBar)
+        if ( window.Template.FindName("StatusBar", window) is FrameworkElement statusBar )
             statusBar.Visibility = GetShowStatusBar(window) ? Visibility.Visible : Visibility.Collapsed;
-        if (window.Template.FindName("MaximizeButton", window) is FrameworkElement maximizeButton)
+        if ( window.Template.FindName("MaximizeButton", window) is FrameworkElement maximizeButton )
             maximizeButton.Visibility = GetShowMaximizeButton(window) ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private static void OnIsEnabledChanged(DependencyObject owner, DependencyPropertyChangedEventArgs args)
     {
-        if (owner is not Window window) return;
-        if ((bool)args.NewValue) window.AddHandler(ButtonBase.ClickEvent, new RoutedEventHandler(WindowButton_Click));
-        else window.RemoveHandler(ButtonBase.ClickEvent, new RoutedEventHandler(WindowButton_Click));
+        if ( owner is not Window window )
+            return;
+        if ( (bool) args.NewValue )
+            window.AddHandler(ButtonBase.ClickEvent, new RoutedEventHandler(WindowButton_Click));
+        else
+            window.RemoveHandler(ButtonBase.ClickEvent, new RoutedEventHandler(WindowButton_Click));
     }
 
     private static void WindowButton_Click(object sender, RoutedEventArgs args)
     {
-        if (sender is not Window window || args.OriginalSource is not Button { Tag: string command }) return;
-        switch (command)
+        if ( sender is not Window window || args.OriginalSource is not Button { Tag: string command } )
+            return;
+        switch ( command )
         {
             case "Maximize":
                 window.WindowState = window.WindowState == WindowState.Maximized

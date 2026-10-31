@@ -2,10 +2,10 @@ using System.Collections.ObjectModel;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using Juju.App.Presentation.Toto;
 using Juju.Platform.Windows;
 using Juju.Tools.Toto.Application;
 using Juju.Tools.Toto.Application.Items;
-using Juju.App.Presentation.Toto;
 using KeyEventArgs = System.Windows.Input.KeyEventArgs;
 
 namespace Juju.App.Views;
@@ -34,7 +34,8 @@ public partial class TotoHistoryWindow : Window
         PageSize.SelectedItem = 10;
         PreviewKeyDown += (_, e) =>
         {
-            if (e.Key != Key.Escape) return;
+            if ( e.Key != Key.Escape )
+                return;
             e.Handled = true;
             Close();
         };
@@ -43,22 +44,23 @@ public partial class TotoHistoryWindow : Window
     }
 
     public ObservableCollection<TotoHistoryRow> HistoryItems => _historyItems;
-    private int MaxPage => Math.Max(1, (int)Math.Ceiling(_total / (double)SelectedPageSize));
+    private int MaxPage => Math.Max(1, (int) Math.Ceiling(_total / (double) SelectedPageSize));
     private int SelectedPageSize => PageSize.SelectedItem is int size ? size : 10;
 
     private void LoadPage()
     {
         var page = _toto.GetHistory(_criteria, _page, SelectedPageSize);
         _total = page.TotalCount;
-        if (_page > MaxPage)
+        if ( _page > MaxPage )
         {
             _page = MaxPage;
             page = _toto.GetHistory(_criteria, _page, SelectedPageSize);
         }
         _historyItems.Clear();
-        foreach (var item in page.Items) _historyItems.Add(new TotoHistoryRow(item));
+        foreach ( var item in page.Items )
+            _historyItems.Add(new TotoHistoryRow(item));
         History.SelectedItem = _historyItems.FirstOrDefault();
-        if (History.SelectedItem is { } first && History.Columns.Count > 0)
+        if ( History.SelectedItem is { } first && History.Columns.Count > 0 )
         {
             History.CurrentCell = new DataGridCellInfo(first, History.Columns[0]);
             History.ScrollIntoView(first);
@@ -70,14 +72,15 @@ public partial class TotoHistoryWindow : Window
 
     private void FocusHistoryRows()
     {
-        if (!IsVisible || History.SelectedItem is null) return;
+        if ( !IsVisible || History.SelectedItem is null )
+            return;
         History.Focus();
         Keyboard.Focus(History);
     }
 
     private void Search_Click(object sender, RoutedEventArgs e)
     {
-        if (FromDate.SelectedDate is { } from && ToDate.SelectedDate is { } to && from.Date > to.Date)
+        if ( FromDate.SelectedDate is { } from && ToDate.SelectedDate is { } to && from.Date > to.Date )
         {
             System.Windows.MessageBox.Show(this, "结束日期的起始值不能晚于结束值。", "历史事项");
             return;
@@ -112,15 +115,18 @@ public partial class TotoHistoryWindow : Window
 
     private void PageSize_Changed(object sender, SelectionChangedEventArgs e)
     {
-        if (History is null) return;
+        if ( History is null )
+            return;
         _page = 1;
         LoadPage();
     }
 
     private void PeriodPreset_Changed(object sender, SelectionChangedEventArgs e)
     {
-        if (FromDate is null || _updatingPeriod) return;
-        if (PeriodPreset.SelectedItem as string == "自定义") return;
+        if ( FromDate is null || _updatingPeriod )
+            return;
+        if ( PeriodPreset.SelectedItem as string == "自定义" )
+            return;
         var (from, to) = PeriodBounds(PeriodPreset.SelectedItem as string, DateTime.Today);
         _updatingPeriod = true;
         FromDate.SelectedDate = from;
@@ -130,17 +136,19 @@ public partial class TotoHistoryWindow : Window
 
     private void RangeDate_Changed(object sender, SelectionChangedEventArgs e)
     {
-        if (_updatingPeriod || PeriodPreset is null) return;
+        if ( _updatingPeriod || PeriodPreset is null )
+            return;
         var from = FromDate.SelectedDate?.Date;
         var to = ToDate.SelectedDate?.Date;
         var matching = from is null && to is null ? 0 : 7;
-        if (matching == 7)
+        if ( matching == 7 )
         {
             var presets = new[] { "本周", "上一周", "本月", "上一月", "本年", "上一年" };
-            for (var i = 0; i < presets.Length; i++)
+            for ( var i = 0; i < presets.Length; i++ )
             {
                 var bounds = PeriodBounds(presets[i], DateTime.Today);
-                if (bounds.From == from && bounds.To == to) { matching = i + 1; break; }
+                if ( bounds.From == from && bounds.To == to )
+                { matching = i + 1; break; }
             }
         }
         _updatingPeriod = true;
@@ -150,7 +158,7 @@ public partial class TotoHistoryWindow : Window
 
     private static (DateTime? From, DateTime? To) PeriodBounds(string? period, DateTime today)
     {
-        var monday = today.Date.AddDays(-((int)today.DayOfWeek + 6) % 7);
+        var monday = today.Date.AddDays(-((int) today.DayOfWeek + 6) % 7);
         return period switch
         {
             "本周" => (monday, monday.AddDays(6)),
@@ -165,28 +173,31 @@ public partial class TotoHistoryWindow : Window
 
     private void SearchFilter_PreviewKeyDown(object sender, KeyEventArgs e)
     {
-        if (e.Key != Key.Enter) return;
+        if ( e.Key != Key.Enter )
+            return;
         e.Handled = true;
         Search_Click(sender, e);
     }
 
     private void History_PreviewKeyDown(object sender, KeyEventArgs e)
     {
-        if (Keyboard.Modifiers != ModifierKeys.None) return;
-        if (e.Key is Key.Left or Key.Right)
+        if ( Keyboard.Modifiers != ModifierKeys.None )
+            return;
+        if ( e.Key is Key.Left or Key.Right )
         {
             e.Handled = true;
             return;
         }
-        if (e.Key is Key.Up or Key.Down)
+        if ( e.Key is Key.Up or Key.Down )
         {
-            if (_historyItems.Count == 0) return;
+            if ( _historyItems.Count == 0 )
+                return;
             var index = History.SelectedIndex;
             var next = index < 0 ? (e.Key == Key.Down ? 0 : _historyItems.Count - 1) :
                 e.Key == Key.Down ? (index + 1) % _historyItems.Count :
                 (index - 1 + _historyItems.Count) % _historyItems.Count;
             History.SelectedIndex = next;
-            if (History.SelectedItem is { } selected)
+            if ( History.SelectedItem is { } selected )
             {
                 History.CurrentCell = new DataGridCellInfo(selected, History.Columns[0]);
                 History.ScrollIntoView(selected, History.Columns[0]);
@@ -194,7 +205,7 @@ public partial class TotoHistoryWindow : Window
             e.Handled = true;
             return;
         }
-        if (e.Key == Key.Enter && History.SelectedItem is TotoHistoryRow row)
+        if ( e.Key == Key.Enter && History.SelectedItem is TotoHistoryRow row )
         {
             e.Handled = true;
             new TotoItemWindow(_toto, TotoItemWindowMode.Detail, row.Item) { Owner = this }.ShowDialog();
@@ -208,8 +219,8 @@ public partial class TotoHistoryWindow : Window
 
     private void History_MouseDoubleClick(object sender, MouseButtonEventArgs e)
     {
-        if (ItemsControl.ContainerFromElement(History, e.OriginalSource as DependencyObject) is DataGridRow &&
-            History.SelectedItem is TotoHistoryRow row)
+        if ( ItemsControl.ContainerFromElement(History, e.OriginalSource as DependencyObject) is DataGridRow &&
+            History.SelectedItem is TotoHistoryRow row )
             new TotoItemWindow(_toto, TotoItemWindowMode.Detail, row.Item) { Owner = this }.ShowDialog();
     }
 }

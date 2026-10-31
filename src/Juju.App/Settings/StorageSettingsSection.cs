@@ -1,7 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
-using Juju.Core.Storage;
 using Juju.Core.Settings;
+using Juju.Core.Storage;
 
 namespace Juju.App.Settings;
 
@@ -34,7 +34,8 @@ public sealed class StorageSettingsSection : ISettingsSection
         _dialogs.EditFolder("选择工具箱数据目录", _changes.DisplayRoot, async path =>
         {
             _changes.StageRoot(path);
-            try { await _settings.SaveAsync(_settings.Current with { PendingDataRoot = _changes.PendingRoot }); }
+            try
+            { await _settings.SaveAsync(_settings.Current with { PendingDataRoot = _changes.PendingRoot }); }
             catch
             {
                 _changes.LoadPending(_settings.Current.PendingDataRoot, _settings.Current.PendingToolDataDirectories);

@@ -35,29 +35,33 @@ public sealed class JsonWindowFactory : IJsonWindowFactory
 
     public void ShowJson()
     {
-        if (_window is null)
+        if ( _window is null )
         {
             _window = new JsonToolWindow(_documents, _settings) { FileClipboard = _fileClipboard };
             var window = _window;
-            if (_settings.Current.RememberWindowPlacement) _windowState.Restore(window, "json");
+            if ( _settings.Current.RememberWindowPlacement )
+                _windowState.Restore(window, "json");
             _themes.Changed += window.ApplyTheme;
             window.ApplyTheme(_themes.Current);
             window.Closing += (_, _) =>
             {
-                if (_settings.Current.RememberWindowPlacement) _windowState.Remember(window, "json");
+                if ( _settings.Current.RememberWindowPlacement )
+                    _windowState.Remember(window, "json");
             };
             window.Closed += (_, _) =>
             {
                 _themes.Changed -= window.ApplyTheme;
-                if (ReferenceEquals(_window, window)) _window = null;
+                if ( ReferenceEquals(_window, window) )
+                    _window = null;
             };
             window.IsVisibleChanged += (_, _) =>
             {
-                if (!window.IsVisible) Hidden?.Invoke();
+                if ( !window.IsVisible )
+                    Hidden?.Invoke();
             };
         }
 
-        if (!_window.IsVisible && _settings.Current.OpenMaximized)
+        if ( !_window.IsVisible && _settings.Current.OpenMaximized )
             _window.WindowState = WindowState.Maximized;
         Show(_window);
         _window.FocusForShortcuts();
@@ -67,13 +71,16 @@ public sealed class JsonWindowFactory : IJsonWindowFactory
 
     public async Task ShutdownAsync()
     {
-        if (_window is not null) await _window.ShutdownAsync();
+        if ( _window is not null )
+            await _window.ShutdownAsync();
     }
 
     private static void Show(Window window)
     {
-        if (!window.IsVisible) window.Show();
-        if (window.WindowState == WindowState.Minimized) window.WindowState = WindowState.Normal;
+        if ( !window.IsVisible )
+            window.Show();
+        if ( window.WindowState == WindowState.Minimized )
+            window.WindowState = WindowState.Normal;
         window.Activate();
     }
 }

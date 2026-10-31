@@ -4,17 +4,17 @@ using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using Juju.App.Presentation.Toto;
 using Juju.Platform.Windows;
 using Juju.Tools.Toto.Application;
 using Juju.Tools.Toto.Application.Items;
-using Juju.App.Presentation.Toto;
+using Brush = System.Windows.Media.Brush;
+using BrushConverter = System.Windows.Media.BrushConverter;
 using DataGrid = System.Windows.Controls.DataGrid;
 using Key = System.Windows.Input.Key;
 using KeyEventArgs = System.Windows.Input.KeyEventArgs;
 using MouseWheelEventArgs = System.Windows.Input.MouseWheelEventArgs;
 using SelectionChangedEventArgs = System.Windows.Controls.SelectionChangedEventArgs;
-using Brush = System.Windows.Media.Brush;
-using BrushConverter = System.Windows.Media.BrushConverter;
 
 namespace Juju.App.Views;
 
@@ -41,12 +41,13 @@ public partial class TotoReminderWindow : Window
         var orderedActive = reviewMode || highlightTodayGreen
             ? SortReviewItems(items)
             : items;
-        if (reviewMode)
+        if ( reviewMode )
         {
-            foreach (var item in orderedActive)
+            foreach ( var item in orderedActive )
                 _activeItems.Add(new TotoReminderRow(item, IsToday(item.PlannedAt) && highlightTodayRed
                     ? "#EF4444" : null));
-            foreach (var item in completedItems!) _completedItems.Add(new TotoReminderRow(item, null));
+            foreach ( var item in completedItems! )
+                _completedItems.Add(new TotoReminderRow(item, null));
             ActiveCount.Text = $"{_activeItems.Count} 项";
             CompletedCount.Text = $"{_completedItems.Count} 项";
             ActiveReviewTasks.Height = TableHeight(_activeItems.Count);
@@ -54,7 +55,7 @@ public partial class TotoReminderWindow : Window
         }
         else
         {
-            foreach (var item in orderedActive)
+            foreach ( var item in orderedActive )
                 _singleItems.Add(new TotoReminderRow(item, IsToday(item.PlannedAt) && highlightTodayGreen
                     ? "#159A68" : null));
             TodayTasks.ItemsSource = SingleItems;
@@ -64,13 +65,16 @@ public partial class TotoReminderWindow : Window
         SourceInitialized += (_, _) => WindowAppearance.UseSystemCorners(new System.Windows.Interop.WindowInteropHelper(this).Handle);
         ContentRendered += (_, _) =>
         {
-            if (_notified) return;
+            if ( _notified )
+                return;
             _notified = true;
             SystemSounds.Exclamation.Play();
             var flash = new FlashInfo
             {
-                Size = (uint)Marshal.SizeOf<FlashInfo>(), Window = new System.Windows.Interop.WindowInteropHelper(this).Handle,
-                Flags = 3, Count = 3
+                Size = (uint) Marshal.SizeOf<FlashInfo>(),
+                Window = new System.Windows.Interop.WindowInteropHelper(this).Handle,
+                Flags = 3,
+                Count = 3
             };
             FlashWindowEx(ref flash);
         };
@@ -82,20 +86,22 @@ public partial class TotoReminderWindow : Window
 
     private void FocusFirstRow()
     {
-        if (!_reviewMode)
+        if ( !_reviewMode )
         {
             TodayTasks.SelectedIndex = _singleItems.Count > 0 ? 0 : -1;
             FocusGrid(TodayTasks);
             return;
         }
-        if (_activeItems.Count > 0) ActiveReviewTasks.SelectedIndex = 0;
-        else if (_completedItems.Count > 0) CompletedTasks.SelectedIndex = 0;
+        if ( _activeItems.Count > 0 )
+            ActiveReviewTasks.SelectedIndex = 0;
+        else if ( _completedItems.Count > 0 )
+            CompletedTasks.SelectedIndex = 0;
         FocusGrid(_activeItems.Count > 0 || _completedItems.Count == 0 ? ActiveReviewTasks : CompletedTasks);
     }
 
     private void FocusGrid(DataGrid grid)
     {
-        if (grid.SelectedItem is { } selected && grid.Columns.Count > 0)
+        if ( grid.SelectedItem is { } selected && grid.Columns.Count > 0 )
         {
             grid.CurrentCell = new DataGridCellInfo(selected, grid.Columns[0]);
             grid.ScrollIntoView(selected, grid.Columns[0]);
@@ -106,48 +112,55 @@ public partial class TotoReminderWindow : Window
 
     private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
     {
-        if (e.IsRepeat || Keyboard.Modifiers != ModifierKeys.None) return;
-        if (e.Key is Key.Enter or Key.Return)
+        if ( e.IsRepeat || Keyboard.Modifiers != ModifierKeys.None )
+            return;
+        if ( e.Key is Key.Enter or Key.Return )
         {
             e.Handled = true;
             return;
         }
-        if (e.Key is Key.Left or Key.Right)
+        if ( e.Key is Key.Left or Key.Right )
         {
             e.Handled = true;
             return;
         }
-        if (e.Key is not (Key.Up or Key.Down)) return;
-        if (!_reviewMode)
+        if ( e.Key is not (Key.Up or Key.Down) )
+            return;
+        if ( !_reviewMode )
         {
             MoveWithinGrid(TodayTasks, _singleItems.Count, e.Key);
-            if (_singleItems.Count > 0) e.Handled = true;
+            if ( _singleItems.Count > 0 )
+                e.Handled = true;
             return;
         }
         MoveAcrossReviewLists(e.Key);
-        if (_activeItems.Count + _completedItems.Count > 0) e.Handled = true;
+        if ( _activeItems.Count + _completedItems.Count > 0 )
+            e.Handled = true;
     }
 
     private void MoveWithinGrid(DataGrid grid, int count, Key key)
     {
-        if (count == 0) return;
+        if ( count == 0 )
+            return;
         var index = grid.SelectedIndex;
         var next = index < 0 ? (key == Key.Down ? 0 : count - 1) :
             key == Key.Down ? (index + 1) % count : (index - 1 + count) % count;
         grid.SelectedIndex = next;
-        if (grid.SelectedItem is not null) FocusGrid(grid);
+        if ( grid.SelectedItem is not null )
+            FocusGrid(grid);
     }
 
     private void MoveAcrossReviewLists(Key key)
     {
         var total = _activeItems.Count + _completedItems.Count;
-        if (total == 0) return;
+        if ( total == 0 )
+            return;
         var index = ActiveReviewTasks.SelectedIndex >= 0 ? ActiveReviewTasks.SelectedIndex :
             CompletedTasks.SelectedIndex >= 0 ? _activeItems.Count + CompletedTasks.SelectedIndex : -1;
         var next = index < 0 ? (key == Key.Down ? 0 : total - 1) :
             key == Key.Down ? (index + 1) % total : (index - 1 + total) % total;
         _syncingSelection = true;
-        if (next < _activeItems.Count)
+        if ( next < _activeItems.Count )
         {
             ActiveReviewTasks.SelectedIndex = next;
             CompletedTasks.SelectedItem = null;
@@ -164,18 +177,20 @@ public partial class TotoReminderWindow : Window
 
     private void ReviewSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (_syncingSelection) return;
+        if ( _syncingSelection )
+            return;
         _syncingSelection = true;
-        if (ReferenceEquals(sender, ActiveReviewTasks) && ActiveReviewTasks.SelectedItem is not null)
+        if ( ReferenceEquals(sender, ActiveReviewTasks) && ActiveReviewTasks.SelectedItem is not null )
             CompletedTasks.SelectedItem = null;
-        else if (ReferenceEquals(sender, CompletedTasks) && CompletedTasks.SelectedItem is not null)
+        else if ( ReferenceEquals(sender, CompletedTasks) && CompletedTasks.SelectedItem is not null )
             ActiveReviewTasks.SelectedItem = null;
         _syncingSelection = false;
     }
 
     private void ReviewScroll_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
     {
-        if (ReviewScroll.ExtentHeight <= ReviewScroll.ViewportHeight) return;
+        if ( ReviewScroll.ExtentHeight <= ReviewScroll.ViewportHeight )
+            return;
         ReviewScroll.ScrollToVerticalOffset(ReviewScroll.VerticalOffset - e.Delta);
         e.Handled = true;
     }
@@ -206,7 +221,7 @@ public partial class TotoReminderWindow : Window
 
 public sealed class TotoReminderRow
 {
-    private static readonly Brush Normal = (Brush)new BrushConverter().ConvertFromString("#25344D")!;
+    private static readonly Brush Normal = (Brush) new BrushConverter().ConvertFromString("#25344D")!;
 
     internal TotoReminderRow(TotoItemSnapshot item, string? emphasis)
     {
@@ -215,9 +230,9 @@ public sealed class TotoReminderRow
         RemindText = item.RemindAt?.ToString(TotoDateTimeFormatter.DisplayFormat) ?? "—";
         EndedText = item.EndedAt?.ToString(TotoDateTimeFormatter.DisplayFormat) ?? "—";
         ContentForeground = emphasis is null ? Normal :
-            (Brush)new BrushConverter().ConvertFromString(emphasis)!;
+            (Brush) new BrushConverter().ConvertFromString(emphasis)!;
         PlanForeground = item.PlannedAt is null ?
-            (Brush)new BrushConverter().ConvertFromString("#93A0B2")! : ContentForeground;
+            (Brush) new BrushConverter().ConvertFromString("#93A0B2")! : ContentForeground;
     }
 
     public string Content { get; }

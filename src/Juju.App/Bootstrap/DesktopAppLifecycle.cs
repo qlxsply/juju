@@ -1,7 +1,7 @@
 using Juju.App.Contracts.Bootstrap;
+using Juju.App.Tools.Contracts;
 using Juju.Core.Settings;
 using Juju.Core.Storage;
-using Juju.App.Tools.Contracts;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
@@ -23,7 +23,8 @@ public sealed class DesktopAppLifecycle(
     // Interlocked 使重复退出请求（托盘、窗口、系统关机）只执行一次，无需在 UI 线程加锁。
     public async Task ShutdownAsync(CancellationToken cancellationToken = default)
     {
-        if (Interlocked.Exchange(ref _stopping, 1) != 0) return;
+        if ( Interlocked.Exchange(ref _stopping, 1) != 0 )
+            return;
         try
         {
             log.LogInformation("Application shutdown started");
@@ -33,7 +34,7 @@ public sealed class DesktopAppLifecycle(
             tray.Dispose();
             // JSON 窗口已写盘、Toto 调度器已停止；此时复制并提交下一次启动的数据目录。
             await dataChanges.CommitAsync(settings, cancellationToken);
-            switch (services)
+            switch ( services )
             {
                 // 优先异步释放 DI 容器，以便其内部资源完成异步清理；否则退回标准 IDisposable 模式。
                 case IAsyncDisposable asyncServices:
@@ -46,7 +47,7 @@ public sealed class DesktopAppLifecycle(
 
             log.LogInformation("Application shutdown completed");
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch ( Exception ex ) when ( ex is not OperationCanceledException )
         {
             log.LogError(ex, "Application shutdown failed");
         }

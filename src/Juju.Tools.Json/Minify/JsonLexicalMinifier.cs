@@ -20,7 +20,7 @@ public static class JsonLexicalMinifier
         {
             using var _ = JsonDocument.Parse(content);
         }
-        catch (JsonException ex)
+        catch ( JsonException ex )
         {
             throw new JujuException(ErrorCode.InvalidJson, "Only valid JSON can be minified.", ex);
         }
@@ -28,21 +28,25 @@ public static class JsonLexicalMinifier
         var output = new StringBuilder(content.Length);
         var inString = false;
         var escaped = false;
-        foreach (var character in content)
+        foreach ( var character in content )
         {
-            if (inString)
+            if ( inString )
             {
                 output.Append(character);
-                if (escaped) escaped = false;
-                else if (character == '\\') escaped = true;
-                else if (character == '"') inString = false;
+                if ( escaped )
+                    escaped = false;
+                else if ( character == '\\' )
+                    escaped = true;
+                else if ( character == '"' )
+                    inString = false;
             }
-            else if (character == '"')
+            else if ( character == '"' )
             {
                 inString = true;
                 output.Append(character);
             }
-            else if (!char.IsWhiteSpace(character)) output.Append(character);
+            else if ( !char.IsWhiteSpace(character) )
+                output.Append(character);
         }
 
         return output.ToString();

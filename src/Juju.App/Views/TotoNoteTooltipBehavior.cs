@@ -20,15 +20,16 @@ public static class TotoNoteTooltipBehavior
         "PopupController", typeof(NotePopupController), typeof(TotoNoteTooltipBehavior));
 
     public static void SetNote(DependencyObject element, string? value) => element.SetValue(NoteProperty, value);
-    public static string? GetNote(DependencyObject element) => (string?)element.GetValue(NoteProperty);
+    public static string? GetNote(DependencyObject element) => (string?) element.GetValue(NoteProperty);
 
     private static void OnNoteChanged(DependencyObject target, DependencyPropertyChangedEventArgs args)
     {
-        if (target is not TextBlock textBlock) return;
-        var controller = (NotePopupController?)textBlock.GetValue(PopupControllerProperty);
-        if (args.NewValue is string note && !string.IsNullOrWhiteSpace(note))
+        if ( target is not TextBlock textBlock )
+            return;
+        var controller = (NotePopupController?) textBlock.GetValue(PopupControllerProperty);
+        if ( args.NewValue is string note && !string.IsNullOrWhiteSpace(note) )
         {
-            if (controller is null)
+            if ( controller is null )
             {
                 controller = new NotePopupController(textBlock);
                 textBlock.SetValue(PopupControllerProperty, controller);
@@ -117,7 +118,7 @@ public static class TotoNoteTooltipBehavior
                 .Replace('\r', '\n')
                 .Split('\n', StringSplitOptions.None);
             var paragraphs = new StackPanel();
-            for (var index = 0; index < lines.Length; index++)
+            for ( var index = 0; index < lines.Length; index++ )
             {
                 paragraphs.Children.Add(new TextBlock
                 {
@@ -133,7 +134,8 @@ public static class TotoNoteTooltipBehavior
         private void Target_MouseEnter(object sender, WpfMouseEventArgs e)
         {
             _closeTimer.Stop();
-            if (!_popup.IsOpen) _openTimer.Start();
+            if ( !_popup.IsOpen )
+                _openTimer.Start();
         }
 
         private void Pointer_MouseEnter(object sender, WpfMouseEventArgs e) => _closeTimer.Stop();
@@ -141,7 +143,7 @@ public static class TotoNoteTooltipBehavior
         private void Pointer_MouseLeave(object sender, WpfMouseEventArgs e)
         {
             _openTimer.Stop();
-            if (_popup.IsOpen)
+            if ( _popup.IsOpen )
             {
                 _closeTimer.Stop();
                 _closeTimer.Start();
@@ -151,14 +153,16 @@ public static class TotoNoteTooltipBehavior
         private void OpenTimer_Tick(object? sender, EventArgs e)
         {
             _openTimer.Stop();
-            if (_disposed || !_target.IsLoaded || !_target.IsMouseOver || string.IsNullOrWhiteSpace(_note)) return;
+            if ( _disposed || !_target.IsLoaded || !_target.IsMouseOver || string.IsNullOrWhiteSpace(_note) )
+                return;
             _popup.IsOpen = true;
         }
 
         private void CloseTimer_Tick(object? sender, EventArgs e)
         {
             _closeTimer.Stop();
-            if (_target.IsMouseOver || _surface.IsMouseOver) return;
+            if ( _target.IsMouseOver || _surface.IsMouseOver )
+                return;
             _popup.IsOpen = false;
         }
 
@@ -171,7 +175,8 @@ public static class TotoNoteTooltipBehavior
 
         public void Dispose()
         {
-            if (_disposed) return;
+            if ( _disposed )
+                return;
             _disposed = true;
             _target.MouseEnter -= Target_MouseEnter;
             _target.MouseLeave -= Pointer_MouseLeave;

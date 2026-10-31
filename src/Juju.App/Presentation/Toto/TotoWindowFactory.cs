@@ -24,15 +24,17 @@ public sealed class TotoWindowFactory : ITotoWindowFactory
 
     public void ShowToto()
     {
-        if (_main is null)
+        if ( _main is null )
         {
             _main = new TotoMainWindow(_toto, ShowHistory);
             var window = _main;
-            if (_windowState.HasPlacement("toto")) _windowState.Restore(window, "toto");
-            window.Closed += (_, _) => { if (ReferenceEquals(_main, window)) _main = null; };
+            if ( _windowState.HasPlacement("toto") )
+                _windowState.Restore(window, "toto");
+            window.Closed += (_, _) => { if ( ReferenceEquals(_main, window) ) _main = null; };
             window.IsVisibleChanged += (_, _) =>
             {
-                if (!window.IsVisible) Hidden?.Invoke();
+                if ( !window.IsVisible )
+                    Hidden?.Invoke();
             };
         }
 
@@ -43,7 +45,7 @@ public sealed class TotoWindowFactory : ITotoWindowFactory
 
     public void ShowHistory()
     {
-        if (_main is { IsVisible: true } owner)
+        if ( _main is { IsVisible: true } owner )
             new TotoHistoryWindow(_toto) { Owner = owner }.ShowDialog();
     }
 
@@ -51,15 +53,18 @@ public sealed class TotoWindowFactory : ITotoWindowFactory
 
     public void CloseForShutdown()
     {
-        if (_main is null) return;
+        if ( _main is null )
+            return;
         _main.AllowShutdown();
         _main.Close();
     }
 
     private static void Show(Window window)
     {
-        if (!window.IsVisible) window.Show();
-        if (window.WindowState == WindowState.Minimized) window.WindowState = WindowState.Normal;
+        if ( !window.IsVisible )
+            window.Show();
+        if ( window.WindowState == WindowState.Minimized )
+            window.WindowState = WindowState.Normal;
         window.Activate();
     }
 }

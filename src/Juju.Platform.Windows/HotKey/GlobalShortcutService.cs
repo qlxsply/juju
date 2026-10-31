@@ -33,26 +33,27 @@ public sealed partial class GlobalShortcutService : IDisposable
     /// </summary>
     public bool Register(IntPtr window, string shortcut)
     {
-        if (!TryParse(shortcut, out var modifiers, out var key))
+        if ( !TryParse(shortcut, out var modifiers, out var key) )
         {
             LastError = 87;
             return false;
         }
 
-        if (_window == window && _id != 0 && string.Equals(Shortcut, shortcut, StringComparison.OrdinalIgnoreCase))
+        if ( _window == window && _id != 0 && string.Equals(Shortcut, shortcut, StringComparison.OrdinalIgnoreCase) )
         {
             LastError = 0;
             return true;
         }
 
         var candidateId = Interlocked.Increment(ref _nextId);
-        if (!RegisterHotKey(window, candidateId, modifiers, key))
+        if ( !RegisterHotKey(window, candidateId, modifiers, key) )
         {
             LastError = Marshal.GetLastWin32Error();
             return false;
         }
 
-        if (_id != 0) UnregisterHotKey(_window, _id);
+        if ( _id != 0 )
+            UnregisterHotKey(_window, _id);
         _window = window;
         _id = candidateId;
         Shortcut = shortcut;
@@ -66,7 +67,8 @@ public sealed partial class GlobalShortcutService : IDisposable
     /// <summary>注销当前快捷键；同步 Win32 资源无需 <see cref="IAsyncDisposable"/>。</summary>
     public void Clear()
     {
-        if (_window != IntPtr.Zero && _id != 0) UnregisterHotKey(_window, _id);
+        if ( _window != IntPtr.Zero && _id != 0 )
+            UnregisterHotKey(_window, _id);
         _id = 0;
         _window = IntPtr.Zero;
         Shortcut = string.Empty;
@@ -81,25 +83,31 @@ public sealed partial class GlobalShortcutService : IDisposable
         modifiers = 0;
         key = 0;
         var parts = shortcut.Split('+', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
-        if (parts.Length < 1) return false;
-        foreach (var part in parts[..^1])
+        if ( parts.Length < 1 )
+            return false;
+        foreach ( var part in parts[..^1] )
         {
-            if (part.Equals("Alt", StringComparison.OrdinalIgnoreCase)) modifiers |= ModAlt;
-            else if (part.Equals("Ctrl", StringComparison.OrdinalIgnoreCase) ||
-                     part.Equals("Control", StringComparison.OrdinalIgnoreCase)) modifiers |= ModControl;
-            else if (part.Equals("Shift", StringComparison.OrdinalIgnoreCase)) modifiers |= ModShift;
-            else if (part.Equals("Win", StringComparison.OrdinalIgnoreCase)) modifiers |= ModWin;
-            else return false;
+            if ( part.Equals("Alt", StringComparison.OrdinalIgnoreCase) )
+                modifiers |= ModAlt;
+            else if ( part.Equals("Ctrl", StringComparison.OrdinalIgnoreCase) ||
+                     part.Equals("Control", StringComparison.OrdinalIgnoreCase) )
+                modifiers |= ModControl;
+            else if ( part.Equals("Shift", StringComparison.OrdinalIgnoreCase) )
+                modifiers |= ModShift;
+            else if ( part.Equals("Win", StringComparison.OrdinalIgnoreCase) )
+                modifiers |= ModWin;
+            else
+                return false;
         }
 
         var value = parts[^1];
-        if (value.Equals("Space", StringComparison.OrdinalIgnoreCase))
+        if ( value.Equals("Space", StringComparison.OrdinalIgnoreCase) )
         {
             key = 0x20;
             return true;
         }
 
-        if (value.Length == 1 && char.IsLetterOrDigit(value[0]))
+        if ( value.Length == 1 && char.IsLetterOrDigit(value[0]) )
         {
             key = char.ToUpperInvariant(value[0]);
             return true;
@@ -108,14 +116,18 @@ public sealed partial class GlobalShortcutService : IDisposable
         // 原 Toto 使用 WinForms Keys 解析快捷键；兼容 F1、Enter、方向键等原有配置值。
         value = value switch
         {
-            "Backspace" => "Back", "PageUp" => "Prior", "PageDown" => "Next",
+            "Backspace" => "Back",
+            "PageUp" => "Prior",
+            "PageDown" => "Next",
             _ => value
         };
-        if (value.Length == 1 && char.IsDigit(value[0])) value = "D" + value;
-        if (!Enum.TryParse<Keys>(value, true, out var parsed)) return false;
-        key = (uint)(parsed & Keys.KeyCode);
-        return key is >= 0x08 and <= 0xFE && key != (uint)Keys.ControlKey &&
-               key != (uint)Keys.ShiftKey && key != (uint)Keys.Menu;
+        if ( value.Length == 1 && char.IsDigit(value[0]) )
+            value = "D" + value;
+        if ( !Enum.TryParse<Keys>(value, true, out var parsed) )
+            return false;
+        key = (uint) (parsed & Keys.KeyCode);
+        return key is >= 0x08 and <= 0xFE && key != (uint) Keys.ControlKey &&
+               key != (uint) Keys.ShiftKey && key != (uint) Keys.Menu;
     }
 
     /// <summary>

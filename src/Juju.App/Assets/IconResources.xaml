@@ -1,47 +1,69 @@
-<!--
+﻿<!--
     集中管理 WPF 图标资源。通用界面图形使用 DrawingImage；JSON 与 Toto 工具则直接使用各自的 ICO 品牌文件，
     确保 Launcher 卡片和工具窗口标题栏显示一致。
 -->
-<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
     <!--
         图标的默认描边色。当前 Launcher 标题栏固定为浅色，所以使用深灰以保持可读性。
         将来若标题栏也改为主题资源，可在深浅主题资源字典中为同一键提供不同颜色。
     -->
-    <SolidColorBrush x:Key="IconForeground" Color="#1F2937" />
+    <SolidColorBrush
+        x:Key="IconForeground"
+        Color="#1F2937" />
 
-    <!-- 设置窗口使用透明底图标；图形本身取品牌色，不额外套蓝色实心徽章。 -->
-    <DrawingImage x:Key="ToolboxOutlineIcon">
+    <!--  设置窗口使用透明底图标；图形本身取品牌色，不额外套蓝色实心徽章。  -->
+    <DrawingImage
+        x:Key="ToolboxOutlineIcon">
         <DrawingImage.Drawing>
             <DrawingGroup>
-                <GeometryDrawing Brush="Transparent" Geometry="M0,0 H24 V24 H0 Z" />
-                <GeometryDrawing Geometry="M3.5,7 H20.5 V20 H3.5 Z M8,7 V5.5 A2,2 0 0 1 10,3.5 H14 A2,2 0 0 1 16,5.5 V7 M3.5,12.5 H20.5 M10,12.5 V15 H14 V12.5">
+                <GeometryDrawing
+                    Brush="Transparent"
+                    Geometry="M0,0 H24 V24 H0 Z" />
+                <GeometryDrawing
+                    Geometry="M3.5,7 H20.5 V20 H3.5 Z M8,7 V5.5 A2,2 0 0 1 10,3.5 H14 A2,2 0 0 1 16,5.5 V7 M3.5,12.5 H20.5 M10,12.5 V15 H14 V12.5">
                     <GeometryDrawing.Pen>
-                        <Pen Brush="#4878ED" Thickness="1.7" StartLineCap="Round" EndLineCap="Round"
-                             LineJoin="Round" />
+                        <Pen
+                            Brush="#4878ED"
+                            Thickness="1.7"
+                            StartLineCap="Round"
+                            EndLineCap="Round"
+                            LineJoin="Round" />
                     </GeometryDrawing.Pen>
                 </GeometryDrawing>
             </DrawingGroup>
         </DrawingImage.Drawing>
     </DrawingImage>
 
-    <!-- 与原型 app-mini 对应的白色工具箱轮廓，统一用于 Launcher 与设置标题栏。 -->
-    <DrawingImage x:Key="ToolboxIcon">
+    <!--  与原型 app-mini 对应的白色工具箱轮廓，统一用于 Launcher 与设置标题栏。  -->
+    <DrawingImage
+        x:Key="ToolboxIcon">
         <DrawingImage.Drawing>
             <DrawingGroup>
-                <GeometryDrawing Brush="Transparent" Geometry="M0,0 H24 V24 H0 Z" />
-                <GeometryDrawing Geometry="M3,7 H21 V21 H3 Z M8,7 V5 A2,2 0 0 1 10,3 H14 A2,2 0 0 1 16,5 V7 M3,12 H21 M11,11 V14 H13 V11">
-                    <GeometryDrawing.Pen><Pen Brush="White" Thickness="1.8" LineJoin="Round" /></GeometryDrawing.Pen>
+                <GeometryDrawing
+                    Brush="Transparent"
+                    Geometry="M0,0 H24 V24 H0 Z" />
+                <GeometryDrawing
+                    Geometry="M3,7 H21 V21 H3 Z M8,7 V5 A2,2 0 0 1 10,3 H14 A2,2 0 0 1 16,5 V7 M3,12 H21 M11,11 V14 H13 V11">
+                    <GeometryDrawing.Pen>
+                        <Pen
+                            Brush="White"
+                            Thickness="1.8"
+                            LineJoin="Round" />
+                    </GeometryDrawing.Pen>
                 </GeometryDrawing>
             </DrawingGroup>
         </DrawingImage.Drawing>
     </DrawingImage>
 
-    <!-- 每个工具只使用自己的品牌图标资源，入口卡片与各窗口标题栏共用同一文件。 -->
-    <BitmapImage x:Key="JsonToolIcon"
-                 UriSource="pack://application:,,,/Juju.App;component/Assets/json.ico" />
-    <BitmapImage x:Key="TotoToolIcon"
-                 UriSource="pack://application:,,,/Juju.App;component/Assets/toto.ico" />
+    <!--  每个工具只使用自己的品牌图标资源，入口卡片与各窗口标题栏共用同一文件。  -->
+    <BitmapImage
+        x:Key="JsonToolIcon"
+        UriSource="pack://application:,,,/Juju.App;component/Assets/json.ico" />
+    <BitmapImage
+        x:Key="TotoToolIcon"
+        UriSource="pack://application:,,,/Juju.App;component/Assets/toto.ico" />
 
     <!--
         Lucide Settings 图标的 WPF 表示，来源为 viewBox="0 0 24 24" 的 SVG。
@@ -59,24 +81,27 @@
         如果某个图标因为造型不对称而需要“光学居中”，可给 DrawingGroup 添加 TranslateTransform，
         例如 X="0.25" 或 Y="-0.25" 做极小位移；本图标不需要该补偿。
     -->
-    <DrawingImage x:Key="SettingsIcon">
+    <DrawingImage
+        x:Key="SettingsIcon">
         <!--
             Drawing 是 DrawingImage 的复杂对象属性。复杂对象不能像 Width="18" 那样用简单字符串表达，
             因此使用“属性元素语法” <DrawingImage.Drawing>...</DrawingImage.Drawing> 为它赋值。
         -->
         <DrawingImage.Drawing>
-            <!-- DrawingGroup 把多个 Drawing 组合为一个图像；子项按书写顺序从后景画到前景。 -->
+            <!--  DrawingGroup 把多个 Drawing 组合为一个图像；子项按书写顺序从后景画到前景。  -->
             <DrawingGroup>
                 <!--
                     透明矩形对应 SVG 的 viewBox="0 0 24 24"：
                     - Brush="Transparent" 会参与绘制边界计算，但不会产生可见颜色。
                     - RectangleGeometry.Rect 的四个值依次是 X、Y、Width、Height。
                     - 固定边界让 DrawingImage 始终围绕 (12,12) 缩放；如果删除它，WPF 会改用实际描边
-                      的最小外接矩形，来自不同 SVG 的图标可能因各自留白不同而看起来大小或位置不一致。
+                    的最小外接矩形，来自不同 SVG 的图标可能因各自留白不同而看起来大小或位置不一致。
                 -->
-                <GeometryDrawing Brush="Transparent">
+                <GeometryDrawing
+                    Brush="Transparent">
                     <GeometryDrawing.Geometry>
-                        <RectangleGeometry Rect="0,0,24,24" />
+                        <RectangleGeometry
+                            Rect="0,0,24,24" />
                     </GeometryDrawing.Geometry>
                 </GeometryDrawing>
 
@@ -87,16 +112,21 @@
                     - a/A：绘制椭圆弧；小写 a 使用相对坐标，大写 A 使用绝对坐标。
                     - 当前 SVG fill="none"，所以此 GeometryDrawing 不设置 Brush，只使用 Pen 描边。
                 -->
-                <GeometryDrawing Geometry="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915">
-                    <!-- Pen 也是复杂对象，所以用 GeometryDrawing.Pen 属性元素赋值。 -->
+                <GeometryDrawing
+                    Geometry="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915">
+                    <!--  Pen 也是复杂对象，所以用 GeometryDrawing.Pen 属性元素赋值。  -->
                     <GeometryDrawing.Pen>
                         <!--
                             Brush：引用统一图标颜色；Thickness=2：对应 SVG stroke-width="2"。
                             StartLineCap/EndLineCap=Round：线段两端为圆头，对应 stroke-linecap="round"。
                             LineJoin=Round：路径转角为圆角，对应 stroke-linejoin="round"。
                         -->
-                        <Pen Brush="{StaticResource IconForeground}" Thickness="2" StartLineCap="Round"
-                             EndLineCap="Round" LineJoin="Round" />
+                        <Pen
+                            Brush="{StaticResource IconForeground}"
+                            Thickness="2"
+                            StartLineCap="Round"
+                            EndLineCap="Round"
+                            LineJoin="Round" />
                     </GeometryDrawing.Pen>
                 </GeometryDrawing>
 
@@ -107,10 +137,15 @@
                 -->
                 <GeometryDrawing>
                     <GeometryDrawing.Pen>
-                        <Pen Brush="{StaticResource IconForeground}" Thickness="2" />
+                        <Pen
+                            Brush="{StaticResource IconForeground}"
+                            Thickness="2" />
                     </GeometryDrawing.Pen>
                     <GeometryDrawing.Geometry>
-                        <EllipseGeometry Center="12,12" RadiusX="3" RadiusY="3" />
+                        <EllipseGeometry
+                            Center="12,12"
+                            RadiusX="3"
+                            RadiusY="3" />
                     </GeometryDrawing.Geometry>
                 </GeometryDrawing>
             </DrawingGroup>

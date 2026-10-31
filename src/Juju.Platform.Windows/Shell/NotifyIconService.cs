@@ -18,7 +18,7 @@ public sealed class NotifyIconService : ITrayIconService
     {
         using var stream = new MemoryStream(iconBytes, writable: false);
         using var image = new Icon(stream, SystemInformation.SmallIconSize);
-        _trayImage = (Icon)image.Clone();
+        _trayImage = (Icon) image.Clone();
 
         _menu = new ContextMenuStrip
         {
@@ -55,12 +55,14 @@ public sealed class NotifyIconService : ITrayIconService
 
     private void OnMouseClick(object? sender, MouseEventArgs args)
     {
-        if (args.Button == MouseButtons.Left) CommandRequested?.Invoke(TrayCommand.ShowLauncher);
+        if ( args.Button == MouseButtons.Left )
+            CommandRequested?.Invoke(TrayCommand.ShowLauncher);
     }
 
     public void Dispose()
     {
-        if (_disposed) return;
+        if ( _disposed )
+            return;
         _disposed = true;
         _icon.MouseClick -= OnMouseClick;
         _icon.Visible = false;
@@ -92,7 +94,7 @@ public sealed class NotifyIconService : ITrayIconService
                 e.Item.Selected ? Color.FromArgb(239, 243, 250) : Color.White;
             using var brush = new SolidBrush(color);
             e.Graphics.FillRectangle(brush, bounds);
-            if (e.Item.Selected)
+            if ( e.Item.Selected )
             {
                 using var indicator = new SolidBrush(Color.FromArgb(72, 120, 237));
                 e.Graphics.FillRectangle(indicator, 0, 5, 2, Math.Max(1, bounds.Height - 10));

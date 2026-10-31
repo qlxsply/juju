@@ -15,8 +15,12 @@ public sealed class AboutSettingsSection : ISettingsSection
         var page = SettingsViewFactory.Page();
         var card = SettingsViewFactory.Group(page, "当前版本");
         SettingsViewFactory.Row(card, "juju Toolbox", "版本 " + version,
-            new System.Windows.Controls.TextBlock { Text = "Windows x64", FontSize = 11,
-                Foreground = (System.Windows.Media.Brush)System.Windows.Application.Current.Resources["ToolboxMuted"] });
+            new System.Windows.Controls.TextBlock
+            {
+                Text = "Windows x64",
+                FontSize = 11,
+                Foreground = (System.Windows.Media.Brush) System.Windows.Application.Current.Resources["ToolboxMuted"]
+            });
         View = page;
     }
 

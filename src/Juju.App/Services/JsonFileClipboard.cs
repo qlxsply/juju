@@ -28,16 +28,18 @@ public sealed class JsonFileClipboard(IAtomicFileWriter writer) : IJsonFileClipb
     // 清理是同步文件枚举操作，但接口返回已完成 Task，以与调用方的异步生命周期保持一致。
     public Task CleanExpiredSnapshotsAsync(TimeSpan maximumAge, CancellationToken cancellationToken = default)
     {
-        if (!Directory.Exists(_directory)) return Task.CompletedTask;
-        foreach (var file in Directory.EnumerateFiles(_directory, "*.json"))
+        if ( !Directory.Exists(_directory) )
+            return Task.CompletedTask;
+        foreach ( var file in Directory.EnumerateFiles(_directory, "*.json") )
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (File.GetLastWriteTimeUtc(file) >= DateTime.UtcNow - maximumAge) continue;
+            if ( File.GetLastWriteTimeUtc(file) >= DateTime.UtcNow - maximumAge )
+                continue;
             try
             {
                 File.Delete(file);
             }
-            catch (IOException)
+            catch ( IOException )
             {
             }
         }

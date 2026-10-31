@@ -19,10 +19,11 @@ internal static class CsvFile
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         var temporary = path + ".tmp";
         // using 块确保发生异常时也会释放文件句柄，等价于 Java 的 try-with-resources。
-        using (var writer = new StreamWriter(temporary, false, new UTF8Encoding(true)))
+        using ( var writer = new StreamWriter(temporary, false, new UTF8Encoding(true)) )
         {
             writer.WriteLine(Join(header));
-            foreach (var row in rows) writer.WriteLine(Join(row));
+            foreach ( var row in rows )
+                writer.WriteLine(Join(row));
         }
 
         File.Move(temporary, path, true);
@@ -42,10 +43,10 @@ internal static class CsvFile
         var row = new List<string>();
         var field = new StringBuilder();
         var quoted = false;
-        for (var i = 0; i < text.Length; i++)
+        for ( var i = 0; i < text.Length; i++ )
         {
             var current = text[i];
-            switch (current)
+            switch ( current )
             {
                 case '"' when quoted && i + 1 < text.Length && text[i + 1] == '"':
                     field.Append(current);
@@ -59,21 +60,23 @@ internal static class CsvFile
                     field.Clear();
                     break;
                 case '\r' or '\n' when !quoted:
-                {
-                    if (current == '\r' && i + 1 < text.Length && text[i + 1] == '\n') i++;
-                    row.Add(field.ToString());
-                    field.Clear();
-                    rows.Add(row);
-                    row = [];
-                    break;
-                }
+                    {
+                        if ( current == '\r' && i + 1 < text.Length && text[i + 1] == '\n' )
+                            i++;
+                        row.Add(field.ToString());
+                        field.Clear();
+                        rows.Add(row);
+                        row = [];
+                        break;
+                    }
                 default:
                     field.Append(current);
                     break;
             }
         }
 
-        if (field.Length <= 0 && row.Count <= 0) return rows;
+        if ( field.Length <= 0 && row.Count <= 0 )
+            return rows;
         row.Add(field.ToString());
         rows.Add(row);
 

@@ -2,8 +2,8 @@ using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
-using UserControl = System.Windows.Controls.UserControl;
 using KeyEventArgs = System.Windows.Input.KeyEventArgs;
+using UserControl = System.Windows.Controls.UserControl;
 
 namespace Juju.App.Views;
 
@@ -44,7 +44,7 @@ public partial class TotoTimePicker : UserControl
 
     private void TimeButton_Click(object sender, RoutedEventArgs e)
     {
-        if (TimePopup.IsOpen)
+        if ( TimePopup.IsOpen )
         {
             TimePopup.IsOpen = false;
             return;
@@ -61,22 +61,26 @@ public partial class TotoTimePicker : UserControl
 
     private void Hour_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (_syncing || HourList.SelectedItem is not string hour) return;
+        if ( _syncing || HourList.SelectedItem is not string hour )
+            return;
         _hour = hour;
         // Selecting an hour only changes the draft. The popup remains open until a minute is chosen.
     }
 
     private void Minute_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (_syncing || MinuteList.SelectedItem is not string minute) return;
+        if ( _syncing || MinuteList.SelectedItem is not string minute )
+            return;
         CommitMinute(minute);
     }
 
     private void Minute_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
-        if (!TimePopup.IsOpen) return;
+        if ( !TimePopup.IsOpen )
+            return;
         var item = ItemsControl.ContainerFromElement(MinuteList, e.OriginalSource as DependencyObject) as ListBoxItem;
-        if (item?.Content is string minute) CommitMinute(minute);
+        if ( item?.Content is string minute )
+            CommitMinute(minute);
     }
 
     private void CommitMinute(string minute)
@@ -88,13 +92,16 @@ public partial class TotoTimePicker : UserControl
 
     private void ScrollSelectedIntoView()
     {
-        if (HourList.SelectedItem is not null) HourList.ScrollIntoView(HourList.SelectedItem);
-        if (MinuteList.SelectedItem is not null) MinuteList.ScrollIntoView(MinuteList.SelectedItem);
+        if ( HourList.SelectedItem is not null )
+            HourList.ScrollIntoView(HourList.SelectedItem);
+        if ( MinuteList.SelectedItem is not null )
+            MinuteList.ScrollIntoView(MinuteList.SelectedItem);
     }
 
     private void Picker_PreviewKeyDown(object sender, KeyEventArgs e)
     {
-        if (e.Key != Key.Escape) return;
+        if ( e.Key != Key.Escape )
+            return;
         e.Handled = true;
         TimePopup.IsOpen = false;
     }

@@ -7,16 +7,16 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
-using Brush = System.Windows.Media.Brush;
 using System.Windows.Threading;
 using Juju.App.Bootstrap;
 using Juju.Core.Errors;
+using Juju.Platform.Windows;
 using Juju.Tools.Json.Documents;
 using Juju.Tools.Json.Minify;
 using Juju.Tools.Json.Settings;
-using Juju.Platform.Windows;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.Wpf;
+using Brush = System.Windows.Media.Brush;
 using DataObject = System.Windows.DataObject;
 using DragDropEffects = System.Windows.DragDropEffects;
 using DragEventArgs = System.Windows.DragEventArgs;
@@ -93,7 +93,7 @@ public partial class JsonToolWindow : Window
     private TextBlock GetToolStatus(string name)
     {
         ApplyTemplate();
-        return (TextBlock)(Template.FindName(name, this) ??
+        return (TextBlock) (Template.FindName(name, this) ??
             throw new InvalidOperationException($"工具窗口模板缺少状态栏元素 {name}。"));
     }
 
@@ -126,7 +126,8 @@ public partial class JsonToolWindow : Window
         Loaded += async (_, _) => await EnsureEditorAsync();
         IsVisibleChanged += async (_, _) =>
         {
-            if (IsVisible && !_closing) await EnsureEditorAsync();
+            if ( IsVisible && !_closing )
+                await EnsureEditorAsync();
         };
         Drop += async (_, eventArgs) => await ImportDropAsync(eventArgs);
         PreviewKeyDown += OnShortcut;
@@ -146,22 +147,26 @@ public partial class JsonToolWindow : Window
 
     public void FocusForShortcuts()
     {
-        if (!IsVisible) return;
+        if ( !IsVisible )
+            return;
         Focus();
-        if (_editorReady && _mode == JsonViewMode.Edit) _ = FocusEditorAsync();
+        if ( _editorReady && _mode == JsonViewMode.Edit )
+            _ = FocusEditorAsync();
     }
 
     private async Task FocusEditorAsync()
     {
-        try { await SendEditorCommandAsync("focus", new { }); }
-        catch (Exception) { /* The WPF window remains focused while the editor is initializing. */ }
+        try
+        { await SendEditorCommandAsync("focus", new { }); }
+        catch ( Exception ) { /* The WPF window remains focused while the editor is initializing. */ }
     }
 
     // Changed 事件没有 Task 返回值，故在编辑器就绪时有意 fire-and-forget；失败由异步方法自身吞并。
     public void ApplyTheme(EffectiveTheme theme)
     {
         _theme = theme;
-        if (_editorReady && !_closing) _ = ApplyThemeAsync(theme);
+        if ( _editorReady && !_closing )
+            _ = ApplyThemeAsync(theme);
     }
 
     // 显式应用关停与用户点击关闭不同：前者必须刷新内容、销毁 WebView2 并允许真正 Close。
@@ -189,7 +194,7 @@ public partial class JsonToolWindow : Window
         {
             await SendEditorCommandAsync("setTheme", new { theme = theme == EffectiveTheme.Dark ? "vs-dark" : "vs" });
         }
-        catch (Exception)
+        catch ( Exception )
         {
         }
     }
@@ -197,7 +202,8 @@ public partial class JsonToolWindow : Window
     // WebView2 创建代价高，窗口隐藏时延迟初始化；多个生命周期事件可同时触发，标志位防止重复创建。
     private async Task EnsureEditorAsync()
     {
-        if (_editor is not null || _initializing || _closing || !IsVisible) return;
+        if ( _editor is not null || _initializing || _closing || !IsVisible )
+            return;
         _autosave.Interval = TimeSpan.FromMilliseconds(_settings.Current.AutosaveDelayMilliseconds);
         _initializing = true;
         try
@@ -206,7 +212,8 @@ public partial class JsonToolWindow : Window
             _editor = editor;
             EditorHost.Children.Add(editor);
             await editor.EnsureCoreWebView2Async(await CoreWebView2Environment.CreateAsync());
-            if (!ReferenceEquals(editor, _editor)) return;
+            if ( !ReferenceEquals(editor, _editor) )
+                return;
             // 虚拟 HTTPS 主机让本地编辑器资源拥有稳定 origin，同时 DenyCors 限制跨域访问。
             editor.CoreWebView2.SetVirtualHostNameToFolderMapping("juju.local",
                 Path.Combine(AppContext.BaseDirectory, "Editor"), CoreWebView2HostResourceAccessKind.DenyCors);
@@ -214,7 +221,7 @@ public partial class JsonToolWindow : Window
             editor.CoreWebView2.ProcessFailed += OnProcessFailed;
             editor.Source = new Uri("https://juju.local/index.html");
             await RefreshDocumentsAsync();
-            if (FileClipboard is not null)
+            if ( FileClipboard is not null )
             {
                 try
                 {
@@ -226,7 +233,7 @@ public partial class JsonToolWindow : Window
                 }
             }
         }
-        catch (Exception ex)
+        catch ( Exception ex )
         {
             SaveStateStatus.Text = "编辑器初始化失败: " + ex.Message;
             DestroyEditor();
@@ -240,31 +247,34 @@ public partial class JsonToolWindow : Window
     private async Task RefreshDocumentsAsync(JsonDocumentId? preferredDocumentId = null)
     {
         var list = await _documents.ListAsync(_lifetime.Token);
-        if (list.Count == 0) list = [await _documents.CreateAsync(_lifetime.Token)];
+        if ( list.Count == 0 )
+            list = [await _documents.CreateAsync(_lifetime.Token)];
         _items = list.Select(item =>
             new DocumentListItem(item.Id, item.FileName, Path.GetFileNameWithoutExtension(item.FileName))).ToArray();
         FileCount.Text = $"{_items.Count} 个";
         UpdateCompareSelections();
         ApplyDocumentFilter();
-        if (_current is null && _mode == JsonViewMode.Edit)
+        if ( _current is null && _mode == JsonViewMode.Edit )
         {
             var target = preferredDocumentId is { } id
                 ? _items.FirstOrDefault(item => item.Id == id) ?? _items[0]
                 : _items[0];
-            if (!string.IsNullOrWhiteSpace(DocumentFilter.Text) &&
-                !target.DisplayName.Contains(DocumentFilter.Text.Trim(), StringComparison.OrdinalIgnoreCase))
+            if ( !string.IsNullOrWhiteSpace(DocumentFilter.Text) &&
+                !target.DisplayName.Contains(DocumentFilter.Text.Trim(), StringComparison.OrdinalIgnoreCase) )
                 DocumentFilter.Clear();
             await OpenSelectedAsync(target);
             Documents.ScrollIntoView(target);
         }
-        else if (_mode == JsonViewMode.Edit) UpdateEditorHeader();
+        else if ( _mode == JsonViewMode.Edit )
+            UpdateEditorHeader();
     }
 
     // SelectionChanged 是 WPF 事件入口；_selecting 排除代码恢复选中项时产生的递归处理。
     private async void Documents_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (_selecting || Documents.SelectedItem is not DocumentListItem document) return;
-        if (_mode != JsonViewMode.Edit)
+        if ( _selecting || Documents.SelectedItem is not DocumentListItem document )
+            return;
+        if ( _mode != JsonViewMode.Edit )
         {
             ChooseCompareFile(document);
             _selecting = true;
@@ -281,8 +291,9 @@ public partial class JsonToolWindow : Window
         await _documentGate.WaitAsync(_lifetime.Token);
         try
         {
-            if (_current?.DocumentId == document.Id) return;
-            if (!await FlushCurrentAsync())
+            if ( _current?.DocumentId == document.Id )
+                return;
+            if ( !await FlushCurrentAsync() )
             {
                 RestoreCurrentSelection();
                 return;
@@ -296,18 +307,19 @@ public partial class JsonToolWindow : Window
             _foldDepth = 0;
             UpdateStatus();
             UpdateEditorHeader();
-            if (_mode == JsonViewMode.Edit && Documents.Items.Contains(document))
+            if ( _mode == JsonViewMode.Edit && Documents.Items.Contains(document) )
             {
                 _selecting = true;
                 Documents.SelectedItem = document;
                 _selecting = false;
             }
-            if (_largeDocument) SaveStateStatus.Text = "大文件模式：部分操作可能耗时较长";
-            if (_editorReady)
+            if ( _largeDocument )
+                SaveStateStatus.Text = "大文件模式：部分操作可能耗时较长";
+            if ( _editorReady )
                 await SendEditorCommandAsync("openDocument",
                     new { documentId = _current.DocumentId.ToString(), content = _current.Content, language = "json" });
         }
-        catch (Exception ex)
+        catch ( Exception ex )
         {
             SaveStateStatus.Text = "打开失败: " + ex.Message;
         }
@@ -320,10 +332,12 @@ public partial class JsonToolWindow : Window
     private async Task<bool> FlushCurrentAsync()
     {
         _autosave.Stop();
-        if (_current is null || _saveState == SaveState.Clean) return true;
+        if ( _current is null || _saveState == SaveState.Clean )
+            return true;
         try
         {
-            if (_editorReady && !_inDiffMode) _editorContent = await GetEditorContentAsync();
+            if ( _editorReady && !_inDiffMode )
+                _editorContent = await GetEditorContentAsync();
             await SaveCurrentAsync(_editorContent);
             return _saveState == SaveState.Clean;
         }
@@ -335,7 +349,8 @@ public partial class JsonToolWindow : Window
 
     private void RestoreCurrentSelection()
     {
-        if (_current is null) return;
+        if ( _current is null )
+            return;
         _selecting = true;
         Documents.SelectedItem = _items.SingleOrDefault(item => item.Id == _current.DocumentId);
         _selecting = false;
@@ -347,8 +362,9 @@ public partial class JsonToolWindow : Window
         try
         {
             using var document = JsonDocument.Parse(e.WebMessageAsJson);
-            if (!BridgeMessage.TryParse(document.RootElement, out var message)) throw new InvalidDataException();
-            switch (message.Type)
+            if ( !BridgeMessage.TryParse(document.RootElement, out var message) )
+                throw new InvalidDataException();
+            switch ( message.Type )
             {
                 case "ready":
                     _editorReady = true;
@@ -356,7 +372,7 @@ public partial class JsonToolWindow : Window
                     _ = InitializeBridgeAsync();
                     break;
                 case "contentChanged":
-                    if (TryGetContent(message.Payload, out var content) && !_inDiffMode)
+                    if ( TryGetContent(message.Payload, out var content) && !_inDiffMode )
                     {
                         _editorContent = content;
                         _contentVersion++;
@@ -373,11 +389,11 @@ public partial class JsonToolWindow : Window
                     _foldDepth = 0;
                     break;
                 case "cursorChanged":
-                    if (TryGetPosition(message.Payload, out var line, out var column))
+                    if ( TryGetPosition(message.Payload, out var line, out var column) )
                         CursorStatus.Text = $"Ln {line}, Col {column}";
                     break;
                 case "validationChanged":
-                    if (TryGetValidation(message.Payload, out var valid))
+                    if ( TryGetValidation(message.Payload, out var valid) )
                     {
                         _jsonValid = valid;
                         UpdateStatus();
@@ -386,21 +402,21 @@ public partial class JsonToolWindow : Window
                     break;
                 case "saveRequested":
                     // 编辑器协议是通知式的，不能阻塞 WebView 事件分发，因此保存有意不等待。
-                    if (TryGetContent(message.Payload, out var requestedContent))
+                    if ( TryGetContent(message.Payload, out var requestedContent) )
                         _ = SaveCurrentAsync(requestedContent);
                     break;
                 case "shortcut":
-                    if (message.Payload.TryGetProperty("combination", out var shortcut) &&
-                        shortcut.ValueKind == JsonValueKind.String)
+                    if ( message.Payload.TryGetProperty("combination", out var shortcut) &&
+                        shortcut.ValueKind == JsonValueKind.String )
                     {
                         var combination = shortcut.GetString();
-                        if (!string.IsNullOrWhiteSpace(combination) && !TryHandleNewShortcut(combination))
+                        if ( !string.IsNullOrWhiteSpace(combination) && !TryHandleNewShortcut(combination) )
                             ExecuteShortcut(combination,
                                 _inDiffMode ? JsonToolShortcutContext.Diff : JsonToolShortcutContext.Editor);
                     }
                     break;
                 case "commandResult":
-                    if (message.RequestId is not null && _requests.Remove(message.RequestId, out var request))
+                    if ( message.RequestId is not null && _requests.Remove(message.RequestId, out var request) )
                         request.TrySetResult(message);
                     break;
             }
@@ -423,26 +439,27 @@ public partial class JsonToolWindow : Window
                 monacoBindings = JsonToolShortcuts.Definitions
                     .Where(definition => definition.Source == JsonToolShortcutSource.Monaco)
                     .Select(definition => new
-                        { command = definition.Command.ToString(), shortcut = shortcuts[definition.Command] })
+                    { command = definition.Command.ToString(), shortcut = shortcuts[definition.Command] })
                     .ToArray(),
                 jujuBindings = JsonToolShortcuts.Definitions
                     .Where(definition => definition.Source == JsonToolShortcutSource.Juju)
                     .Select(definition => new
                     {
-                        command = definition.Command.ToString(), shortcut = shortcuts[definition.Command],
+                        command = definition.Command.ToString(),
+                        shortcut = shortcuts[definition.Command],
                         context = definition.Context.ToString()
                     })
                     .ToArray(),
             });
-            if (_current is not null)
+            if ( _current is not null )
                 await SendEditorCommandAsync("openDocument",
                     new { documentId = _current.DocumentId.ToString(), content = _current.Content, language = "json" });
             UpdateStatus();
-            if (IsActive && _mode == JsonViewMode.Edit && !Documents.IsKeyboardFocusWithin &&
-                !DocumentFilter.IsKeyboardFocusWithin && Keyboard.FocusedElement is not MenuItem)
+            if ( IsActive && _mode == JsonViewMode.Edit && !Documents.IsKeyboardFocusWithin &&
+                !DocumentFilter.IsKeyboardFocusWithin && Keyboard.FocusedElement is not MenuItem )
                 await FocusEditorAsync();
         }
-        catch (Exception ex)
+        catch ( Exception ex )
         {
             SaveStateStatus.Text = "编辑器连接失败: " + ex.Message;
         }
@@ -451,7 +468,8 @@ public partial class JsonToolWindow : Window
     // 每条命令带 requestId；TaskCompletionSource 将回调式 WebMessageReceived 转换为可 await 的 Task。
     private async Task SendEditorCommandAsync(string type, object payload)
     {
-        if (!_editorReady || _editor?.CoreWebView2 is null) throw new InvalidOperationException("编辑器尚未就绪。");
+        if ( !_editorReady || _editor?.CoreWebView2 is null )
+            throw new InvalidOperationException("编辑器尚未就绪。");
         var requestId = $"{_generation}:{Interlocked.Increment(ref _request)}";
         // 避免在 WebView 回调线程内同步续接，降低重入和死锁风险，类似 Java CompletableFuture 的异步续接。
         var request = new TaskCompletionSource<BridgeMessage>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -459,9 +477,9 @@ public partial class JsonToolWindow : Window
         try
         {
             _editor.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(new
-                { version = ProtocolVersion, type, requestId, payload }));
+            { version = ProtocolVersion, type, requestId, payload }));
             var response = await request.Task.WaitAsync(TimeSpan.FromSeconds(10), _lifetime.Token);
-            if (!TryGetCommandResult(response.Payload, out var error) && error is not null)
+            if ( !TryGetCommandResult(response.Payload, out var error) && error is not null )
                 throw new InvalidOperationException(error);
         }
         finally
@@ -472,16 +490,17 @@ public partial class JsonToolWindow : Window
 
     private async Task<string> GetEditorContentAsync()
     {
-        if (!_editorReady || _editor?.CoreWebView2 is null) return _editorContent;
+        if ( !_editorReady || _editor?.CoreWebView2 is null )
+            return _editorContent;
         var requestId = $"{_generation}:{Interlocked.Increment(ref _request)}";
         var request = new TaskCompletionSource<BridgeMessage>(TaskCreationOptions.RunContinuationsAsynchronously);
         _requests.Add(requestId, request);
         try
         {
             _editor.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(new
-                { version = ProtocolVersion, type = "getContent", requestId, payload = new { } }));
+            { version = ProtocolVersion, type = "getContent", requestId, payload = new { } }));
             var response = await request.Task.WaitAsync(TimeSpan.FromSeconds(10), _lifetime.Token);
-            if (!TryGetCommandResult(response.Payload, out var error))
+            if ( !TryGetCommandResult(response.Payload, out var error) )
                 throw new InvalidOperationException(error ?? "编辑器未返回文本。");
             return TryGetContent(response.Payload.GetProperty("result"), out var content)
                 ? content
@@ -503,7 +522,8 @@ public partial class JsonToolWindow : Window
     private async Task SaveCurrentAsync(string content)
     {
         var session = _current;
-        if (session is null || _inDiffMode) return;
+        if ( session is null || _inDiffMode )
+            return;
         var contentVersion = _contentVersion;
         await _saveGate.WaitAsync(_lifetime.Token);
         try
@@ -512,10 +532,10 @@ public partial class JsonToolWindow : Window
             UpdateStatus();
             await _documents.SaveAsync(session.DocumentId, content, session.Revision, _lifetime.Token);
             var refreshed = await _documents.OpenAsync(session.DocumentId, _lifetime.Token);
-            if (_current?.DocumentId == session.DocumentId)
+            if ( _current?.DocumentId == session.DocumentId )
             {
                 _current = refreshed;
-                if (_contentVersion == contentVersion)
+                if ( _contentVersion == contentVersion )
                 {
                     _editorContent = refreshed.Content;
                     _saveState = SaveState.Clean;
@@ -530,12 +550,12 @@ public partial class JsonToolWindow : Window
                 UpdateStatus();
             }
         }
-        catch (JujuException ex) when (ex.Code == ErrorCode.ExternalModificationConflict)
+        catch ( JujuException ex ) when ( ex.Code == ErrorCode.ExternalModificationConflict )
         {
             _saveState = SaveState.Conflict;
             UpdateStatus();
         }
-        catch (Exception ex)
+        catch ( Exception ex )
         {
             _saveState = SaveState.SaveFailed;
             SaveStateStatus.Text = "保存失败: " + ex.Message;
@@ -548,35 +568,41 @@ public partial class JsonToolWindow : Window
 
     private async Task NewAsync()
     {
-        if (_creating) return;
+        if ( _creating )
+            return;
         _creating = true;
         try
         {
-            if (_renaming is not null)
+            if ( _renaming is not null )
             {
                 var renaming = _renaming;
                 _renaming = null;
                 renaming.IsRenaming = false;
             }
-            if (_mode != JsonViewMode.Edit) ClearCompareState();
+            if ( _mode != JsonViewMode.Edit )
+                ClearCompareState();
             await _documentGate.WaitAsync(_lifetime.Token);
             _documentGate.Release();
-            if (!await FlushCurrentAsync()) return;
+            if ( !await FlushCurrentAsync() )
+                return;
             var created = await _documents.CreateAsync(_lifetime.Token);
-            if (!string.IsNullOrEmpty(DocumentFilter.Text)) DocumentFilter.Clear();
+            if ( !string.IsNullOrEmpty(DocumentFilter.Text) )
+                DocumentFilter.Clear();
             await RefreshDocumentsAsync();
             var item = _items.Single(document => document.Id == created.Id);
             await OpenSelectedAsync(item);
             Documents.ScrollIntoView(item);
-            if (_editorReady && IsActive) await FocusEditorAsync();
+            if ( _editorReady && IsActive )
+                await FocusEditorAsync();
         }
         finally { _creating = false; }
     }
 
     private async Task FormatAsync()
     {
-        if (_inDiffMode) return;
-        if (!_jsonValid)
+        if ( _inDiffMode )
+            return;
+        if ( !_jsonValid )
         {
             SaveStateStatus.Text = "JSON 格式错误，无法格式化";
             return;
@@ -593,7 +619,7 @@ public partial class JsonToolWindow : Window
         {
             WpfClipboard.SetText(JsonLexicalMinifier.Minify(await GetEditorContentAsync()));
         }
-        catch (JujuException)
+        catch ( JujuException )
         {
             SaveStateStatus.Text = "JSON 格式错误，无法压缩复制";
         }
@@ -601,13 +627,14 @@ public partial class JsonToolWindow : Window
 
     private async Task CopyFileAsync()
     {
-        if (FileClipboard is null || _current is null)
+        if ( FileClipboard is null || _current is null )
         {
             SaveStateStatus.Text = "文件剪贴板需要宿主快照适配器";
             return;
         }
 
-        if (!await FlushCurrentAsync()) return;
+        if ( !await FlushCurrentAsync() )
+            return;
         await FileClipboard.CopySnapshotAsync(_current, _items.Single(item => item.Id == _current.DocumentId).FileName,
             _lifetime.Token);
         SaveStateStatus.Text = "已复制 JSON 文件";
@@ -635,10 +662,12 @@ public partial class JsonToolWindow : Window
     // The existing editor remains intact; compare panes are WPF views of persisted snapshots.
     private async Task EnterDiffAsync()
     {
-        if (_mode != JsonViewMode.Edit) return;
+        if ( _mode != JsonViewMode.Edit )
+            return;
         await _documentGate.WaitAsync(_lifetime.Token);
         _documentGate.Release();
-        if (!await FlushCurrentAsync()) return;
+        if ( !await FlushCurrentAsync() )
+            return;
         _mode = JsonViewMode.SelectCompare;
         _compareLeft = null;
         _compareRight = null;
@@ -649,12 +678,15 @@ public partial class JsonToolWindow : Window
 
     private async Task ExitDiffAsync()
     {
-        if (_mode == JsonViewMode.Edit) return;
+        if ( _mode == JsonViewMode.Edit )
+            return;
         ClearCompareState();
-        if (_current is not null && _editorReady)
+        if ( _current is not null && _editorReady )
             await SendEditorCommandAsync("openDocument", new
             {
-                documentId = _current.DocumentId.ToString(), content = _editorContent, language = "json"
+                documentId = _current.DocumentId.ToString(),
+                content = _editorContent,
+                language = "json"
             });
     }
 
@@ -671,13 +703,18 @@ public partial class JsonToolWindow : Window
 
     private void ChooseCompareFile(DocumentListItem document)
     {
-        if (_compareLeft == document.Id) _compareLeft = null;
-        else if (_compareRight == document.Id) _compareRight = null;
-        else if (_compareLeft is null) _compareLeft = document.Id;
-        else if (_compareRight is null) _compareRight = document.Id;
-        else { _compareLeft = _compareRight; _compareRight = document.Id; }
+        if ( _compareLeft == document.Id )
+            _compareLeft = null;
+        else if ( _compareRight == document.Id )
+            _compareRight = null;
+        else if ( _compareLeft is null )
+            _compareLeft = document.Id;
+        else if ( _compareRight is null )
+            _compareRight = document.Id;
+        else
+        { _compareLeft = _compareRight; _compareRight = document.Id; }
 
-        if (_mode == JsonViewMode.CompareResult)
+        if ( _mode == JsonViewMode.CompareResult )
         {
             _mode = JsonViewMode.SelectCompare;
             LeftDiffRows.ItemsSource = null;
@@ -688,8 +725,9 @@ public partial class JsonToolWindow : Window
 
     private async void StartCompare_Click(object sender, RoutedEventArgs e)
     {
-        if (_comparing || _mode == JsonViewMode.Edit || _compareLeft is not { } left ||
-            _compareRight is not { } right || left == right) return;
+        if ( _comparing || _mode == JsonViewMode.Edit || _compareLeft is not { } left ||
+            _compareRight is not { } right || left == right )
+            return;
         _comparing = true;
         StartCompareButton.IsEnabled = false;
         try
@@ -697,7 +735,8 @@ public partial class JsonToolWindow : Window
             var original = await _documents.OpenAsync(left, _lifetime.Token);
             var modified = await _documents.OpenAsync(right, _lifetime.Token);
             var lines = JsonLineDiff.Compare(original.Content, modified.Content);
-            if (_mode == JsonViewMode.Edit || _compareLeft != left || _compareRight != right) return;
+            if ( _mode == JsonViewMode.Edit || _compareLeft != left || _compareRight != right )
+                return;
             LeftDiffRows.ItemsSource = lines.Select(line => new DiffDisplayLine(
                 line.LeftNumber?.ToString() ?? "", line.LeftText, line.LeftKind.ToString())).ToArray();
             RightDiffRows.ItemsSource = lines.Select(line => new DiffDisplayLine(
@@ -712,7 +751,7 @@ public partial class JsonToolWindow : Window
                 ? "文件内容一致" : $"发现 {lines.Count(line => line.LeftKind != JsonDiffKind.Same)} 处差异行";
             CursorStatus.Text = "A ↔ B";
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch ( Exception ex ) when ( ex is not OperationCanceledException )
         {
             SaveStateStatus.Text = "对比失败: " + ex.Message;
         }
@@ -727,7 +766,8 @@ public partial class JsonToolWindow : Window
 
     private void RenderMode()
     {
-        if (CompareBar is null) return;
+        if ( CompareBar is null )
+            return;
         FileMenu.IsEnabled = EditMenu.IsEnabled = ViewMenu.IsEnabled = _mode == JsonViewMode.Edit;
         CompareBar.Visibility = _mode == JsonViewMode.Edit ? Visibility.Collapsed : Visibility.Visible;
         NormalWorkspace.Visibility = _mode == JsonViewMode.Edit ? Visibility.Visible : Visibility.Collapsed;
@@ -740,27 +780,30 @@ public partial class JsonToolWindow : Window
         StartCompareButton.Content = _mode == JsonViewMode.CompareResult ? "重新对比" : "开始对比";
         StartCompareButton.IsEnabled = !_comparing && _compareLeft is not null && _compareRight is not null;
         UpdateCompareSelections();
-        if (_mode == JsonViewMode.SelectCompare)
+        if ( _mode == JsonViewMode.SelectCompare )
         {
             ValidationStatus.Text = "选择两个文件";
             CursorStatus.Text = "";
         }
-        if (_mode == JsonViewMode.Edit) UpdateEditorHeader();
+        if ( _mode == JsonViewMode.Edit )
+            UpdateEditorHeader();
     }
 
     private void UpdateCompareSelections()
     {
-        foreach (var item in _items)
+        foreach ( var item in _items )
         {
             item.IsCompareSelection = _mode != JsonViewMode.Edit;
             item.CompareSlot = item.Id == _compareLeft ? "A" : item.Id == _compareRight ? "B" : "";
         }
-        if (_mode != JsonViewMode.Edit) Documents.SelectedItem = null;
+        if ( _mode != JsonViewMode.Edit )
+            Documents.SelectedItem = null;
     }
 
     private void DiffScroll_ScrollChanged(object sender, ScrollChangedEventArgs e)
     {
-        if (_syncingDiff || _mode != JsonViewMode.CompareResult || e.VerticalChange == 0) return;
+        if ( _syncingDiff || _mode != JsonViewMode.CompareResult || e.VerticalChange == 0 )
+            return;
         _syncingDiff = true;
         (ReferenceEquals(sender, LeftDiffScroll) ? RightDiffScroll : LeftDiffScroll).ScrollToVerticalOffset(e.VerticalOffset);
         _syncingDiff = false;
@@ -770,26 +813,28 @@ public partial class JsonToolWindow : Window
     {
         CurrentFileName.Text = _current is null ? "" : _items.FirstOrDefault(item => item.Id == _current.DocumentId)?.FileName ?? "";
         JsonValidity.Text = _jsonValid ? "JSON 有效" : "JSON 无效";
-        JsonValidity.Foreground = (Brush)new BrushConverter().ConvertFromString(_jsonValid ? "#4B74D9" : "#C04D4D")!;
+        JsonValidity.Foreground = (Brush) new BrushConverter().ConvertFromString(_jsonValid ? "#4B74D9" : "#C04D4D")!;
     }
 
     private Task RenameAsync()
     {
-        if (_mode == JsonViewMode.Edit && _current is { } current)
+        if ( _mode == JsonViewMode.Edit && _current is { } current )
             BeginRename(_items.First(item => item.Id == current.DocumentId));
         return Task.CompletedTask;
     }
 
     private async Task DeleteAsync()
     {
-        if (_deleting || _mode != JsonViewMode.Edit || _current is null) return;
+        if ( _deleting || _mode != JsonViewMode.Edit || _current is null )
+            return;
         _deleting = true;
         try
         {
             var restoreListFocus = Documents.IsKeyboardFocusWithin;
             await _documentGate.WaitAsync(_lifetime.Token);
             _documentGate.Release();
-            if (_mode != JsonViewMode.Edit || _current is null) return;
+            if ( _mode != JsonViewMode.Edit || _current is null )
+                return;
             var deletedId = _current.DocumentId;
             var index = Array.FindIndex(_items.ToArray(), item => item.Id == deletedId);
             JsonDocumentId? nextId = index >= 0 && index + 1 < _items.Count ? _items[index + 1].Id :
@@ -797,7 +842,8 @@ public partial class JsonToolWindow : Window
             await _documents.DeleteAsync(deletedId, _lifetime.Token);
             _current = null;
             await RefreshDocumentsAsync(nextId);
-            if (restoreListFocus) Documents.Focus();
+            if ( restoreListFocus )
+                Documents.Focus();
         }
         finally { _deleting = false; }
     }
@@ -807,7 +853,8 @@ public partial class JsonToolWindow : Window
 
     private void ApplyDocumentFilter()
     {
-        if (DocumentFilter is null || Documents is null) return;
+        if ( DocumentFilter is null || Documents is null )
+            return;
         var filter = DocumentFilter.Text.Trim();
         _selecting = true;
         Documents.ItemsSource = string.IsNullOrEmpty(filter)
@@ -820,23 +867,28 @@ public partial class JsonToolWindow : Window
 
     private void BeginRename(DocumentListItem item)
     {
-        if (_mode != JsonViewMode.Edit) return;
-        if (!string.IsNullOrEmpty(DocumentFilter.Text) &&
-            !item.DisplayName.Contains(DocumentFilter.Text.Trim(), StringComparison.OrdinalIgnoreCase))
+        if ( _mode != JsonViewMode.Edit )
+            return;
+        if ( !string.IsNullOrEmpty(DocumentFilter.Text) &&
+            !item.DisplayName.Contains(DocumentFilter.Text.Trim(), StringComparison.OrdinalIgnoreCase) )
             DocumentFilter.Clear();
-        if (_renaming is not null) _renaming.IsRenaming = false;
+        if ( _renaming is not null )
+            _renaming.IsRenaming = false;
         _renaming = item;
         item.RenameText = item.DisplayName;
         item.IsRenaming = true;
         Documents.ScrollIntoView(item);
         Documents.UpdateLayout();
-        if (Documents.ItemContainerGenerator.ContainerFromItem(item) is not ListBoxItem container) return;
+        if ( Documents.ItemContainerGenerator.ContainerFromItem(item) is not ListBoxItem container )
+            return;
         container.UpdateLayout();
         Dispatcher.BeginInvoke(() =>
         {
-            if (!ReferenceEquals(_renaming, item)) return;
+            if ( !ReferenceEquals(_renaming, item) )
+                return;
             var input = FindVisualChild<WpfTextBox>(container);
-            if (input is null) return;
+            if ( input is null )
+                return;
             input.Focus();
             input.SelectAll();
         }, DispatcherPriority.Input);
@@ -844,20 +896,23 @@ public partial class JsonToolWindow : Window
 
     private static T? FindVisualChild<T>(DependencyObject parent) where T : DependencyObject
     {
-        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(parent); i++)
+        for ( var i = 0; i < VisualTreeHelper.GetChildrenCount(parent); i++ )
         {
             var child = VisualTreeHelper.GetChild(parent, i);
-            if (child is T found) return found;
-            if (FindVisualChild<T>(child) is { } nested) return nested;
+            if ( child is T found )
+                return found;
+            if ( FindVisualChild<T>(child) is { } nested )
+                return nested;
         }
         return null;
     }
 
     private void Documents_MouseDoubleClick(object sender, MouseButtonEventArgs e)
     {
-        if (_mode != JsonViewMode.Edit || _renaming is not null) return;
-        if (ItemsControl.ContainerFromElement(Documents, e.OriginalSource as DependencyObject) is ListBoxItem
-            { DataContext: DocumentListItem item })
+        if ( _mode != JsonViewMode.Edit || _renaming is not null )
+            return;
+        if ( ItemsControl.ContainerFromElement(Documents, e.OriginalSource as DependencyObject) is ListBoxItem
+            { DataContext: DocumentListItem item } )
         {
             BeginRename(item);
             e.Handled = true;
@@ -866,15 +921,16 @@ public partial class JsonToolWindow : Window
 
     private void RenameField_PreviewKeyDown(object sender, KeyEventArgs e)
     {
-        if (e.Key == Key.Escape)
+        if ( e.Key == Key.Escape )
         {
             var renaming = _renaming;
             _renaming = null;
-            if (renaming is not null) renaming.IsRenaming = false;
+            if ( renaming is not null )
+                renaming.IsRenaming = false;
             Documents.Focus();
             e.Handled = true;
         }
-        else if (e.Key == Key.Return)
+        else if ( e.Key == Key.Return )
         {
             e.Handled = true;
             _ = CommitRenameAsync(sender as WpfTextBox);
@@ -883,22 +939,25 @@ public partial class JsonToolWindow : Window
 
     private void RenameField_LostKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
     {
-        if (_renaming is not null) _ = CommitRenameAsync(sender as WpfTextBox);
+        if ( _renaming is not null )
+            _ = CommitRenameAsync(sender as WpfTextBox);
     }
 
     private async Task CommitRenameAsync(WpfTextBox? input)
     {
-        if (_renaming is not { } item) return;
+        if ( _renaming is not { } item )
+            return;
         _renaming = null;
         item.IsRenaming = false;
         var name = input?.Text.Trim();
-        if (string.IsNullOrWhiteSpace(name)) { SaveStateStatus.Text = "名称不能为空"; return; }
+        if ( string.IsNullOrWhiteSpace(name) )
+        { SaveStateStatus.Text = "名称不能为空"; return; }
         try
         {
             await _documents.RenameAsync(item.Id, name, _lifetime.Token);
             await RefreshDocumentsAsync();
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch ( Exception ex ) when ( ex is not OperationCanceledException )
         {
             SaveStateStatus.Text = "重命名失败: " + ex.Message;
         }
@@ -906,26 +965,29 @@ public partial class JsonToolWindow : Window
 
     private void Documents_PreviewKeyDown(object sender, KeyEventArgs e)
     {
-        if (_mode != JsonViewMode.Edit || _renaming is not null || e.OriginalSource is WpfTextBox) return;
-        if (Keyboard.Modifiers == ModifierKeys.None && e.Key is Key.Up or Key.Down)
+        if ( _mode != JsonViewMode.Edit || _renaming is not null || e.OriginalSource is WpfTextBox )
+            return;
+        if ( Keyboard.Modifiers == ModifierKeys.None && e.Key is Key.Up or Key.Down )
         {
             var count = Documents.Items.Count;
-            if (count == 0) return;
+            if ( count == 0 )
+                return;
 
             var index = Documents.SelectedIndex;
             var next = index < 0
                 ? e.Key == Key.Down ? 0 : count - 1
                 : (index + (e.Key == Key.Down ? 1 : -1) + count) % count;
             Documents.SelectedIndex = next;
-            if (Documents.SelectedItem is { } selected) Documents.ScrollIntoView(selected);
+            if ( Documents.SelectedItem is { } selected )
+                Documents.ScrollIntoView(selected);
             e.Handled = true;
         }
-        else if (e.Key == Key.Delete && Keyboard.Modifiers == ModifierKeys.None)
+        else if ( e.Key == Key.Delete && Keyboard.Modifiers == ModifierKeys.None )
         {
             e.Handled = true;
             _ = ExecuteAsync(JsonToolCommand.Delete);
         }
-        else if (e.Key == Key.F2 && Keyboard.Modifiers == ModifierKeys.None)
+        else if ( e.Key == Key.F2 && Keyboard.Modifiers == ModifierKeys.None )
         {
             e.Handled = true;
             _ = ExecuteAsync(JsonToolCommand.Rename);
@@ -934,15 +996,18 @@ public partial class JsonToolWindow : Window
 
     private void MenuCommand_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is MenuItem { Tag: string name } &&
+        if ( sender is MenuItem { Tag: string name } &&
             Enum.TryParse<JsonToolCommand>(name, out var command) &&
-            (command == JsonToolCommand.EnterDiff || _mode == JsonViewMode.Edit)) _ = ExecuteAsync(command);
+            (command == JsonToolCommand.EnterDiff || _mode == JsonViewMode.Edit) )
+            _ = ExecuteAsync(command);
     }
 
     private async Task ImportDropAsync(DragEventArgs eventArgs)
     {
-        if (_mode != JsonViewMode.Edit) return;
-        if (eventArgs.Data.GetData(WpfDataFormats.FileDrop) is not string[] paths) return;
+        if ( _mode != JsonViewMode.Edit )
+            return;
+        if ( eventArgs.Data.GetData(WpfDataFormats.FileDrop) is not string[] paths )
+            return;
         var jsonPaths = paths
             .Where(path => string.Equals(Path.GetExtension(path), ".json", StringComparison.OrdinalIgnoreCase))
             .ToArray();
@@ -957,69 +1022,81 @@ public partial class JsonToolWindow : Window
             ? (ItemsControl.ContainerFromElement(Documents, e.OriginalSource as DependencyObject)
                 as ListBoxItem)?.DataContext as DocumentListItem
             : null;
-        if (_dragCandidate is not null) _dragStart = e.GetPosition(Documents);
+        if ( _dragCandidate is not null )
+            _dragStart = e.GetPosition(Documents);
     }
 
     private void Documents_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e) => _dragCandidate = null;
 
     private void Documents_PreviewMouseMove(object sender, MouseEventArgs e)
     {
-        if (_mode != JsonViewMode.Edit || _renaming is not null || e.LeftButton != MouseButtonState.Pressed ||
+        if ( _mode != JsonViewMode.Edit || _renaming is not null || e.LeftButton != MouseButtonState.Pressed ||
             _dragCandidate is not { } item || !ReferenceEquals(Documents.SelectedItem, item) ||
             e.OriginalSource is WpfTextBox ||
-            ItemsControl.ContainerFromElement(Documents, e.OriginalSource as DependencyObject) is not ListBoxItem) return;
+            ItemsControl.ContainerFromElement(Documents, e.OriginalSource as DependencyObject) is not ListBoxItem )
+            return;
         var position = e.GetPosition(Documents);
-        if (Math.Abs(position.X - _dragStart.X) < SystemParameters.MinimumHorizontalDragDistance &&
-            Math.Abs(position.Y - _dragStart.Y) < SystemParameters.MinimumVerticalDragDistance) return;
+        if ( Math.Abs(position.X - _dragStart.X) < SystemParameters.MinimumHorizontalDragDistance &&
+            Math.Abs(position.Y - _dragStart.Y) < SystemParameters.MinimumVerticalDragDistance )
+            return;
         _dragCandidate = null;
-        try { DragDrop.DoDragDrop(Documents, new DataObject(typeof(DocumentListItem), item), DragDropEffects.Move); }
+        try
+        { DragDrop.DoDragDrop(Documents, new DataObject(typeof(DocumentListItem), item), DragDropEffects.Move); }
         finally { ClearDropMarker(); }
     }
 
     private void Documents_DragOver(object sender, DragEventArgs e)
     {
-        if (_mode != JsonViewMode.Edit || !e.Data.GetDataPresent(typeof(DocumentListItem))) return;
+        if ( _mode != JsonViewMode.Edit || !e.Data.GetDataPresent(typeof(DocumentListItem)) )
+            return;
         e.Effects = DragDropEffects.Move;
         e.Handled = true;
         var target = ItemsControl.ContainerFromElement(Documents, e.OriginalSource as DependencyObject) as ListBoxItem;
-        if (ReferenceEquals(target, _dropMarker) && target is not null)
+        if ( ReferenceEquals(target, _dropMarker) && target is not null )
         {
             var after = e.GetPosition(target).Y > target.ActualHeight / 2;
-            if (after == _dropAfter) return;
+            if ( after == _dropAfter )
+                return;
         }
         ClearDropMarker();
         _dropMarker = target;
-        if (target is null) return;
+        if ( target is null )
+            return;
         _dropAfter = e.GetPosition(target).Y > target.ActualHeight / 2;
         target.Tag = _dropAfter ? "After" : "Before";
     }
 
     private void Documents_DragLeave(object sender, DragEventArgs e)
     {
-        if (!Documents.IsMouseOver) ClearDropMarker();
+        if ( !Documents.IsMouseOver )
+            ClearDropMarker();
     }
 
     private void ClearDropMarker()
     {
-        if (_dropMarker is not null) _dropMarker.Tag = null;
+        if ( _dropMarker is not null )
+            _dropMarker.Tag = null;
         _dropMarker = null;
     }
 
     // 拖放事件签名固定为 void；await 重排完成后才刷新绑定列表以保持显示顺序一致。
     private async void Documents_Drop(object sender, DragEventArgs e)
     {
-        if (_mode != JsonViewMode.Edit || !e.Data.GetDataPresent(typeof(DocumentListItem)) ||
-            e.Data.GetData(typeof(DocumentListItem)) is not DocumentListItem source) return;
+        if ( _mode != JsonViewMode.Edit || !e.Data.GetDataPresent(typeof(DocumentListItem)) ||
+            e.Data.GetData(typeof(DocumentListItem)) is not DocumentListItem source )
+            return;
         var targetElement = _dropMarker ??
             ItemsControl.ContainerFromElement(Documents, e.OriginalSource as DependencyObject) as ListBoxItem;
         var target = targetElement?.DataContext as DocumentListItem;
         var after = _dropMarker is null ? targetElement is not null && e.GetPosition(targetElement).Y > targetElement.ActualHeight / 2 : _dropAfter;
         ClearDropMarker();
-        if (target is null || target.Id == source.Id || !await FlushCurrentAsync()) return;
+        if ( target is null || target.Id == source.Id || !await FlushCurrentAsync() )
+            return;
         var from = Array.FindIndex(_items.ToArray(), item => item.Id == source.Id);
         var to = Array.FindIndex(_items.ToArray(), item => item.Id == target.Id);
         var destination = to + (after ? 1 : 0) - (from < to ? 1 : 0);
-        if (destination == from) return;
+        if ( destination == from )
+            return;
         await _documents.ReorderAsync(source.Id, destination, _lifetime.Token);
         await RefreshDocumentsAsync();
         Documents.SelectedItem = _items.Single(item => item.Id == source.Id);
@@ -1028,10 +1105,11 @@ public partial class JsonToolWindow : Window
     // 文件监控事件可能来自工作线程，先调度到 Dispatcher 再读取或更新 WPF 控件。
     private void OnExternalDocumentChanged(object? sender, JsonDocumentExternalChange change)
     {
-        if (_current?.DocumentId != change.DocumentId) return;
+        if ( _current?.DocumentId != change.DocumentId )
+            return;
         _ = Dispatcher.InvokeAsync(async () =>
         {
-            if (_saveState == SaveState.Clean)
+            if ( _saveState == SaveState.Clean )
             {
                 await ReloadDiskVersionAsync();
                 SaveStateStatus.Text = "文件已在外部更新";
@@ -1042,15 +1120,16 @@ public partial class JsonToolWindow : Window
             UpdateStatus();
             var action = WpfMessageBox.Show("文件已被外部程序修改。是：重新加载磁盘版本；否：覆盖磁盘版本；取消：复制当前内容后重新加载。", "juju JSON",
                 MessageBoxButton.YesNoCancel, MessageBoxImage.Warning);
-            if (action == MessageBoxResult.Yes) await ReloadDiskVersionAsync();
-            else if (action == MessageBoxResult.No)
+            if ( action == MessageBoxResult.Yes )
+                await ReloadDiskVersionAsync();
+            else if ( action == MessageBoxResult.No )
             {
                 await _documents.OverwriteAsync(_current.DocumentId, await GetEditorContentAsync(), _lifetime.Token);
                 _current = await _documents.OpenAsync(_current.DocumentId, _lifetime.Token);
                 _saveState = SaveState.Clean;
                 UpdateStatus();
             }
-            else if (action == MessageBoxResult.Cancel)
+            else if ( action == MessageBoxResult.Cancel )
             {
                 WpfClipboard.SetText(await GetEditorContentAsync());
                 await ReloadDiskVersionAsync();
@@ -1060,12 +1139,13 @@ public partial class JsonToolWindow : Window
 
     private async Task ReloadDiskVersionAsync()
     {
-        if (_current is null) return;
+        if ( _current is null )
+            return;
         _current = await _documents.OpenAsync(_current.DocumentId, _lifetime.Token);
         _editorContent = _current.Content;
         _saveState = SaveState.Clean;
         _jsonValid = IsJson(_editorContent);
-        if (_editorReady && !_inDiffMode)
+        if ( _editorReady && !_inDiffMode )
             await SendEditorCommandAsync("replaceContent", new { content = _editorContent });
         UpdateStatus();
     }
@@ -1073,7 +1153,8 @@ public partial class JsonToolWindow : Window
     // WebView2 进程异常是同步事件，恢复过程不能阻塞其回调，因此有意后台启动。
     private void OnProcessFailed(object? sender, CoreWebView2ProcessFailedEventArgs e)
     {
-        if (_closing || !ReferenceEquals(sender, _editor?.CoreWebView2)) return;
+        if ( _closing || !ReferenceEquals(sender, _editor?.CoreWebView2) )
+            return;
         _ = RecoverEditorAsync();
     }
 
@@ -1091,7 +1172,7 @@ public partial class JsonToolWindow : Window
     // ShutdownAsync 先设置 _closing=true，应用退出时才允许基类完成真正关闭和窗口资源销毁。
     protected override void OnClosing(CancelEventArgs e)
     {
-        if (_closing)
+        if ( _closing )
         {
             // 显式应用关停路径：不取消 Closing，并让 Window 基类继续执行标准关闭逻辑。
             base.OnClosing(e);
@@ -1109,10 +1190,13 @@ public partial class JsonToolWindow : Window
         {
             UpdateMenuGestures(settings);
             _autosave.Interval = TimeSpan.FromMilliseconds(settings.AutosaveDelayMilliseconds);
-            if (_editorReady && !_closing) _ = RefreshEditorConfigurationAsync();
+            if ( _editorReady && !_closing )
+                _ = RefreshEditorConfigurationAsync();
         }
-        if (Dispatcher.CheckAccess()) Apply();
-        else Dispatcher.BeginInvoke(Apply);
+        if ( Dispatcher.CheckAccess() )
+            Apply();
+        else
+            Dispatcher.BeginInvoke(Apply);
     }
 
     private void UpdateMenuGestures(JsonToolSettings settings)
@@ -1135,11 +1219,12 @@ public partial class JsonToolWindow : Window
     {
         try
         {
-            if (!await FlushCurrentAsync()) return;
+            if ( !await FlushCurrentAsync() )
+                return;
             DestroyEditor();
             await EnsureEditorAsync();
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch ( Exception ex ) when ( ex is not OperationCanceledException )
         {
             SaveStateStatus.Text = "编辑器设置应用失败：" + ex.Message;
         }
@@ -1150,8 +1235,9 @@ public partial class JsonToolWindow : Window
         _closing = true;
         try
         {
-            if (!await FlushCurrentAsync()) return;
-            if (_mode != JsonViewMode.Edit)
+            if ( !await FlushCurrentAsync() )
+                return;
+            if ( _mode != JsonViewMode.Edit )
             {
                 _mode = JsonViewMode.Edit;
                 _compareLeft = null;
@@ -1162,7 +1248,8 @@ public partial class JsonToolWindow : Window
                 UpdateStatus();
             }
             DestroyEditor();
-            if (_settings.Current.KeepWindowOnClose) Hide();
+            if ( _settings.Current.KeepWindowOnClose )
+                Hide();
             else
             {
                 // 不保留窗口时真正关闭；窗口管理器的 Closed 回调会清空缓存，下一次重新创建。
@@ -1184,10 +1271,12 @@ public partial class JsonToolWindow : Window
         _autosave.Stop();
         _editorReady = false;
         _generation++;
-        foreach (var request in _requests.Values) request.TrySetCanceled();
+        foreach ( var request in _requests.Values )
+            request.TrySetCanceled();
         _requests.Clear();
-        if (_editor is not { } editor) return;
-        if (editor.CoreWebView2 is { } core)
+        if ( _editor is not { } editor )
+            return;
+        if ( editor.CoreWebView2 is { } core )
         {
             core.WebMessageReceived -= OnWebMessage;
             core.ProcessFailed -= OnProcessFailed;
@@ -1205,7 +1294,7 @@ public partial class JsonToolWindow : Window
         {
             await _commands[command]();
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch ( Exception ex ) when ( ex is not OperationCanceledException )
         {
             SaveStateStatus.Text = "操作失败: " + ex.Message;
         }
@@ -1216,52 +1305,62 @@ public partial class JsonToolWindow : Window
         // Saving remains an internal synchronization state; the user sees unsaved until persistence succeeds.
         SaveStateStatus.Text = _saveState switch
         {
-            SaveState.Clean => "已保存", SaveState.Dirty or SaveState.Saving => "未保存", SaveState.Conflict => "外部修改冲突",
+            SaveState.Clean => "已保存",
+            SaveState.Dirty or SaveState.Saving => "未保存",
+            SaveState.Conflict => "外部修改冲突",
             _ => "保存失败"
         };
         ValidationStatus.Text = _jsonValid ? "JSON: 有效" : "JSON: 格式错误";
-        if (_mode == JsonViewMode.Edit) UpdateEditorHeader();
+        if ( _mode == JsonViewMode.Edit )
+            UpdateEditorHeader();
     }
 
     private void NewShortcut_PreProcessInput(object sender, PreProcessInputEventArgs args)
     {
-        if (!IsVisible || (!IsActive && !FileMenu.IsSubmenuOpen && !EditMenu.IsSubmenuOpen &&
+        if ( !IsVisible || (!IsActive && !FileMenu.IsSubmenuOpen && !EditMenu.IsSubmenuOpen &&
             !ViewMenu.IsSubmenuOpen && !ToolMenu.IsSubmenuOpen) || _closing ||
             args.StagingItem.Input is not KeyEventArgs e ||
             e.RoutedEvent != Keyboard.PreviewKeyDownEvent || e.Handled || e.IsRepeat ||
-            !TryGetShortcutStroke(e, out var stroke)) return;
-        if (TryHandleNewShortcut(stroke)) e.Handled = true;
+            !TryGetShortcutStroke(e, out var stroke) )
+            return;
+        if ( TryHandleNewShortcut(stroke) )
+            e.Handled = true;
     }
 
     private void OnShortcut(object sender, KeyEventArgs e)
     {
-        if (e.Handled || e.IsRepeat || !TryGetShortcutStroke(e, out var stroke)) return;
-        if (TryHandleNewShortcut(stroke)) { e.Handled = true; return; }
-        if (_renaming is not null || e.OriginalSource is WpfTextBox ||
-            Keyboard.FocusedElement is WpfTextBox) return;
+        if ( e.Handled || e.IsRepeat || !TryGetShortcutStroke(e, out var stroke) )
+            return;
+        if ( TryHandleNewShortcut(stroke) )
+        { e.Handled = true; return; }
+        if ( _renaming is not null || e.OriginalSource is WpfTextBox ||
+            Keyboard.FocusedElement is WpfTextBox )
+            return;
         var context = _inDiffMode ? JsonToolShortcutContext.Diff :
             Documents.IsKeyboardFocusWithin ? JsonToolShortcutContext.List : JsonToolShortcutContext.Editor;
-        if (ExecuteShortcut(stroke, context)) e.Handled = true;
+        if ( ExecuteShortcut(stroke, context) )
+            e.Handled = true;
     }
 
     private bool TryHandleNewShortcut(string stroke)
     {
         var shortcut = _settings.Current.Shortcuts[JsonToolCommand.New];
-        if (_pendingShortcut is { } previous &&
+        if ( _pendingShortcut is { } previous &&
             DateTime.UtcNow - _pendingShortcutAt <= TimeSpan.FromSeconds(1) &&
-            string.Equals(shortcut, $"{previous} {stroke}", StringComparison.OrdinalIgnoreCase))
+            string.Equals(shortcut, $"{previous} {stroke}", StringComparison.OrdinalIgnoreCase) )
         {
             _pendingShortcut = null;
             _ = ExecuteAsync(JsonToolCommand.New);
             return true;
         }
-        if (string.Equals(shortcut, stroke, StringComparison.OrdinalIgnoreCase))
+        if ( string.Equals(shortcut, stroke, StringComparison.OrdinalIgnoreCase) )
         {
             _pendingShortcut = null;
             _ = ExecuteAsync(JsonToolCommand.New);
             return true;
         }
-        if (!shortcut.StartsWith(stroke + " ", StringComparison.OrdinalIgnoreCase)) return false;
+        if ( !shortcut.StartsWith(stroke + " ", StringComparison.OrdinalIgnoreCase) )
+            return false;
         _pendingShortcut = stroke;
         _pendingShortcutAt = DateTime.UtcNow;
         return true;
@@ -1276,15 +1375,18 @@ public partial class JsonToolWindow : Window
     // 连续按键先尝试与上一次笔画组成 chord，超时则退回为单键匹配。
     private bool ExecuteShortcut(string? stroke, JsonToolShortcutContext context)
     {
-        if (string.IsNullOrWhiteSpace(stroke)) return false;
+        if ( string.IsNullOrWhiteSpace(stroke) )
+            return false;
         var now = DateTime.UtcNow;
-        if (_pendingShortcut is not null && now - _pendingShortcutAt <= TimeSpan.FromSeconds(1))
+        if ( _pendingShortcut is not null && now - _pendingShortcutAt <= TimeSpan.FromSeconds(1) )
         {
             var chord = $"{_pendingShortcut} {stroke}";
             _pendingShortcut = null;
-            if (ExecuteShortcutCombination(chord, context, now)) return true;
+            if ( ExecuteShortcutCombination(chord, context, now) )
+                return true;
         }
-        else _pendingShortcut = null;
+        else
+            _pendingShortcut = null;
 
         return ExecuteShortcutCombination(stroke, context, now);
     }
@@ -1295,15 +1397,17 @@ public partial class JsonToolWindow : Window
             definition.Source == JsonToolShortcutSource.Juju && definition.Context == context).ToArray();
         var binding = bindings.FirstOrDefault(definition =>
             string.Equals(_settings.Current.Shortcuts[definition.Command], combination, StringComparison.Ordinal));
-        if (binding is not null)
+        if ( binding is not null )
         {
-            if (binding.Command == JsonToolCommand.Delete && !Documents.IsKeyboardFocusWithin) return false;
+            if ( binding.Command == JsonToolCommand.Delete && !Documents.IsKeyboardFocusWithin )
+                return false;
             _ = ExecuteAsync(binding.Command);
             return true;
         }
 
-        if (!bindings.Any(definition => _settings.Current.Shortcuts[definition.Command]
-                .StartsWith(combination + " ", StringComparison.Ordinal))) return false;
+        if ( !bindings.Any(definition => _settings.Current.Shortcuts[definition.Command]
+                .StartsWith(combination + " ", StringComparison.Ordinal)) )
+            return false;
         _pendingShortcut = combination;
         _pendingShortcutAt = now;
         return true;
@@ -1314,17 +1418,36 @@ public partial class JsonToolWindow : Window
         var key = eventArgs.Key == Key.System ? eventArgs.SystemKey : eventArgs.Key;
         var keyName = key switch
         {
-            Key.D0 => "0", Key.D1 => "1", Key.D2 => "2", Key.D3 => "3", Key.D4 => "4", Key.D5 => "5", Key.D6 => "6",
-            Key.D7 => "7", Key.D8 => "8", Key.D9 => "9",
-            Key.Return => "Enter", Key.Back => "Backspace", Key.Prior => "PageUp", Key.Next => "PageDown",
-            Key.Up => "Up", Key.Down => "Down", Key.Left => "Left", Key.Right => "Right",
-            Key.Escape => "Escape", Key.Delete => "Delete", Key.Space => "Space", Key.Tab => "Tab", Key.Home => "Home",
-            Key.End => "End", Key.Insert => "Insert",
+            Key.D0 => "0",
+            Key.D1 => "1",
+            Key.D2 => "2",
+            Key.D3 => "3",
+            Key.D4 => "4",
+            Key.D5 => "5",
+            Key.D6 => "6",
+            Key.D7 => "7",
+            Key.D8 => "8",
+            Key.D9 => "9",
+            Key.Return => "Enter",
+            Key.Back => "Backspace",
+            Key.Prior => "PageUp",
+            Key.Next => "PageDown",
+            Key.Up => "Up",
+            Key.Down => "Down",
+            Key.Left => "Left",
+            Key.Right => "Right",
+            Key.Escape => "Escape",
+            Key.Delete => "Delete",
+            Key.Space => "Space",
+            Key.Tab => "Tab",
+            Key.Home => "Home",
+            Key.End => "End",
+            Key.Insert => "Insert",
             >= Key.A and <= Key.Z => key.ToString(),
             >= Key.F1 and <= Key.F24 => key.ToString(),
             _ => null,
         };
-        if (keyName is null)
+        if ( keyName is null )
         {
             stroke = string.Empty;
             return false;
@@ -1348,7 +1471,7 @@ public partial class JsonToolWindow : Window
             JsonDocument.Parse(content);
             return true;
         }
-        catch (JsonException)
+        catch ( JsonException )
         {
             return false;
         }
@@ -1372,8 +1495,9 @@ public partial class JsonToolWindow : Window
     private static bool TryGetValidation(JsonElement payload, out bool valid)
     {
         valid = false;
-        if (payload.ValueKind != JsonValueKind.Object || !payload.TryGetProperty("hasErrors", out var errors) ||
-            errors.ValueKind is not (JsonValueKind.True or JsonValueKind.False)) return false;
+        if ( payload.ValueKind != JsonValueKind.Object || !payload.TryGetProperty("hasErrors", out var errors) ||
+            errors.ValueKind is not (JsonValueKind.True or JsonValueKind.False) )
+            return false;
         valid = !errors.GetBoolean();
         return true;
     }
@@ -1381,9 +1505,11 @@ public partial class JsonToolWindow : Window
     private static bool TryGetCommandResult(JsonElement payload, out string? error)
     {
         error = null;
-        if (payload.ValueKind != JsonValueKind.Object || !payload.TryGetProperty("ok", out var ok) ||
-            ok.ValueKind is not (JsonValueKind.True or JsonValueKind.False)) return false;
-        if (ok.GetBoolean()) return payload.TryGetProperty("result", out _);
+        if ( payload.ValueKind != JsonValueKind.Object || !payload.TryGetProperty("ok", out var ok) ||
+            ok.ValueKind is not (JsonValueKind.True or JsonValueKind.False) )
+            return false;
+        if ( ok.GetBoolean() )
+            return payload.TryGetProperty("result", out _);
         error = payload.TryGetProperty("error", out var value) && value.ValueKind == JsonValueKind.String
             ? value.GetString()
             : "编辑器命令失败。";
@@ -1438,13 +1564,15 @@ public partial class JsonToolWindow : Window
         public static bool TryParse(JsonElement root, out BridgeMessage message)
         {
             message = default!;
-            if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty("version", out var version) ||
+            if ( root.ValueKind != JsonValueKind.Object || !root.TryGetProperty("version", out var version) ||
                 version.ValueKind != JsonValueKind.Number || version.GetInt32() != ProtocolVersion ||
                 !root.TryGetProperty("type", out var type) || type.ValueKind != JsonValueKind.String ||
                 !Types.Contains(type.GetString()!) || !root.TryGetProperty("requestId", out var requestId) ||
                 requestId.ValueKind is not (JsonValueKind.String or JsonValueKind.Null) ||
-                !root.TryGetProperty("payload", out var payload)) return false;
-            if (type.GetString() == "commandResult" && requestId.ValueKind != JsonValueKind.String) return false;
+                !root.TryGetProperty("payload", out var payload) )
+                return false;
+            if ( type.GetString() == "commandResult" && requestId.ValueKind != JsonValueKind.String )
+                return false;
             message = new(type.GetString()!, requestId.ValueKind == JsonValueKind.String ? requestId.GetString() : null,
                 payload.Clone());
             return true;

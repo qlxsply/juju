@@ -1,14 +1,14 @@
+using System.Text.Json;
 using Juju.Core.Errors;
+using Juju.Core.Settings;
 using Juju.Core.Storage;
 using Juju.Core.Telemetry;
+using Juju.Core.Tools;
 using Juju.Tools.Json.Documents;
 using Juju.Tools.Json.Metadata;
 using Juju.Tools.Json.Minify;
 using Juju.Tools.Json.Settings;
 using Juju.Tools.Json.Storage;
-using Juju.Core.Tools;
-using Juju.Core.Settings;
-using System.Text.Json;
 
 namespace Juju.Tools.Json.Tests;
 
@@ -35,7 +35,8 @@ public sealed class JsonDocumentServiceTests : IAsyncLifetime
     public async Task DisposeAsync()
     {
         await _documents.DisposeAsync();
-        if (Directory.Exists(_root)) Directory.Delete(_root, recursive: true);
+        if ( Directory.Exists(_root) )
+            Directory.Delete(_root, recursive: true);
     }
 
     [Fact]
@@ -247,8 +248,10 @@ public sealed class JsonDocumentServiceTests : IAsyncLifetime
         }
         finally
         {
-            if (Directory.Exists(targetRoot)) Directory.Delete(targetRoot, true);
-            if (Directory.Exists(targetTool)) Directory.Delete(targetTool, true);
+            if ( Directory.Exists(targetRoot) )
+                Directory.Delete(targetRoot, true);
+            if ( Directory.Exists(targetTool) )
+                Directory.Delete(targetTool, true);
         }
     }
 
@@ -274,7 +277,8 @@ public sealed class JsonDocumentServiceTests : IAsyncLifetime
         Assert.Null(settings.Current.PendingDataRoot);
         Assert.True(File.Exists(Path.Combine(target, "config.json")));
         Assert.True(Directory.Exists(_root));
-        if (Directory.Exists(target)) Directory.Delete(target, true);
+        if ( Directory.Exists(target) )
+            Directory.Delete(target, true);
     }
 
     [Fact]
@@ -298,7 +302,8 @@ public sealed class JsonDocumentServiceTests : IAsyncLifetime
         public async Task LoadAsync(CancellationToken token = default)
         {
             var path = Path.Combine(root, "config.json");
-            if (File.Exists(path)) Current = JsonSerializer.Deserialize<AppSettings>(
+            if ( File.Exists(path) )
+                Current = JsonSerializer.Deserialize<AppSettings>(
                 await File.ReadAllTextAsync(path, token)) ?? new AppSettings();
         }
         public async Task SaveAsync(AppSettings value, CancellationToken token = default)
@@ -477,7 +482,8 @@ public sealed class JsonDocumentServiceTests : IAsyncLifetime
         finally
         {
             // 此目录不属于测试夹具的 _root，需在 finally 中即使断言失败也清理。
-            if (Directory.Exists(destination)) Directory.Delete(destination, recursive: true);
+            if ( Directory.Exists(destination) )
+                Directory.Delete(destination, recursive: true);
         }
     }
 

@@ -65,7 +65,8 @@ public sealed class DesktopWindowManager : IAppWindowManager
         _launcher.Loaded += (_, _) => _windowState.RestorePosition(_launcher, "launcher");
         _launcher.ApplySettings(_settings.Current);
         _launcher.Show();
-        if (_settings.Current.StartMinimized) _launcher.Hide();
+        if ( _settings.Current.StartMinimized )
+            _launcher.Hide();
     }
 
     public bool TryRegisterToolHotkey(ToolId tool, string shortcut) =>
@@ -75,20 +76,21 @@ public sealed class DesktopWindowManager : IAppWindowManager
 
     public void ShowSettings()
     {
-        if (_launcher is { IsVisible: false }) _launcher.Toggle();
+        if ( _launcher is { IsVisible: false } )
+            _launcher.Toggle();
         _launcher?.SetSettingsOpen(true);
-        if (_settingsWindow is null)
+        if ( _settingsWindow is null )
         {
             var sections = _services.GetServices<ISettingsSection>()
                 .Concat(_services.GetRequiredService<IToolManager>().SettingsSections);
             _settingsWindow = new SettingsWindow(sections, _dialogs);
             var hasSavedPosition = _windowState.HasPlacement("settings");
             _windowState.Restore(_settingsWindow, "settings");
-            if (_launcher is not null)
+            if ( _launcher is not null )
             {
                 _settingsWindow.Owner = _launcher;
                 var bounds = _workAreas.GetWorkArea(_launcher.Left, _launcher.Top);
-                if (!hasSavedPosition)
+                if ( !hasSavedPosition )
                 {
                     _settingsWindow.Left = Math.Clamp(_launcher.Left + _launcher.Width - 45, bounds.Left,
                         Math.Max(bounds.Left, bounds.Right - _settingsWindow.Width));
@@ -98,7 +100,8 @@ public sealed class DesktopWindowManager : IAppWindowManager
             }
             _settingsWindow.IsVisibleChanged += (_, _) =>
             {
-                if (!_settingsWindow.IsVisible) _launcher?.SetSettingsOpen(false);
+                if ( !_settingsWindow.IsVisible )
+                    _launcher?.SetSettingsOpen(false);
             };
         }
         _settingsWindow.NavigateToGeneral();
@@ -107,16 +110,19 @@ public sealed class DesktopWindowManager : IAppWindowManager
 
     public void PrepareToolWindowOpen()
     {
-        if (_settingsWindow?.IsVisible == true) _settingsWindow.Hide();
+        if ( _settingsWindow?.IsVisible == true )
+            _settingsWindow.Hide();
         _launcher?.SetSettingsOpen(false);
-        if (_launcher?.IsVisible == true) _launcher.Hide();
+        if ( _launcher?.IsVisible == true )
+            _launcher.Hide();
     }
 
     public void CloseAllTools()
     {
         _jsonWindows.Close();
         _totoWindows.CloseForShutdown();
-        foreach (var reminder in _reminders.ToArray()) reminder.Close();
+        foreach ( var reminder in _reminders.ToArray() )
+            reminder.Close();
         _settingsWindow?.Close();
     }
 
@@ -129,7 +135,7 @@ public sealed class DesktopWindowManager : IAppWindowManager
     private void OnScheduledPopup(TotoScheduledPopupKind kind) => DispatchToUi(() =>
     {
         var pending = _totoApplication.GetActiveItems();
-        if (kind == TotoScheduledPopupKind.WorkStart)
+        if ( kind == TotoScheduledPopupKind.WorkStart )
         {
             ShowReminder(new TotoReminderWindow("Toto - 今日待办盘点", pending, highlightTodayGreen: true));
             return;
@@ -143,13 +149,16 @@ public sealed class DesktopWindowManager : IAppWindowManager
     private static void DispatchToUi(Action action)
     {
         var dispatcher = System.Windows.Application.Current.Dispatcher;
-        if (dispatcher.CheckAccess()) action();
-        else dispatcher.BeginInvoke(action);
+        if ( dispatcher.CheckAccess() )
+            action();
+        else
+            dispatcher.BeginInvoke(action);
     }
 
     private void ShowReminder(TotoReminderWindow window)
     {
-        if (_shuttingDown) return;
+        if ( _shuttingDown )
+            return;
         _reminders.Add(window);
         window.Closed += (_, _) => { _reminders.Remove(window); _totoWindows.RefreshMain(); };
         window.Show();
@@ -159,14 +168,17 @@ public sealed class DesktopWindowManager : IAppWindowManager
 
     private void OnToolHidden(ToolId tool)
     {
-        if (_shuttingDown) return;
+        if ( _shuttingDown )
+            return;
         ToolHidden?.Invoke(tool);
-        if (_settings.Current.ReturnToLauncherOnToolClose) ShowLauncherIfHidden();
+        if ( _settings.Current.ReturnToLauncherOnToolClose )
+            ShowLauncherIfHidden();
     }
 
     private void ShowLauncherIfHidden()
     {
-        if (_launcher is { IsVisible: false }) _launcher.Toggle();
+        if ( _launcher is { IsVisible: false } )
+            _launcher.Toggle();
     }
 
     public async Task ShutdownAsync(WindowStateService states, CancellationToken cancellationToken)
@@ -180,9 +192,10 @@ public sealed class DesktopWindowManager : IAppWindowManager
                 ("json", _jsonSettings.Current.RememberWindowPlacement ? _jsonWindows.MainWindow : null),
                 ("toto", _totoWindows.MainWindow)], cancellationToken);
         await _jsonWindows.ShutdownAsync();
-        foreach (var reminder in _reminders.ToArray()) reminder.Close();
+        foreach ( var reminder in _reminders.ToArray() )
+            reminder.Close();
         _totoWindows.CloseForShutdown();
-        if (_settingsWindow is not null)
+        if ( _settingsWindow is not null )
         {
             _settingsWindow.AllowClose = true;
             _settingsWindow.Close();
@@ -192,8 +205,9 @@ public sealed class DesktopWindowManager : IAppWindowManager
 
     private static void Show(System.Windows.Window window)
     {
-        if (!window.IsVisible) window.Show();
-        if (window.WindowState == System.Windows.WindowState.Minimized)
+        if ( !window.IsVisible )
+            window.Show();
+        if ( window.WindowState == System.Windows.WindowState.Minimized )
             window.WindowState = System.Windows.WindowState.Normal;
         window.Activate();
     }

@@ -28,7 +28,7 @@ public sealed class ShortcutSettingsSection : ISettingsSection
         _toto = toto;
         var page = SettingsViewFactory.Page();
         _render = SettingsViewFactory.ShortcutGroup(page, "全局快捷键",
-            [("launcher", "显示 / 隐藏主界面", settings.Current.LeaderShortcut, (Action)EditLauncherHotkey)])[
+            [("launcher", "显示 / 隐藏主界面", settings.Current.LeaderShortcut, (Action) EditLauncherHotkey)])[
             "launcher"];
         View = page;
     }
@@ -44,7 +44,7 @@ public sealed class ShortcutSettingsSection : ISettingsSection
                         .Concat(_settings.Current.ToolGlobalShortcuts.Values).ToArray());
                 return null;
             }
-            catch (InvalidOperationException ex) { return ex.Message; }
+            catch ( InvalidOperationException ex ) { return ex.Message; }
         }, commit: SaveLauncherHotkeyAsync, defaultValue: "Ctrl+Alt+Space");
 
     private async Task SaveLauncherHotkeyAsync(string shortcut)
@@ -53,12 +53,13 @@ public sealed class ShortcutSettingsSection : ISettingsSection
         var value = previous with { LeaderShortcut = GlobalHotkeyPolicy.Normalize(shortcut) };
         var launcher = System.Windows.Application.Current.Windows.OfType<LauncherWindow>().FirstOrDefault();
         // Win32 注册成功后才落盘；避免用户输入被占用的组合键后重启丢失旧热键。
-        if (launcher is not null && !launcher.ApplySettings(value))
+        if ( launcher is not null && !launcher.ApplySettings(value) )
         {
             launcher.ApplySettings(previous);
             throw new InvalidOperationException("热键格式无效或已被其他程序占用");
         }
-        try { await _settings.SaveAsync(value); }
+        try
+        { await _settings.SaveAsync(value); }
         catch
         {
             launcher?.ApplySettings(previous);

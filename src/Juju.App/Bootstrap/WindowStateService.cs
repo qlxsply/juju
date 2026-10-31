@@ -23,11 +23,13 @@ public sealed class WindowStateService(IAtomicFileWriter writer, IWorkAreaProvid
     // Launcher 的宽高随工具列表布局而定，只恢复曾拖动的位置；旧版宽高不能覆盖新设计。
     public void RestorePosition(Window window, string key)
     {
-        if (!_placements.TryGetValue(key, out var state)) return;
-        var bounds = new Rect((int)state.Left, (int)state.Top,
-            Math.Max(1, (int)window.ActualWidth), Math.Max(1, (int)window.ActualHeight));
+        if ( !_placements.TryGetValue(key, out var state) )
+            return;
+        var bounds = new Rect((int) state.Left, (int) state.Top,
+            Math.Max(1, (int) window.ActualWidth), Math.Max(1, (int) window.ActualHeight));
         var area = FindIntersectingWorkArea(bounds);
-        if (area.Width <= 0 || area.Height <= 0) return;
+        if ( area.Width <= 0 || area.Height <= 0 )
+            return;
         window.Left = Math.Clamp(state.Left, area.Left, Math.Max(area.Left, area.Right - window.ActualWidth));
         window.Top = Math.Clamp(state.Top, area.Top, Math.Max(area.Top, area.Bottom - window.ActualHeight));
     }
@@ -35,12 +37,15 @@ public sealed class WindowStateService(IAtomicFileWriter writer, IWorkAreaProvid
     // 恢复前验证保存的矩形仍与任一工作区相交，避免显示器移除后窗口出现在屏幕外。
     public void Restore(Window window, string key)
     {
-        if (!_placements.TryGetValue(key, out var state)) return;
-        var bounds = new Rect((int)state.Left, (int)state.Top, (int)state.Width, (int)state.Height);
+        if ( !_placements.TryGetValue(key, out var state) )
+            return;
+        var bounds = new Rect((int) state.Left, (int) state.Top, (int) state.Width, (int) state.Height);
         var area = FindIntersectingWorkArea(bounds);
-        if (area.Width <= 0 || area.Height <= 0) return;
+        if ( area.Width <= 0 || area.Height <= 0 )
+            return;
         bounds.Intersect(area);
-        if (bounds.Width < 80 || bounds.Height < 80) return;
+        if ( bounds.Width < 80 || bounds.Height < 80 )
+            return;
         window.Left = state.Left;
         window.Top = state.Top;
         // 普通窗口仍恢复宽高；若它指定 Min/Max 则遵守约束（Launcher 只调用 RestorePosition）。
@@ -62,9 +67,10 @@ public sealed class WindowStateService(IAtomicFileWriter writer, IWorkAreaProvid
     public async Task CaptureAsync(IEnumerable<(string Key, Window? Window)> windows,
         CancellationToken cancellationToken)
     {
-        foreach (var (key, window) in windows)
+        foreach ( var (key, window) in windows )
         {
-            if (window is null) continue;
+            if ( window is null )
+                continue;
             Remember(window, key);
         }
 
@@ -73,10 +79,11 @@ public sealed class WindowStateService(IAtomicFileWriter writer, IWorkAreaProvid
 
     private Rect FindIntersectingWorkArea(Rect bounds)
     {
-        foreach (var workArea in workAreas.GetWorkAreas())
+        foreach ( var workArea in workAreas.GetWorkAreas() )
         {
             var area = new Rect(workArea.Left, workArea.Top, workArea.Width, workArea.Height);
-            if (area.IntersectsWith(bounds)) return area;
+            if ( area.IntersectsWith(bounds) )
+                return area;
         }
         return Rect.Empty;
     }

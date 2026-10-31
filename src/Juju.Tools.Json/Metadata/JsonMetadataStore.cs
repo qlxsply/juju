@@ -12,7 +12,7 @@ namespace Juju.Tools.Json.Metadata;
 public sealed class JsonMetadataStore(string toolDirectory, IAtomicFileWriter writer)
 {
     private static readonly JsonSerializerOptions Options = new()
-        { PropertyNamingPolicy = JsonNamingPolicy.CamelCase, WriteIndented = true };
+    { PropertyNamingPolicy = JsonNamingPolicy.CamelCase, WriteIndented = true };
 
     // 元数据“读-修改-写”必须作为整体串行化；SemaphoreSlim 可在 await 之间安全持有。
     private readonly SemaphoreSlim _gate = new(1, 1);
@@ -24,7 +24,8 @@ public sealed class JsonMetadataStore(string toolDirectory, IAtomicFileWriter wr
     /// </summary>
     public async Task<JsonMetadata> ReadAsync(CancellationToken cancellationToken = default)
     {
-        if (!File.Exists(Path)) return JsonMetadata.Empty();
+        if ( !File.Exists(Path) )
+            return JsonMetadata.Empty();
         try
         {
             var metadata =
@@ -33,7 +34,7 @@ public sealed class JsonMetadataStore(string toolDirectory, IAtomicFileWriter wr
                 ? metadata
                 : throw new JsonException("Unsupported metadata schema.");
         }
-        catch (Exception ex) when (ex is JsonException or IOException)
+        catch ( Exception ex ) when ( ex is JsonException or IOException )
         {
             var backup = Path + ".corrupt-" + DateTime.UtcNow.ToString("yyyyMMddHHmmssfff");
             try

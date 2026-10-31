@@ -99,29 +99,75 @@ Juju 默认显示主界面启动；开机自启动、启动时最小化到托盘
 
 ## 从源码构建
 
-构建需要 Windows、.NET 10 SDK、Node.js 22/npm；生成安装包还需要 Inno Setup 6。
+构建需要 Windows、.NET SDK **10.0.400**、Node.js 22/npm；生成安装包还需要 Inno Setup 6。SDK 与前端依赖初始化后，可在仓库根目录使用以下命令。
 
 ```powershell
 git clone https://github.com/qlxsply/juju.git
 cd juju
-npm ci --prefix editor
+
+# 首次初始化：恢复 .NET 项目、仓库本地格式化工具和前端依赖
 dotnet restore Juju.sln
-dotnet build Juju.sln -c Release
-dotnet test Juju.sln
+dotnet tool restore --tool-manifest .config/dotnet-tools.json
+npm ci --prefix editor
 ```
 
-在 Rider 中也可打开 `Juju.sln`，构建解决方案并运行 `Juju.App` 项目。
+### 编译、测试与清理
+
+```powershell
+# 编译整个解决方案
+dotnet build Juju.sln --configuration Debug
+dotnet build Juju.sln --configuration Release
+
+# 运行解决方案中的测试
+dotnet test Juju.sln --configuration Release
+
+# 清理所选配置的 bin/obj 构建输出
+dotnet clean Juju.sln --configuration Release
+```
+
+清理自包含发布目录和安装包目录（不会删除源码）：
+
+```powershell
+foreach ($path in @('artifacts\win-x64', 'artifacts\installer')) {
+    if (Test-Path -LiteralPath $path) {
+        Remove-Item -LiteralPath $path -Recurse -Force
+    }
+}
+```
+
+### 统一格式化
+
+格式规则由根目录 `.editorconfig`（C#）和 `Settings.XamlStyler`（XAML）提供。日常开发可以在 Rider 中使用 C# 的 **Reformat Code**；要统一格式化整个解决方案及 `src/`、`tests/` 下的 XAML，请在修改前确认工作区状态后运行：
+
+```powershell
+# 主动格式化 C# 与 XAML，会修改未符合规则的文件
+./scripts/format.ps1
+
+# 只检查，不修改源码；不合规时会返回非零退出码
+./scripts/check-format.ps1
+```
+
+格式检查是开发者本地的手动步骤，不属于构建或 GitHub Actions 工作流。建议在准备提交/推送前运行检查，并查看 `git diff` 确认格式化结果。脚本要求 .NET SDK 10.0.400 和 PowerShell 5.1 或更新版本。
+当前仓库仍有既存 C# / XAML 格式差异，因此首次运行只检查脚本可能返回非零；如需修正，请先检查工作区，再明确运行主动格式化脚本并审阅差异。
+
+### Rider 设置
+
+打开 **Settings → Editor → Code Style**，确认 **Enable EditorConfig support** 已启用（Rider 默认启用）；项目 `.editorconfig` 中的规则会覆盖 Rider 对应的 IDE 默认值。不要把 Rider 设置导出回去覆盖仓库的 `.editorconfig`。可以用 **Help → Find Action → Show Code Style Configuration** 查看当前文件实际生效的规则。Windows 下使用 **Code → Reformat Code**（默认 `Ctrl+Alt+L`）格式化 C#。
+
+XAML 的权威格式化器是仓库本地 XAML Styler，而不是 Rider 内置 XAML 格式器。要保证一致，使用 `./scripts/format.ps1` 统一格式化 XAML；工具版本和配置由 `.config/dotnet-tools.json`、`Settings.XamlStyler` 固定。详见 [代码格式说明](docs/code-formatting.md)。
 
 ### 生成 Windows x64 安装包
 
-从仓库根目录运行以下命令，将示例版本替换为实际版本：
+从仓库根目录运行以下命令，将示例版本替换为实际版本。`dotnet publish` 输出自包含的 Windows x64 应用；随后 Inno Setup 6 将它打包为安装程序。
 
 ```powershell
 dotnet publish src/Juju.App/Juju.App.csproj `
   -c Release -r win-x64 --self-contained true `
   -p:Version=2.0.0 -o artifacts/win-x64
 
-& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DAppVersion=2.0.0 installer/juju.iss
+$iscc = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'
+& $iscc '/DAppVersion=2.0.0' 'installer\juju.iss'
+if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed with exit code $LASTEXITCODE" }
 ```
 
 安装包将生成在 `artifacts/installer/juju_v2.0.0_setup_win64.exe`。

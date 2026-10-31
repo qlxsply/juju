@@ -1,11 +1,11 @@
 using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
-using Juju.Tools.Json.Settings;
-using Juju.Core.Settings;
-using Juju.Core.Tools;
 using Juju.App.Views;
+using Juju.Core.Settings;
 using Juju.Core.Storage;
+using Juju.Core.Tools;
+using Juju.Tools.Json.Settings;
 using Juju.Tools.Toto.Application;
 using MediaBrush = System.Windows.Media.Brush;
 using MediaBrushes = System.Windows.Media.Brushes;
@@ -83,14 +83,16 @@ public sealed class JsonSettingsSection : ISettingsSection
                                             row.Command != JsonToolCommand.UnfoldLevel).ToArray();
         var basicRenderers = SettingsViewFactory.ShortcutGroup(panel, "基础快捷键",
             basicRows.Select(row => (row.Command.ToString(), row.CommandName, row.Shortcut,
-                (Action)(() => EditEditorShortcut(row)))));
-        foreach (var row in basicRows) _renderShortcutRows[row.Command] = basicRenderers[row.Command.ToString()];
+                (Action) (() => EditEditorShortcut(row)))));
+        foreach ( var row in basicRows )
+            _renderShortcutRows[row.Command] = basicRenderers[row.Command.ToString()];
         var editorRows = _rows.Where(row => row.SourceKind == JsonToolShortcutSource.Monaco ||
                                              row.Command == JsonToolCommand.UnfoldLevel).ToArray();
         var editorRenderers = SettingsViewFactory.ShortcutGroup(panel, "编辑器快捷键",
             editorRows.Select(row => (row.Command.ToString(), row.CommandName, row.Shortcut,
-                (Action)(() => EditEditorShortcut(row)))));
-        foreach (var row in editorRows) _renderShortcutRows[row.Command] = editorRenderers[row.Command.ToString()];
+                (Action) (() => EditEditorShortcut(row)))));
+        foreach ( var row in editorRows )
+            _renderShortcutRows[row.Command] = editorRenderers[row.Command.ToString()];
         View = panel;
     }
 
@@ -127,7 +129,7 @@ public sealed class JsonSettingsSection : ISettingsSection
                 values[nameof(ToolId.Json)] = candidate;
                 var next = old with { ToolKeys = ToolLaunchKeys.Normalize(values) };
                 var launcher = System.Windows.Application.Current.Windows.OfType<LauncherWindow>().FirstOrDefault();
-                if (launcher is not null && !launcher.ApplySettings(next))
+                if ( launcher is not null && !launcher.ApplySettings(next) )
                 {
                     launcher.ApplySettings(old);
                     throw new InvalidOperationException("单键与其他入口按键冲突，原设置保持不变。");
@@ -159,14 +161,15 @@ public sealed class JsonSettingsSection : ISettingsSection
                         new[] { normalized, _toto.GlobalHotkey }.Concat(_applicationSettings.Current.ToolGlobalShortcuts.Values).ToArray());
                     return null;
                 }
-                catch (InvalidOperationException ex) { return ex.Message; }
+                catch ( InvalidOperationException ex ) { return ex.Message; }
             }, SaveGlobalShortcutAsync, defaultValue: GlobalHotkeyPolicy.None);
     }
 
     private async Task SaveGlobalShortcutAsync(string shortcut)
     {
         var previous = _settings.Current;
-        if (!_tryRegisterHotkey(ToolId.Json, shortcut)) throw new InvalidOperationException("JSON 全局热键无效或已占用。");
+        if ( !_tryRegisterHotkey(ToolId.Json, shortcut) )
+            throw new InvalidOperationException("JSON 全局热键无效或已占用。");
         try
         {
             await _settings.SaveAsync(previous with { GlobalShortcut = GlobalHotkeyPolicy.Normalize(shortcut, true) });
@@ -188,7 +191,7 @@ public sealed class JsonSettingsSection : ISettingsSection
             ToolLaunchKeys.Normalize(values);
             return null;
         }
-        catch (InvalidOperationException ex) { return ex.Message; }
+        catch ( InvalidOperationException ex ) { return ex.Message; }
     }
 
     private void EditDirectory() => _dialogs.EditFolder("选择 JSON 数据目录", _dataChanges.DisplayToolDirectory("json"),
@@ -218,12 +221,18 @@ public sealed class JsonSettingsSection : ISettingsSection
         try
         {
             JsonToolSettings? next = null;
-            if (ReferenceEquals(source, _keep)) next = previous with { KeepWindowOnClose = _keep.IsChecked == true };
-            else if (ReferenceEquals(source, _maximized)) next = previous with { OpenMaximized = _maximized.IsChecked == true };
-            else if (ReferenceEquals(source, _remember)) next = previous with { RememberWindowPlacement = _remember.IsChecked == true };
-            else if (ReferenceEquals(source, _autosave)) next = previous with { AutosaveDelayMilliseconds = ReadNumber(_autosave, 100, 10000) };
-            else if (ReferenceEquals(source, _indent)) next = previous with { IndentSize = ReadNumber(_indent, 1, 8) };
-            else return; // 快捷键、路径和入口单键由专用弹窗提交，不能保存半成品。
+            if ( ReferenceEquals(source, _keep) )
+                next = previous with { KeepWindowOnClose = _keep.IsChecked == true };
+            else if ( ReferenceEquals(source, _maximized) )
+                next = previous with { OpenMaximized = _maximized.IsChecked == true };
+            else if ( ReferenceEquals(source, _remember) )
+                next = previous with { RememberWindowPlacement = _remember.IsChecked == true };
+            else if ( ReferenceEquals(source, _autosave) )
+                next = previous with { AutosaveDelayMilliseconds = ReadNumber(_autosave, 100, 10000) };
+            else if ( ReferenceEquals(source, _indent) )
+                next = previous with { IndentSize = ReadNumber(_indent, 1, 8) };
+            else
+                return; // 快捷键、路径和入口单键由专用弹窗提交，不能保存半成品。
             await _settings.SaveAsync(next);
             _autosave.Text = next.AutosaveDelayMilliseconds.ToString();
             _indent.Text = next.IndentSize.ToString();
@@ -253,7 +262,7 @@ public sealed class JsonSettingsSection : ISettingsSection
                     JsonToolShortcuts.Validate(JsonToolShortcuts.Normalize(values));
                     return null;
                 }
-                catch (InvalidOperationException ex) { return ex.Message; }
+                catch ( InvalidOperationException ex ) { return ex.Message; }
             },
             commit: async candidate =>
             {

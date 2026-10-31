@@ -1,79 +1,169 @@
-<Window x:Class="Juju.App.Views.TotoReminderWindow"
-        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
-        xmlns:views="clr-namespace:Juju.App.Views"
-        Icon="pack://application:,,,/Juju.App;component/Assets/toto.ico"
-        views:ToolWindowChrome.IsEnabled="True" views:ToolWindowChrome.ToolIcon="{StaticResource TotoToolIcon}"
-        views:ToolWindowChrome.ShowStatusBar="False"
-        Style="{StaticResource ToolWindowWindowStyle}" Topmost="True" Width="720" Height="400"
-        MinWidth="540" MinHeight="300" WindowStartupLocation="CenterScreen"
-        PreviewKeyDown="Window_PreviewKeyDown">
+﻿<Window
+    x:Class="Juju.App.Views.TotoReminderWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
+    xmlns:views="clr-namespace:Juju.App.Views"
+    Width="720"
+    Height="400"
+    MinWidth="540"
+    MinHeight="300"
+    views:ToolWindowChrome.IsEnabled="True"
+    views:ToolWindowChrome.ToolIcon="{StaticResource TotoToolIcon}"
+    views:ToolWindowChrome.ShowStatusBar="False"
+    Icon="pack://application:,,,/Juju.App;component/Assets/toto.ico"
+    Style="{StaticResource ToolWindowWindowStyle}"
+    Topmost="True"
+    WindowStartupLocation="CenterScreen"
+    PreviewKeyDown="Window_PreviewKeyDown">
     <shell:WindowChrome.WindowChrome>
-        <shell:WindowChrome CaptionHeight="48" ResizeBorderThickness="6" GlassFrameThickness="0"
-                            UseAeroCaptionButtons="False" />
+        <shell:WindowChrome
+            CaptionHeight="48"
+            ResizeBorderThickness="6"
+            GlassFrameThickness="0"
+            UseAeroCaptionButtons="False" />
     </shell:WindowChrome.WindowChrome>
     <Grid>
-        <DataGrid x:Name="TodayTasks" Style="{StaticResource TotoGrid}" VerticalAlignment="Stretch"
-                  ItemsSource="{Binding SingleItems}" Visibility="Visible"
-                  ScrollViewer.CanContentScroll="False" EnableRowVirtualization="False">
-            <DataGrid.Resources><Style TargetType="ScrollBar" BasedOn="{StaticResource TotoScrollBar}" /></DataGrid.Resources>
+        <DataGrid
+            x:Name="TodayTasks"
+            VerticalAlignment="Stretch"
+            Style="{StaticResource TotoGrid}"
+            ItemsSource="{Binding SingleItems}"
+            Visibility="Visible"
+            ScrollViewer.CanContentScroll="False"
+            EnableRowVirtualization="False">
+            <DataGrid.Resources>
+                <Style
+                    TargetType="ScrollBar"
+                    BasedOn="{StaticResource TotoScrollBar}" />
+            </DataGrid.Resources>
             <DataGrid.Columns>
-                <DataGridTextColumn Header="事项内容" Binding="{Binding Content}" Width="2*" MinWidth="220"
-                                    ElementStyle="{StaticResource TotoReminderContentText}" />
-                <DataGridTextColumn Header="计划时间" Binding="{Binding PlannedText}" Width="1*" MinWidth="150"
-                                    ElementStyle="{StaticResource TotoReminderPlanText}" />
-                <DataGridTextColumn Header="提醒时间" Binding="{Binding RemindText}" Width="1*" MinWidth="150"
-                                    ElementStyle="{StaticResource TotoReminderPlainText}" />
+                <DataGridTextColumn
+                    Width="2*"
+                    MinWidth="220"
+                    Header="事项内容"
+                    Binding="{Binding Content}"
+                    ElementStyle="{StaticResource TotoReminderContentText}" />
+                <DataGridTextColumn
+                    Width="1*"
+                    MinWidth="150"
+                    Header="计划时间"
+                    Binding="{Binding PlannedText}"
+                    ElementStyle="{StaticResource TotoReminderPlanText}" />
+                <DataGridTextColumn
+                    Width="1*"
+                    MinWidth="150"
+                    Header="提醒时间"
+                    Binding="{Binding RemindText}"
+                    ElementStyle="{StaticResource TotoReminderPlainText}" />
             </DataGrid.Columns>
         </DataGrid>
-        <ScrollViewer x:Name="ReviewScroll" VerticalScrollBarVisibility="Auto"
-                      HorizontalScrollBarVisibility="Disabled" CanContentScroll="False"
-                      PanningMode="VerticalOnly" PreviewMouseWheel="ReviewScroll_PreviewMouseWheel"
-                      Visibility="Collapsed">
+        <ScrollViewer
+            x:Name="ReviewScroll"
+            VerticalScrollBarVisibility="Auto"
+            HorizontalScrollBarVisibility="Disabled"
+            CanContentScroll="False"
+            PanningMode="VerticalOnly"
+            PreviewMouseWheel="ReviewScroll_PreviewMouseWheel"
+            Visibility="Collapsed">
             <StackPanel>
-                <Grid Height="38" Margin="14,4,14,0">
-                    <TextBlock Text="未完成事项" VerticalAlignment="Center" FontSize="12"
-                               FontWeight="SemiBold" Foreground="#25344D" />
-                    <TextBlock x:Name="ActiveCount" HorizontalAlignment="Right" VerticalAlignment="Center"
-                               FontSize="11" Foreground="#8795AA" />
+                <Grid
+                    Height="38"
+                    Margin="14,4,14,0">
+                    <TextBlock
+                        VerticalAlignment="Center"
+                        Text="未完成事项"
+                        FontSize="12"
+                        FontWeight="SemiBold"
+                        Foreground="#25344D" />
+                    <TextBlock
+                        x:Name="ActiveCount"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Center"
+                        FontSize="11"
+                        Foreground="#8795AA" />
                 </Grid>
-                <DataGrid x:Name="ActiveReviewTasks" Style="{StaticResource TotoGrid}"
-                          ItemsSource="{Binding ActiveReviewItems}" VerticalAlignment="Top"
-                          ScrollViewer.VerticalScrollBarVisibility="Disabled"
-                          ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                          ScrollViewer.CanContentScroll="False" EnableRowVirtualization="False"
-                          SelectionChanged="ReviewSelectionChanged">
+                <DataGrid
+                    x:Name="ActiveReviewTasks"
+                    VerticalAlignment="Top"
+                    Style="{StaticResource TotoGrid}"
+                    ItemsSource="{Binding ActiveReviewItems}"
+                    ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                    ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                    ScrollViewer.CanContentScroll="False"
+                    EnableRowVirtualization="False"
+                    SelectionChanged="ReviewSelectionChanged">
                     <DataGrid.Columns>
-                        <DataGridTextColumn Header="事项内容" Binding="{Binding Content}" Width="2*" MinWidth="220"
-                                            ElementStyle="{StaticResource TotoReminderContentText}" />
-                        <DataGridTextColumn Header="计划时间" Binding="{Binding PlannedText}" Width="1*" MinWidth="150"
-                                            ElementStyle="{StaticResource TotoReminderPlanText}" />
-                        <DataGridTextColumn Header="提醒时间" Binding="{Binding RemindText}" Width="1*" MinWidth="150"
-                                            ElementStyle="{StaticResource TotoReminderPlainText}" />
+                        <DataGridTextColumn
+                            Width="2*"
+                            MinWidth="220"
+                            Header="事项内容"
+                            Binding="{Binding Content}"
+                            ElementStyle="{StaticResource TotoReminderContentText}" />
+                        <DataGridTextColumn
+                            Width="1*"
+                            MinWidth="150"
+                            Header="计划时间"
+                            Binding="{Binding PlannedText}"
+                            ElementStyle="{StaticResource TotoReminderPlanText}" />
+                        <DataGridTextColumn
+                            Width="1*"
+                            MinWidth="150"
+                            Header="提醒时间"
+                            Binding="{Binding RemindText}"
+                            ElementStyle="{StaticResource TotoReminderPlainText}" />
                     </DataGrid.Columns>
                 </DataGrid>
-                <Border Height="1" Background="Transparent" Margin="15,24,15,24"
-                        IsHitTestVisible="False" />
-                <Grid Height="38" Margin="14,0,14,0">
-                    <TextBlock Text="已完成事项" VerticalAlignment="Center" FontSize="12"
-                               FontWeight="SemiBold" Foreground="#25344D" />
-                    <TextBlock x:Name="CompletedCount" HorizontalAlignment="Right" VerticalAlignment="Center"
-                               FontSize="11" Foreground="#8795AA" />
+                <Border
+                    Height="1"
+                    Margin="15,24,15,24"
+                    Background="Transparent"
+                    IsHitTestVisible="False" />
+                <Grid
+                    Height="38"
+                    Margin="14,0,14,0">
+                    <TextBlock
+                        VerticalAlignment="Center"
+                        Text="已完成事项"
+                        FontSize="12"
+                        FontWeight="SemiBold"
+                        Foreground="#25344D" />
+                    <TextBlock
+                        x:Name="CompletedCount"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Center"
+                        FontSize="11"
+                        Foreground="#8795AA" />
                 </Grid>
-                <DataGrid x:Name="CompletedTasks" Style="{StaticResource TotoGrid}"
-                          ItemsSource="{Binding CompletedItems}" VerticalAlignment="Top"
-                          ScrollViewer.VerticalScrollBarVisibility="Disabled"
-                          ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                          ScrollViewer.CanContentScroll="False" EnableRowVirtualization="False"
-                          SelectionChanged="ReviewSelectionChanged">
+                <DataGrid
+                    x:Name="CompletedTasks"
+                    VerticalAlignment="Top"
+                    Style="{StaticResource TotoGrid}"
+                    ItemsSource="{Binding CompletedItems}"
+                    ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                    ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                    ScrollViewer.CanContentScroll="False"
+                    EnableRowVirtualization="False"
+                    SelectionChanged="ReviewSelectionChanged">
                     <DataGrid.Columns>
-                        <DataGridTextColumn Header="事项内容" Binding="{Binding Content}" Width="2*" MinWidth="220"
-                                            ElementStyle="{StaticResource TotoReminderPlainText}" />
-                        <DataGridTextColumn Header="计划时间" Binding="{Binding PlannedText}" Width="1*" MinWidth="150"
-                                            ElementStyle="{StaticResource TotoReminderPlainText}" />
-                        <DataGridTextColumn Header="完成时间" Binding="{Binding EndedText}" Width="1*" MinWidth="150"
-                                            ElementStyle="{StaticResource TotoReminderPlainText}" />
+                        <DataGridTextColumn
+                            Width="2*"
+                            MinWidth="220"
+                            Header="事项内容"
+                            Binding="{Binding Content}"
+                            ElementStyle="{StaticResource TotoReminderPlainText}" />
+                        <DataGridTextColumn
+                            Width="1*"
+                            MinWidth="150"
+                            Header="计划时间"
+                            Binding="{Binding PlannedText}"
+                            ElementStyle="{StaticResource TotoReminderPlainText}" />
+                        <DataGridTextColumn
+                            Width="1*"
+                            MinWidth="150"
+                            Header="完成时间"
+                            Binding="{Binding EndedText}"
+                            ElementStyle="{StaticResource TotoReminderPlainText}" />
                     </DataGrid.Columns>
                 </DataGrid>
             </StackPanel>
