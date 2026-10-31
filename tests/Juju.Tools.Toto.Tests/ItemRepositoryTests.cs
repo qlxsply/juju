@@ -5,11 +5,12 @@ using Juju.Tools.Toto.Infrastructure.Storage;
 using Juju.Tools.Toto.Application;
 using Juju.Tools.Toto.Application.Items;
 using Juju.Tools.Toto.Application.Reminders;
-using Toto.App.Domain;
-using Toto.App.Services;
+using Juju.Tools.Toto.Application.Settings;
+using Juju.Tools.Toto.Domain;
+using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
-namespace Toto.App.Tests;
+namespace Juju.Tools.Toto.Tests;
 
 public sealed class ItemRepositoryTests : IDisposable
 {
@@ -106,9 +107,10 @@ public sealed class ItemRepositoryTests : IDisposable
     }
 
     [Fact]
-    public void Toto_window_icon_is_embedded_in_the_integrated_tool()
+    public void Toto_window_icon_is_not_embedded_in_the_business_module()
     {
-        Assert.Contains("Juju.Tools.Toto.toto.ico", typeof(TotoToolHost).Assembly.GetManifestResourceNames());
+        Assert.DoesNotContain(typeof(TotoReminderRuntime).Assembly.GetManifestResourceNames(),
+            name => name.EndsWith("toto.ico", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
@@ -185,7 +187,7 @@ public sealed class ItemRepositoryTests : IDisposable
     }
 
     [Fact]
-    public void Startup_archives_through_previous_month_and_records_progress()
+    public async Task Startup_archives_through_previous_month_and_records_progress()
     {
         var paths = new TotoPaths(dataDirectory);
         var cutoff = new DateOnly(DateTime.Today.Year, DateTime.Today.Month, 1).AddMonths(-1);
@@ -196,7 +198,8 @@ public sealed class ItemRepositoryTests : IDisposable
         if (DateTime.Today.AddDays(7).Year != DateTime.Today.Year)
             calendar.SaveLocal(DateTime.Today.Year + 1, []);
 
-        using var host = new TotoToolHost(new SynchronizationContext(), paths);
+        using var host = CreateRuntime(paths);
+        await host.StartAsync();
 
         Assert.Equal(cutoff.ToString("yyyyMM"), new SettingsRepository(paths).ArchiveProgressMonth);
         Assert.Single(CsvFile.Read(paths.HistoryArchiveCsvPath(oldMonth.Year * 100 + oldMonth.Month)).Skip(1));
@@ -246,8 +249,8 @@ public sealed class ItemRepositoryTests : IDisposable
         calendar.SaveLocal(DateTime.Today.Year, []);
         if (DateTime.Today.AddDays(7).Year != DateTime.Today.Year)
             calendar.SaveLocal(DateTime.Today.Year + 1, []);
-        using var host = new TotoToolHost(new SynchronizationContext(), paths);
-        Assert.True(host.EnsureReady());
+        using var host = CreateRuntime(paths);
+        await host.StartAsync();
         repository.Add(Item("due", "需要提醒", DateTime.Now.AddMinutes(-1)));
         var notifications = new List<TotoItemSnapshot>();
         var delivered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -328,8 +331,8 @@ public sealed class ItemRepositoryTests : IDisposable
         if (DateTime.Today.AddDays(7).Year != DateTime.Today.Year)
             calendar.SaveLocal(DateTime.Today.Year + 1, []);
         repository.Add(Item("restored", "重启后到期", DateTime.Now.AddMinutes(-1)));
-        using var host = new TotoToolHost(new SynchronizationContext(), paths);
-        Assert.True(host.EnsureReady());
+        using var host = CreateRuntime(paths);
+        await host.StartAsync();
         var delivered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         host.DueReminders += due =>
         {
@@ -350,8 +353,8 @@ public sealed class ItemRepositoryTests : IDisposable
         calendar.SaveLocal(today.Year, []);
         if (DateTime.Today.AddDays(7).Year != today.Year)
             calendar.SaveLocal(today.Year + 1, []);
-        using var host = new TotoToolHost(new SynchronizationContext(), paths);
-        Assert.True(host.EnsureReady());
+        using var host = CreateRuntime(paths);
+        await host.StartAsync();
         var settings = new SettingsRepository(paths);
         var values = settings.Load().ToDictionary(item => item.Key, item => item.Value);
         values["daily_review_start_time"] = "00:00";
@@ -379,8 +382,8 @@ public sealed class ItemRepositoryTests : IDisposable
         calendar.SaveLocal(DateTime.Today.Year, []);
         if (DateTime.Today.AddDays(7).Year != DateTime.Today.Year)
             calendar.SaveLocal(DateTime.Today.Year + 1, []);
-        using var host = new TotoToolHost(new SynchronizationContext(), paths);
-        Assert.True(host.EnsureReady());
+        using var host = CreateRuntime(paths);
+        await host.StartAsync();
         var settings = new SettingsRepository(paths);
         var values = settings.Load().ToDictionary(item => item.Key, item => item.Value);
         values["daily_review_start_time"] = "00:00";
@@ -411,6 +414,17 @@ public sealed class ItemRepositoryTests : IDisposable
     private static TodoItem Item(string id, string content, DateTime? remindAt = null) =>
         new(id, content, null, remindAt, DateTime.Now, 0, ItemStatus.Active,
             remindAt is null ? ReminderStatus.None : ReminderStatus.Pending, null, null, "");
+
+    private static TotoReminderRuntime CreateRuntime(TotoPaths paths) => new(
+        new ItemRepository(paths), new SettingsRepository(paths),
+        new WorkCalendarRepository(new HolidayCalendarDownloadService(paths)),
+        new TestSystemLifecycleEvents(), NullLogger<TotoReminderRuntime>.Instance);
+
+    private sealed class TestSystemLifecycleEvents : Juju.Core.Contracts.Platform.ISystemLifecycleEvents
+    {
+        public event Action<Juju.Core.Contracts.Platform.SystemLifecycleSignal>? Changed;
+        public void Raise(Juju.Core.Contracts.Platform.SystemLifecycleSignal signal) => Changed?.Invoke(signal);
+    }
 
     public void Dispose()
     {

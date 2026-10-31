@@ -1,7 +1,7 @@
-using Toto.App.Services;
+using Juju.Tools.Toto.Application.Items;
 using Xunit;
 
-namespace Toto.App.Tests;
+namespace Juju.Tools.Toto.Tests;
 
 public sealed class QuickItemParserTests
 {

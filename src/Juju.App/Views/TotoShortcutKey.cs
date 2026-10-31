@@ -1,5 +1,5 @@
 using System.Windows.Input;
-using Toto.App.Services;
+using Juju.Tools.Toto.Application.Settings;
 using KeyEventArgs = System.Windows.Input.KeyEventArgs;
 
 namespace Juju.App.Views;

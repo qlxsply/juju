@@ -1,8 +1,8 @@
 using Juju.Tools.Toto.Application.Ports;
-using Toto.App.Domain;
+using Juju.Tools.Toto.Domain;
 using Timer = System.Threading.Timer;
 
-namespace Toto.App.Services;
+namespace Juju.Tools.Toto.Application.Reminders;
 
 /// <summary>计算下一次提醒或工作日弹窗，并在 UI 同步上下文中通知订阅者。</summary>
 /// <remarks>计时器和同步上下文属于需释放或线程关联的资源；关闭时必须调用 <see cref="Dispose"/>。</remarks>
@@ -11,7 +11,6 @@ internal sealed class ReminderScheduler : IDisposable
     private readonly ITotoItemRepository items;
     private readonly ITotoSettingsRepository settings;
     private readonly Timer timer;
-    private readonly SynchronizationContext context;
     private bool locked;
     private bool disposed;
     /// <summary>当一个或多个事项到达提醒时间时触发。</summary>
@@ -20,14 +19,12 @@ internal sealed class ReminderScheduler : IDisposable
     /// <summary>当工作日计划弹窗到期时触发。</summary>
     public event Action<ScheduledPopupKind>? ScheduledPopup;
 
-    /// <summary>创建调度器并捕获当前 UI 同步上下文，用于将通知切回 UI 线程。</summary>
-    public ReminderScheduler(ITotoItemRepository items, ITotoSettingsRepository settings,
-        SynchronizationContext uiContext)
+    /// <summary>创建平台无关调度器；事件订阅方负责切换到自身的 UI 调度器。</summary>
+    public ReminderScheduler(ITotoItemRepository items, ITotoSettingsRepository settings)
     {
         this.items = items;
         this.settings = settings;
-        context = uiContext;
-        // Timer 回调在线程池线程执行；通过宿主提供的同步上下文投递 UI 通知。
+        // Timer 回调在线程池线程执行；事件不携带 WPF Dispatcher 或 UI 同步上下文。
         timer = new Timer(_ => Tick(), null, Timeout.Infinite, Timeout.Infinite);
     }
 
@@ -90,7 +87,7 @@ internal sealed class ReminderScheduler : IDisposable
         if (disposed || locked) return;
         var now = DateTime.Now;
         var due = items.MarkDueReminders(now);
-        if (due.Count > 0) context.Post(_ => DueReminders?.Invoke(due), null);
+        if (due.Count > 0) DueReminders?.Invoke(due);
         var values = settings.Load();
         var date = DateOnly.FromDateTime(now);
         var weekdaysOnly = values.GetValueOrDefault("daily_review_workdays") == "1";
@@ -106,7 +103,7 @@ internal sealed class ReminderScheduler : IDisposable
                     now.TimeOfDay >= time.ToTimeSpan()).OrderBy(x => x.Item2).ToArray();
             foreach (var candidate in candidates)
                 if (settings.TryMarkScheduledPopupShown(date, candidate.Item2, now))
-                    context.Post(_ => ScheduledPopup?.Invoke(candidate.Item2), null);
+                    ScheduledPopup?.Invoke(candidate.Item2);
         }
 
         Reschedule();

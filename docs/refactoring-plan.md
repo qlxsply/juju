@@ -480,29 +480,30 @@ App.Bootstrap                   -> App.Tools + App.Presentation + Platform.Windo
 - [x] `TotoHistoryWindow` 历史筛选、分页和详情数据改为应用服务调用。
 - [x] `DesktopWindowManager` 每日待办/完成快照改为应用服务调用。
 - [x] 提醒调度器留在 Toto 模块内，通过 Repository Ports 读写事项和设置；WPF 窗口只接收公开快照，不持有 Repository。
-- [x] 移除 `TotoToolHost.Items`、Host 的 Repository 属性和 App 到 Repository 的直接调用。保留 `InternalsVisibleTo("Juju.App")` 仅供仍在使用的快捷键解析/显示格式内部工具，随阶段 3 搬迁这些工具后再移除。
+- [x] 移除 `TotoToolHost.Items`、Host 的 Repository 属性和 App 到 Repository 的直接调用；阶段 3 搬迁内部快捷键解析/日期格式工具后已同时移除 `InternalsVisibleTo("Juju.App")`。
 
 **验收：** App 不再直接调用 `ItemRepository`；事项操作、历史查询、提醒和月归档结果保持不变。
 
 ### 阶段 3：以 Juju 模块架构重建 Toto 宿主与平台边界
 
-- [ ] 将 `Toto.App`、`Toto.App.Data`、`Toto.App.Domain`、`Toto.App.Services` 全部重命名为 `Juju.Tools.Toto.*`，同步更新 App 和测试。
-- [ ] 不保留旧 namespace alias、旧 `TotoToolHost` 转发 wrapper 或旧公开 API façade。
-- [ ] 用 Toto 应用服务和模块运行时取代现有职责混合的 `TotoToolHost`；不要只改类名而保留旧 Host 结构。
-- [ ] 将提醒运行时、Ready 状态、日历重试和设置用例分配给明确的 Toto Application/Runtime 服务。
-- [ ] 将会话锁定/解锁、电源恢复、系统时间变化订阅移至 `Juju.Platform.Windows`；通过平台无关信号通知 Toto runtime。
-- [ ] 把 WPF 线程派发留在 Juju.App：提醒运行时发布事件，App 模块将窗口显示请求派发到 UI 线程。
-- [ ] 保持单一 ReminderScheduler：启动时创建一次，窗口开关不重复创建，关停时释放一次。
-- [ ] 保持五分钟日历重试、锁屏暂停、恢复后的重调度以及当前错误提示。
-- [ ] 将 App 的系统托盘实现拆成 Platform.Windows 的 `NotifyIconService` 与 App 的 `TrayController`，保持图标、菜单文案、命令和点击结果不变。
-- [ ] 将文件夹选择和屏幕工作区查询抽为平台端口，由 Platform.Windows 提供 WinForms 实现；SettingsWindow 与目录选择结果保持不变。
-- [ ] 将工具窗口工厂契约放在 `Juju.App.Contracts.Windows`，具体 JSON/Toto WPF 工厂放在各自 Presentation 包；ToolModule 只依赖工厂端口。
-- [ ] 在托盘、文件夹选择、工作区查询全部迁移后移除 `Juju.App.csproj` 的 `UseWindowsForms`，Windows Forms 保留在 Platform.Windows。
-- [ ] Toto 不再引用 WPF/Windows APIs 后，移除 `Juju.Tools.Toto.csproj` 的 WPF 依赖并改为平台无关 `net10.0`；App 不再直接使用 WinForms 后移除其 `UseWindowsForms`。
-- [ ] 将 `toto.ico` 作为 App 展示资源单点管理，移除 Toto 程序集内重复嵌入的迁移兼容副本；更新对应资源测试。
-- [ ] 将 Toto 内部日志改用共享 `ILogger`，保留失败、重试和运行状态日志语义。
+- [x] 将 Toto Domain、Application、Infrastructure 与辅助类迁入 `Juju.Tools.Toto.*` 命名空间；同步更新 App 和测试。
+- [x] 删除旧 `Toto.App.*` 命名空间、旧 `TotoToolHost` 类和兼容 façade，没有保留 alias/wrapper。
+- [x] 用 `TotoApplicationService` 与 `TotoReminderRuntime` 替代混合职责 Host；Repository 与文件格式职责收在 Infrastructure/Ports 后。
+- [x] 将 Ready 状态、日历重试、唯一提醒调度器和设置运行协调放入 Toto Application/Runtime。
+- [x] 将会话锁定/解锁、电源恢复和系统时间变化订阅移至 `Juju.Platform.Windows.Lifecycle.WindowsSystemLifecycleEvents`，经 `ISystemLifecycleEvents` 通知 Toto。
+- [x] 提醒运行时只发布快照事件；WPF Dispatcher 派发由 App 的 `DesktopWindowManager` 完成。
+- [x] 运行时作为必需模块只启动一次、停止/释放一次；Toto 主窗口隐藏或关闭不停止提醒调度。
+- [x] 保持五分钟日历重试、锁屏暂停、解锁/恢复/改时后的重调度和现有日历错误提示。
+- [x] 将托盘拆成 Platform.Windows `NotifyIconService` 和 App `TrayController`，保持原图标、菜单、命令及点击行为。
+- [x] 将文件夹选择及工作区查询抽为 `IFolderPicker` / `IWorkAreaProvider`，由 Platform.Windows 提供 WinForms 实现。
+- [x] 将 `IJsonWindowFactory` / `ITotoWindowFactory` 放在 App.Contracts.Windows，具体窗口复用工厂放到 Presentation.Json/Toto；模块依赖工厂端口。
+- [x] App 托盘、目录选择、工作区细节全部迁移后移除 `Juju.App.csproj` 的 `UseWindowsForms`；WinForms 只由 Platform.Windows 引用。
+- [x] 移除 Toto 的 WPF 依赖并改为平台无关 `net10.0`；App 也不再启用 WinForms。
+- [x] 将 `toto.ico` 移至 App Assets 单点管理，移除 Toto 项目嵌入副本，并更新资源边界测试。
+- [x] Toto 日历失败、历史归档失败和重试状态改用共享 `ILogger<TotoReminderRuntime>` 日志。
+- [x] 增加运行时锁屏/解锁和生命周期订阅释放测试，以及 Toto 平台隔离、托盘/目录/工作区边界架构检查。
 
-**验收：** Toto 模块不引用 WPF 和 Windows `SystemEvents`；代码库中不再存在 `Toto.App.*` 或旧 Host 兼容层；应用仍执行原有提醒和窗口流程。
+**验收：** Toto 模块不引用 WPF、WinForms 或 Windows `SystemEvents`；代码库中不再存在 `Toto.App.*` 或旧 Host 兼容层；应用仍执行原有提醒和窗口流程。
 
 ### 阶段 4：彻底移除旧应用兼容实现
 

@@ -1,7 +1,7 @@
 using System.Net.Http.Json;
 using System.Text.Json;
 using Juju.Tools.Toto.Infrastructure.Storage;
-using Toto.App.Domain;
+using Juju.Tools.Toto.Domain;
 
 namespace Juju.Tools.Toto.Infrastructure.Calendar;
 

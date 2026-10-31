@@ -1,29 +1,27 @@
 using System.Drawing;
 using System.Windows.Forms;
-using Juju.App.Contracts.Windows;
+using Juju.Core.Contracts.Platform;
 
-namespace Juju.App.Bootstrap;
+namespace Juju.Platform.Windows.Shell;
 
-/// <summary>
-/// Juju 的唯一通知区域图标和五项主菜单。由 ToolStripProfessionalRenderer 自绘成平面浅色菜单，
-/// 不创建 JSON/Toto 的分工具托盘入口，也不另设工具级菜单或设置入口。
-/// </summary>
-public sealed class TrayService : IDisposable
+/// <summary>Windows 通知区域图标和统一的五项菜单。</summary>
+public sealed class NotifyIconService : ITrayIconService
 {
     private readonly NotifyIcon _icon;
     private readonly Icon _trayImage;
     private readonly ContextMenuStrip _menu;
+    private bool _disposed;
 
-    public TrayService(IAppWindowManager windows, Action exit)
+    public event Action<TrayCommand>? CommandRequested;
+
+    public NotifyIconService(byte[] iconBytes)
     {
-        using var stream = System.Windows.Application.GetResourceStream(
-            new Uri("pack://application:,,,/Assets/juju.ico"))!.Stream;
+        using var stream = new MemoryStream(iconBytes, writable: false);
         using var image = new Icon(stream, SystemInformation.SmallIconSize);
         _trayImage = (Icon)image.Clone();
 
         _menu = new ContextMenuStrip
         {
-            // 纯文字菜单：关闭图标列，固定每行尺寸和左右内边距，文本垂直居中、统一左对齐。
             AutoSize = false,
             Size = new Size(184, 174),
             ShowImageMargin = false,
@@ -34,22 +32,18 @@ public sealed class TrayService : IDisposable
             Font = new Font("Segoe UI", 9F, FontStyle.Regular, GraphicsUnit.Point),
             Renderer = new FlatTrayMenuRenderer()
         };
-        _menu.Items.Add(CreateItem("显示主界面", (_, _) => windows.ShowLauncher()));
-        _menu.Items.Add(CreateItem("设置", (_, _) => windows.ShowSettings()));
-        _menu.Items.Add(CreateItem("帮助", (_, _) => ShowHelp()));
-        _menu.Items.Add(CreateItem("检查更新", (_, _) => ShowUpdateStatus()));
-        _menu.Items.Add(CreateItem("退出", (_, _) => exit()));
+        _menu.Items.Add(CreateItem("显示主界面", TrayCommand.ShowLauncher));
+        _menu.Items.Add(CreateItem("设置", TrayCommand.ShowSettings));
+        _menu.Items.Add(CreateItem("帮助", TrayCommand.Help));
+        _menu.Items.Add(CreateItem("检查更新", TrayCommand.CheckForUpdates));
+        _menu.Items.Add(CreateItem("退出", TrayCommand.Exit));
 
         _icon = new NotifyIcon { Text = "juju Toolbox", Icon = _trayImage, ContextMenuStrip = _menu, Visible = true };
-        // 左键点击托盘图标直接唤出统一的工具箱入口；右键使用上方五项菜单。
-        _icon.MouseClick += (_, e) =>
-        {
-            if (e.Button == MouseButtons.Left) windows.ShowLauncher();
-        };
+        _icon.MouseClick += OnMouseClick;
     }
 
-    private static ToolStripMenuItem CreateItem(string text, EventHandler click) =>
-        new ToolStripMenuItem(text, null, click)
+    private ToolStripMenuItem CreateItem(string text, TrayCommand command) =>
+        new ToolStripMenuItem(text, null, (_, _) => CommandRequested?.Invoke(command))
         {
             AutoSize = false,
             Size = new Size(180, 34),
@@ -59,23 +53,22 @@ public sealed class TrayService : IDisposable
             BackColor = Color.White
         };
 
-    private static void ShowHelp() =>
-        MessageBox.Show("juju Toolbox\n\n显示主界面可打开工具列表；应用设置集中管理工具箱和各工具选项。",
-            "帮助", MessageBoxButtons.OK, MessageBoxIcon.Information);
-
-    private static void ShowUpdateStatus() =>
-        MessageBox.Show("当前版本没有配置在线更新服务。请使用 Toolbox 安装包更新应用。",
-            "检查更新", MessageBoxButtons.OK, MessageBoxIcon.Information);
+    private void OnMouseClick(object? sender, MouseEventArgs args)
+    {
+        if (args.Button == MouseButtons.Left) CommandRequested?.Invoke(TrayCommand.ShowLauncher);
+    }
 
     public void Dispose()
     {
+        if (_disposed) return;
+        _disposed = true;
+        _icon.MouseClick -= OnMouseClick;
         _icon.Visible = false;
         _menu.Dispose();
         _icon.Dispose();
         _trayImage.Dispose();
     }
 
-    /// <summary>FlatMenuColorTable 提供浅色底、细边框和低对比 hover，不使用 Office 渐变/凸起边框。</summary>
     private sealed class FlatTrayMenuRenderer() : ToolStripProfessionalRenderer(new FlatMenuColorTable())
     {
         protected override void OnRenderToolStripBackground(ToolStripRenderEventArgs e)
@@ -108,8 +101,6 @@ public sealed class TrayService : IDisposable
 
         protected override void OnRenderItemText(ToolStripItemTextRenderEventArgs e)
         {
-            // ToolStripMenuItem.TextAlign 在部分 DPI/Renderer 组合下仍按顶部基线排字；
-            // 用整行高度显式垂直居中，并沿用 TextRectangle 的左侧 padding 对齐。
             var bounds = e.TextRectangle;
             bounds.Y = 0;
             bounds.Height = e.Item.Height;

@@ -1,12 +1,13 @@
 using System.IO;
 using System.Text.Json;
 using System.Windows;
+using Juju.Core.Contracts.Platform;
 using Juju.Core.Storage;
 
 namespace Juju.App.Bootstrap;
 
 // 主构造函数注入原子写入器；窗口坐标仍属于 App 层，因为它直接依赖 WPF Window。
-public sealed class WindowStateService(IAtomicFileWriter writer)
+public sealed class WindowStateService(IAtomicFileWriter writer, IWorkAreaProvider workAreas)
 {
     private readonly string _path = Path.Combine(ApplicationPaths.ApplicationDataDirectory, "window-state.json");
     private Dictionary<string, WindowPlacement> _placements = [];
@@ -23,10 +24,10 @@ public sealed class WindowStateService(IAtomicFileWriter writer)
     public void RestorePosition(Window window, string key)
     {
         if (!_placements.TryGetValue(key, out var state)) return;
-        var area = Screen.AllScreens.Select(screen => screen.WorkingArea).FirstOrDefault(screen =>
-            screen.IntersectsWith(new Rectangle((int)state.Left, (int)state.Top,
-                Math.Max(1, (int)window.ActualWidth), Math.Max(1, (int)window.ActualHeight))));
-        if (area == default) return;
+        var bounds = new Rect((int)state.Left, (int)state.Top,
+            Math.Max(1, (int)window.ActualWidth), Math.Max(1, (int)window.ActualHeight));
+        var area = FindIntersectingWorkArea(bounds);
+        if (area.Width <= 0 || area.Height <= 0) return;
         window.Left = Math.Clamp(state.Left, area.Left, Math.Max(area.Left, area.Right - window.ActualWidth));
         window.Top = Math.Clamp(state.Top, area.Top, Math.Max(area.Top, area.Bottom - window.ActualHeight));
     }
@@ -35,13 +36,11 @@ public sealed class WindowStateService(IAtomicFileWriter writer)
     public void Restore(Window window, string key)
     {
         if (!_placements.TryGetValue(key, out var state)) return;
-        var area = Screen.AllScreens.Select(screen => screen.WorkingArea).FirstOrDefault(screen =>
-            screen.IntersectsWith(new Rectangle((int)state.Left, (int)state.Top, (int)state.Width,
-                (int)state.Height)));
-        if (area == default) return;
-        var visible = Rectangle.Intersect(area,
-            new Rectangle((int)state.Left, (int)state.Top, (int)state.Width, (int)state.Height));
-        if (visible.Width < 80 || visible.Height < 80) return;
+        var bounds = new Rect((int)state.Left, (int)state.Top, (int)state.Width, (int)state.Height);
+        var area = FindIntersectingWorkArea(bounds);
+        if (area.Width <= 0 || area.Height <= 0) return;
+        bounds.Intersect(area);
+        if (bounds.Width < 80 || bounds.Height < 80) return;
         window.Left = state.Left;
         window.Top = state.Top;
         // 普通窗口仍恢复宽高；若它指定 Min/Max 则遵守约束（Launcher 只调用 RestorePosition）。
@@ -70,6 +69,16 @@ public sealed class WindowStateService(IAtomicFileWriter writer)
         }
 
         await writer.WriteTextAsync(_path, JsonSerializer.Serialize(_placements), cancellationToken);
+    }
+
+    private Rect FindIntersectingWorkArea(Rect bounds)
+    {
+        foreach (var workArea in workAreas.GetWorkAreas())
+        {
+            var area = new Rect(workArea.Left, workArea.Top, workArea.Width, workArea.Height);
+            if (area.IntersectsWith(bounds)) return area;
+        }
+        return Rect.Empty;
     }
 
     // record 是序列化用的不可变数据载体，自动提供值相等性，语义接近 Java record。

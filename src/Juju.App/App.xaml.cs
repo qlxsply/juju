@@ -18,8 +18,15 @@ using Juju.App.Tools.Json;
 using Juju.App.Tools.Placeholders;
 using Juju.App.Tools.Routing;
 using Juju.App.Tools.Toto;
+using Juju.App.Presentation.Json;
+using Juju.App.Presentation.Toto;
 using Juju.Tools.Toto.Application;
 using Juju.Platform.Windows.Startup;
+using Juju.Platform.Windows.Dialogs;
+using Juju.Platform.Windows.Lifecycle;
+using Juju.Platform.Windows.Shell;
+using Juju.Platform.Windows.Windowing;
+using Juju.Core.Contracts.Platform;
 using Juju.Tools.Json.Documents;
 using Juju.Tools.Json.Metadata;
 using Juju.Tools.Json.Settings;
@@ -104,18 +111,29 @@ public partial class App
         services.AddSingleton<DataDirectoryChangeService>();
         services.AddSingleton<IStorageManager>(storage);
         services.AddSingleton(documents);
-        services.AddTotoApplicationServices(ApplicationPaths.ToolDataDirectory("toto"),
-            _ => new System.Windows.Threading.DispatcherSynchronizationContext(Application.Current.Dispatcher));
+        services.AddTotoApplicationServices(ApplicationPaths.ToolDataDirectory("toto"));
         services.AddSingleton<DesktopWindowManager>();
         services.AddSingleton<WindowStateService>();
         services.AddSingleton<SettingsDialogService>();
         services.AddSingleton<ThemeService>();
         services.AddSingleton<IJsonFileClipboard, JsonFileClipboard>();
         services.AddSingleton<IStartupService, StartupService>();
+        services.AddSingleton<ISystemLifecycleEvents, WindowsSystemLifecycleEvents>();
+        services.AddSingleton<IFolderPicker, WindowsFolderPicker>();
+        services.AddSingleton<IWorkAreaProvider, WindowsWorkAreaProvider>();
+        services.AddSingleton<ITrayIconService>(_ =>
+        {
+            using var stream = Application.GetResourceStream(new Uri("pack://application:,,,/Assets/juju.ico"))!.Stream;
+            using var buffer = new MemoryStream();
+            stream.CopyTo(buffer);
+            return new NotifyIconService(buffer.ToArray());
+        });
         // 所有窗口端口共享一个适配器实例，避免重复创建工具窗口缓存。
         services.AddSingleton<IAppWindowManager>(provider => provider.GetRequiredService<DesktopWindowManager>());
-        services.AddSingleton<IJsonToolWindow>(provider => provider.GetRequiredService<DesktopWindowManager>());
-        services.AddSingleton<ITotoToolWindow>(provider => provider.GetRequiredService<DesktopWindowManager>());
+        services.AddSingleton<JsonWindowFactory>();
+        services.AddSingleton<IJsonWindowFactory>(provider => provider.GetRequiredService<JsonWindowFactory>());
+        services.AddSingleton<TotoWindowFactory>();
+        services.AddSingleton<ITotoWindowFactory>(provider => provider.GetRequiredService<TotoWindowFactory>());
         services.AddJsonToolModule();
         services.AddTotoToolModule();
         services.AddPlaceholderToolModule(ToolId.EchoHttp, "EchoHttp", "HTTP 工具 · 正在开发中",
@@ -132,8 +150,9 @@ public partial class App
                 new RollingFileLoggerProvider(Path.Combine(ApplicationPaths.ApplicationDataDirectory, "logs"))));
         // 托盘菜单只能接收同步 Action；丢弃 Task 是有意的 fire-and-forget 适配，
         // ExitAsync 自己负责完整关闭流程，而非在 UI 回调中阻塞线程。
-        services.AddSingleton<TrayService>(provider => new TrayService(
-            provider.GetRequiredService<IAppWindowManager>(), () => _ = ExitAsync()));
+        services.AddSingleton<TrayController>(provider => new TrayController(
+            provider.GetRequiredService<ITrayIconService>(), provider.GetRequiredService<IAppWindowManager>(),
+            () => _ = ExitAsync()));
         services.AddSingleton<IAppLifecycle, DesktopAppLifecycle>();
         _services = services.BuildServiceProvider();
         _services.GetRequiredService<DataDirectoryChangeService>().LoadPending(
@@ -145,7 +164,7 @@ public partial class App
         _services.GetRequiredService<ThemeService>().Apply(settings.Current.Theme);
         await _tools.StartAsync(_shutdown.Token);
         _services.GetRequiredService<DesktopWindowManager>().InitializeLauncher();
-        _ = _services.GetRequiredService<TrayService>();
+        _ = _services.GetRequiredService<TrayController>();
         // 后台管道监听与 UI 生命周期并行运行；其取消令牌由退出流程统一触发。
         _ = ListenForActivationAsync(_shutdown.Token);
     }

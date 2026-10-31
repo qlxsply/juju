@@ -1,10 +1,10 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Interop;
+using Juju.Core.Contracts.Platform;
 using Juju.Core.Storage;
 using Juju.Core.Tools;
 using Juju.App.Views;
-using FolderBrowserDialog = System.Windows.Forms.FolderBrowserDialog;
 using TextBox = System.Windows.Controls.TextBox;
 
 namespace Juju.App.Settings;
@@ -12,7 +12,11 @@ namespace Juju.App.Settings;
 /// <summary>设置页统一使用当前设置窗口的遮罩弹层编辑快捷键、目录及组合配置。</summary>
 public sealed class SettingsDialogService
 {
+    private readonly IFolderPicker _folderPicker;
     private SettingsWindow? _owner;
+
+    public SettingsDialogService(IFolderPicker folderPicker) => _folderPicker = folderPicker;
+
     public void Attach(SettingsWindow owner) => _owner = owner;
 
     public void EditShortcut(string title, string current, bool allowNone, bool allowSingle,
@@ -29,14 +33,10 @@ public sealed class SettingsDialogService
 
     public async void EditFolder(string title, string current, Func<string, Task> stage)
     {
-        using var picker = new FolderBrowserDialog
-        {
-            SelectedPath = current, UseDescriptionForTitle = true, Description = title
-        };
         var owner = Owner();
-        var result = picker.ShowDialog(new NativeWindowOwner(new WindowInteropHelper(owner).Handle));
-        if (result != System.Windows.Forms.DialogResult.OK) return;
-        try { await stage(picker.SelectedPath); }
+        var path = _folderPicker.PickFolder(title, current, new WindowInteropHelper(owner).Handle);
+        if (path is null) return;
+        try { await stage(path); }
         catch (Exception ex)
         {
             System.Windows.MessageBox.Show(owner, "保存目录设置失败：" + ex.Message, "Toolbox 设置",
@@ -45,9 +45,4 @@ public sealed class SettingsDialogService
     }
 
     private SettingsWindow Owner() => _owner ?? throw new InvalidOperationException("设置弹窗尚未连接到设置窗口。");
-
-    private sealed class NativeWindowOwner(IntPtr handle) : System.Windows.Forms.IWin32Window
-    {
-        public IntPtr Handle { get; } = handle;
-    }
 }

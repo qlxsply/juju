@@ -2,8 +2,8 @@ using System.Globalization;
 using System.Text.Json;
 using Juju.Tools.Toto.Application.Ports;
 using Juju.Tools.Toto.Infrastructure.Storage;
-using Toto.App.Data;
-using Toto.App.Domain;
+using Juju.Tools.Toto.Domain;
+using Juju.Tools.Toto.Infrastructure.Items;
 
 namespace Juju.Tools.Toto.Infrastructure.Settings;
 
@@ -123,7 +123,7 @@ internal sealed class SettingsRepository(TotoPaths paths) : ITotoSettingsReposit
                 if (expired.Length > 0) SaveCore(configuration);
                 return false;
             }
-            configuration.ScheduledPopups[key] = DateTimeText.Text(shownAt);
+            configuration.ScheduledPopups[key] = TotoCsvDateTimeCodec.Text(shownAt);
             SaveCore(configuration);
             return true;
         }

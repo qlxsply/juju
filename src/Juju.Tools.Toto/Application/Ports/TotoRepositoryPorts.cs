@@ -1,4 +1,4 @@
-using Toto.App.Domain;
+using Juju.Tools.Toto.Domain;
 
 namespace Juju.Tools.Toto.Application.Ports;
 

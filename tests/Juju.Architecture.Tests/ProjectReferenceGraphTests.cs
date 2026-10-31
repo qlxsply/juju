@@ -98,6 +98,49 @@ public sealed class ProjectReferenceGraphTests
             Assert.DoesNotContain(forbidden, source, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void Toto_business_assembly_is_platform_neutral_and_has_no_legacy_host_namespace()
+    {
+        var repositoryRoot = FindRepositoryRoot();
+        var totoRoot = Path.Combine(repositoryRoot, "src", "Juju.Tools.Toto");
+        var project = File.ReadAllText(Path.Combine(totoRoot, "Juju.Tools.Toto.csproj"));
+        var source = ReadSourceTree(totoRoot);
+
+        Assert.Contains("<TargetFramework>net10.0</TargetFramework>", project, StringComparison.Ordinal);
+        Assert.DoesNotContain("UseWPF", project, StringComparison.Ordinal);
+        Assert.DoesNotContain("UseWindowsForms", project, StringComparison.Ordinal);
+        Assert.DoesNotContain("EmbeddedResource", project, StringComparison.Ordinal);
+        foreach (var forbidden in new[]
+                 {
+                     "System.Windows", "System.Windows.Forms", "Microsoft.Win32", "SystemEvents",
+                     "SynchronizationContext", "ApplicationPaths", "Toto.App.", "TotoToolHost"
+                 })
+            Assert.DoesNotContain(forbidden, source, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void WPF_host_owns_desktop_apis_and_toto_icon_resource()
+    {
+        var repositoryRoot = FindRepositoryRoot();
+        var appRoot = Path.Combine(repositoryRoot, "src", "Juju.App");
+        var platformRoot = Path.Combine(repositoryRoot, "src", "Juju.Platform.Windows");
+        var appProject = File.ReadAllText(Path.Combine(appRoot, "Juju.App.csproj"));
+        var platformProject = File.ReadAllText(Path.Combine(platformRoot, "Juju.Platform.Windows.csproj"));
+        var appSource = ReadSourceTree(appRoot);
+        var platformSource = ReadSourceTree(platformRoot);
+
+        Assert.DoesNotContain("UseWindowsForms", appProject, StringComparison.Ordinal);
+        Assert.DoesNotContain("System.Windows.Forms", appSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("Screen.FromPoint", appSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("FolderBrowserDialog", appSource, StringComparison.Ordinal);
+        Assert.Contains("UseWindowsForms", platformProject, StringComparison.Ordinal);
+        Assert.Contains("SystemEvents", platformSource, StringComparison.Ordinal);
+        Assert.Contains("NotifyIcon", platformSource, StringComparison.Ordinal);
+        Assert.Contains("FolderBrowserDialog", platformSource, StringComparison.Ordinal);
+        Assert.Contains("<Resource Include=\"Assets\\toto.ico\" />", appProject, StringComparison.Ordinal);
+        Assert.True(File.Exists(Path.Combine(appRoot, "Assets", "toto.ico")));
+    }
+
     private static Dictionary<string, string[]> ReadProductProjectGraph(string repositoryRoot)
     {
         var sourceRoot = Path.Combine(repositoryRoot, "src");
@@ -138,4 +181,9 @@ public sealed class ProjectReferenceGraphTests
     private static string ProjectName(string path) =>
         Path.GetFileNameWithoutExtension(path)
         ?? throw new InvalidOperationException($"Could not determine project name from {path}.");
+
+    private static string ReadSourceTree(string root) =>
+        string.Join('\n', Directory.GetFiles(root, "*.cs", SearchOption.AllDirectories)
+            .Where(path => !path.Split(Path.DirectorySeparatorChar).Any(part => part is "bin" or "obj"))
+            .Select(File.ReadAllText));
 }

@@ -4,8 +4,7 @@ using Juju.Tools.Toto.Application.Calendar;
 using Juju.Tools.Toto.Application.Items;
 using Juju.Tools.Toto.Application.Reminders;
 using Juju.Tools.Toto.Application.Settings;
-using Toto.App.Domain;
-using Toto.App.Services;
+using Juju.Tools.Toto.Domain;
 
 namespace Juju.Tools.Toto.Application;
 

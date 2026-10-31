@@ -4,7 +4,6 @@ using Juju.Core.Settings;
 using Juju.Core.Tools;
 using Juju.Tools.Json.Settings;
 using Juju.Tools.Toto.Application;
-using Toto.App;
 
 namespace Juju.App.Settings;
 

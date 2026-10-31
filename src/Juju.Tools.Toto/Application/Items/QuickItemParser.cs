@@ -1,9 +1,9 @@
 using System.Globalization;
 using System.Text.RegularExpressions;
 
-namespace Toto.App.Services;
+namespace Juju.Tools.Toto.Application.Items;
 
-internal static class QuickItemParser
+public static class QuickItemParser
 {
     public static bool TryParse(string input, int defaultMinutes, out string content, out DateTime? plannedAt,
         out DateTime? remindAt, out string error, DateTime? referenceTime = null)

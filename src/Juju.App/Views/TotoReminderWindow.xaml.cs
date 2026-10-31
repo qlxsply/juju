@@ -7,6 +7,7 @@ using System.Windows.Input;
 using Juju.Platform.Windows;
 using Juju.Tools.Toto.Application;
 using Juju.Tools.Toto.Application.Items;
+using Juju.App.Presentation.Toto;
 using DataGrid = System.Windows.Controls.DataGrid;
 using Key = System.Windows.Input.Key;
 using KeyEventArgs = System.Windows.Input.KeyEventArgs;
@@ -210,9 +211,9 @@ public sealed class TotoReminderRow
     internal TotoReminderRow(TotoItemSnapshot item, string? emphasis)
     {
         Content = item.Content;
-        PlannedText = item.PlannedAt?.ToString(Toto.App.Data.DateTimeText.DisplayFormat) ?? "—";
-        RemindText = item.RemindAt?.ToString(Toto.App.Data.DateTimeText.DisplayFormat) ?? "—";
-        EndedText = item.EndedAt?.ToString(Toto.App.Data.DateTimeText.DisplayFormat) ?? "—";
+        PlannedText = item.PlannedAt?.ToString(TotoDateTimeFormatter.DisplayFormat) ?? "—";
+        RemindText = item.RemindAt?.ToString(TotoDateTimeFormatter.DisplayFormat) ?? "—";
+        EndedText = item.EndedAt?.ToString(TotoDateTimeFormatter.DisplayFormat) ?? "—";
         ContentForeground = emphasis is null ? Normal :
             (Brush)new BrushConverter().ConvertFromString(emphasis)!;
         PlanForeground = item.PlannedAt is null ?

@@ -1,7 +1,7 @@
 <!--
         以 WPF 控件构建工具入口：48 DIP 标题栏及图标/说明/可配置的单键工具行。
     WindowStyle=None 去掉系统标题栏；WindowChrome 保留可拖动的标题区，但不允许调整尺寸。
-    真正的系统托盘和全局热键仍由 Juju.App 的 WinForms NotifyIcon/Win32 RegisterHotKey 提供。
+    系统托盘和全局热键由 Juju.Platform.Windows 平台适配器提供。
 -->
 <Window x:Class="Juju.App.Views.LauncherWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"

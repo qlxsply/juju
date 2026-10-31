@@ -3,9 +3,9 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using Juju.Platform.Windows;
-using Toto.App.Data;
 using Juju.Tools.Toto.Application;
 using Juju.Tools.Toto.Application.Items;
+using Juju.App.Presentation.Toto;
 using KeyEventArgs = System.Windows.Input.KeyEventArgs;
 
 namespace Juju.App.Views;
@@ -219,10 +219,10 @@ public sealed class TotoHistoryRow
     internal TotoHistoryRow(TotoItemSnapshot item) => Item = item;
     internal TotoItemSnapshot Item { get; }
     public string Content => Item.Content;
-    public string PlannedText => Item.PlannedAt?.ToString(DateTimeText.DisplayFormat) ?? "—";
-    public string RemindText => Item.RemindAt?.ToString(DateTimeText.DisplayFormat) ?? "—";
-    public string CreatedText => Item.CreatedAt.ToString(DateTimeText.DisplayFormat);
-    public string EndedText => Item.EndedAt?.ToString(DateTimeText.DisplayFormat) ?? "—";
+    public string PlannedText => Item.PlannedAt?.ToString(TotoDateTimeFormatter.DisplayFormat) ?? "—";
+    public string RemindText => Item.RemindAt?.ToString(TotoDateTimeFormatter.DisplayFormat) ?? "—";
+    public string CreatedText => Item.CreatedAt.ToString(TotoDateTimeFormatter.DisplayFormat);
+    public string EndedText => Item.EndedAt?.ToString(TotoDateTimeFormatter.DisplayFormat) ?? "—";
     public string StatusText => Item.Status == TotoItemStatus.Completed ? "已完成" : "已取消";
     public string Note => string.IsNullOrWhiteSpace(Item.Note) ? "—" : Item.Note;
 }

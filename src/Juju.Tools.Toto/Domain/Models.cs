@@ -1,4 +1,4 @@
-namespace Toto.App.Domain;
+namespace Juju.Tools.Toto.Domain;
 
 /// <summary>表示待办事项的生命周期状态；与 Java <c>enum</c> 类似，但底层整数值可显式指定以稳定持久化含义。</summary>
 internal enum ItemStatus

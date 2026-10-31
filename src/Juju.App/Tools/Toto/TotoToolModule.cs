@@ -3,11 +3,11 @@ using Juju.App.Settings;
 using Juju.App.Tools.Contracts;
 using Juju.Core.Tools;
 using Microsoft.Extensions.DependencyInjection;
-using Toto.App;
+using Juju.Tools.Toto.Application.Reminders;
 
 namespace Juju.App.Tools.Toto;
 
-public sealed class TotoToolModule(ITotoToolWindow window, TotoToolHost runtime,
+public sealed class TotoToolModule(ITotoWindowFactory window, TotoReminderRuntime runtime,
     IServiceProvider services) : IToolModule
 {
     public ToolDescriptor Descriptor { get; } = new(ToolId.Toto, BackgroundCapability.Required,
@@ -30,8 +30,7 @@ public sealed class TotoToolModule(ITotoToolWindow window, TotoToolHost runtime,
     public Task StartAsync(CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        runtime.EnsureReady();
-        return Task.CompletedTask;
+        return runtime.StartAsync(cancellationToken);
     }
     public Task StopAsync(CancellationToken cancellationToken = default)
     {

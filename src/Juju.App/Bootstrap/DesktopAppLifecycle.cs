@@ -14,7 +14,7 @@ public sealed class DesktopAppLifecycle(
     IToolManager tools,
     ISettingsService settings,
     WindowStateService states,
-    TrayService tray,
+    TrayController tray,
     DataDirectoryChangeService dataChanges,
     ILogger<DesktopAppLifecycle> log) : IAppLifecycle
 {

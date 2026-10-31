@@ -1,7 +1,6 @@
 using Juju.Tools.Toto.Application.Ports;
+using Juju.Tools.Toto.Domain;
 using Juju.Tools.Toto.Infrastructure.Storage;
-using Toto.App.Data;
-using Toto.App.Domain;
 
 namespace Juju.Tools.Toto.Infrastructure.Items;
 
@@ -205,21 +204,21 @@ internal sealed class ItemRepository(TotoPaths paths) : ITotoItemRepository
             try
             {
                 if (row.Count < 8 || !long.TryParse(row[5], out var sequence) ||
-                    DateTimeText.Read(row[4]) is not { } created) continue;
-                var planned = DateTimeText.Read(row[2]);
-                var remind = DateTimeText.Read(row[3]);
+                    TotoCsvDateTimeCodec.Read(row[4]) is not { } created) continue;
+                var planned = TotoCsvDateTimeCodec.Read(row[2]);
+                var remind = TotoCsvDateTimeCodec.Read(row[3]);
                 var note = row.Count > 8 ? row[^1] : "";
                 if (active)
                 {
                     var reminder = remind is null ? ReminderStatus.None :
                         row[6] == "已提醒" ? ReminderStatus.Reminded : ReminderStatus.Pending;
                     items.Add(new TodoItem(row[0], row[1], planned, remind, created, sequence, ItemStatus.Active,
-                        reminder, DateTimeText.Read(row[7]), null, note));
+                        reminder, TotoCsvDateTimeCodec.Read(row[7]), null, note));
                 }
                 else
                 {
                     var status = row[6] == "已取消" ? ItemStatus.Cancelled : ItemStatus.Completed;
-                    var ended = DateTimeText.Read(row[7]);
+                    var ended = TotoCsvDateTimeCodec.Read(row[7]);
                     if (ended is not null)
                         items.Add(new TodoItem(row[0], row[1], planned, remind, created, sequence, status, null, null,
                             ended, note));
@@ -238,18 +237,18 @@ internal sealed class ItemRepository(TotoPaths paths) : ITotoItemRepository
     // [] 是集合表达式，编译器依据返回类型构造 IReadOnlyList<string>。
     private static IReadOnlyList<string> ToActiveRow(TodoItem item) =>
     [
-        item.Id, item.Content, DateTimeText.Text(item.PlannedAt), DateTimeText.Text(item.RemindAt),
-        DateTimeText.Text(item.CreatedAt), item.CreatedSeq.ToString(),
+        item.Id, item.Content, TotoCsvDateTimeCodec.Text(item.PlannedAt), TotoCsvDateTimeCodec.Text(item.RemindAt),
+        TotoCsvDateTimeCodec.Text(item.CreatedAt), item.CreatedSeq.ToString(),
         item.ReminderStatus switch { ReminderStatus.Reminded => "已提醒", ReminderStatus.Pending => "未提醒", _ => "无提醒" },
-        DateTimeText.Text(item.RemindedAt), item.Note
+        TotoCsvDateTimeCodec.Text(item.RemindedAt), item.Note
     ];
 
     /// <summary>将历史事项映射为 CSV 字段。</summary>
     private static IReadOnlyList<string> ToHistoryRow(TodoItem item) =>
     [
-        item.Id, item.Content, DateTimeText.Text(item.PlannedAt), DateTimeText.Text(item.RemindAt),
-        DateTimeText.Text(item.CreatedAt), item.CreatedSeq.ToString(),
-        item.Status == ItemStatus.Cancelled ? "已取消" : "已完成", DateTimeText.Text(item.EndedAt), item.Note
+        item.Id, item.Content, TotoCsvDateTimeCodec.Text(item.PlannedAt), TotoCsvDateTimeCodec.Text(item.RemindAt),
+        TotoCsvDateTimeCodec.Text(item.CreatedAt), item.CreatedSeq.ToString(),
+        item.Status == ItemStatus.Cancelled ? "已取消" : "已完成", TotoCsvDateTimeCodec.Text(item.EndedAt), item.Note
     ];
 
     /// <summary>应用所有提供的查询条件；未提供条件时保留原序列。</summary>

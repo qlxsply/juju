@@ -3,10 +3,9 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using Juju.Platform.Windows;
-using Toto.App.Data;
-using Toto.App.Services;
 using Juju.Tools.Toto.Application;
 using Juju.Tools.Toto.Application.Items;
+using Juju.App.Presentation.Toto;
 using Brush = System.Windows.Media.Brush;
 using Brushes = System.Windows.Media.Brushes;
 using MessageBox = System.Windows.MessageBox;
@@ -176,7 +175,7 @@ public partial class TotoItemWindow : Window
         }
     }
 
-    private static string Format(DateTime? time) => time?.ToString(DateTimeText.DisplayFormat) ?? "—";
+    private static string Format(DateTime? time) => time?.ToString(TotoDateTimeFormatter.DisplayFormat) ?? "—";
 
     private static void SetTimePickers(ComboBox hour, ComboBox minute, DateTime? value)
     {

@@ -6,7 +6,7 @@ using Juju.Tools.Json.Settings;
 
 namespace Juju.App.Tools.Json;
 
-public sealed class JsonToolModule(IJsonToolWindow window, JsonSettingsSection settings) : IToolModule
+public sealed class JsonToolModule(IJsonWindowFactory window, JsonSettingsSection settings) : IToolModule
 {
     public ToolDescriptor Descriptor { get; } = new(ToolId.Json, BackgroundCapability.Unsupported,
         StorageCapability.File);

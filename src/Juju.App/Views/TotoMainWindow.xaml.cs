@@ -4,10 +4,10 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using Juju.Platform.Windows;
-using Toto.App.Data;
-using Toto.App.Services;
 using Juju.Tools.Toto.Application;
 using Juju.Tools.Toto.Application.Items;
+using Juju.Tools.Toto.Application.Settings;
+using Juju.App.Presentation.Toto;
 using MessageBox = System.Windows.MessageBox;
 using Brush = System.Windows.Media.Brush;
 using Color = System.Windows.Media.Color;
@@ -172,9 +172,9 @@ public sealed class TotoItemRow
     internal TotoItemRow(TotoItemSnapshot item) => Item = item;
     internal TotoItemSnapshot Item { get; }
     public string Content => Item.Content;
-    public string PlannedText => Item.PlannedAt?.ToString(DateTimeText.DisplayFormat) ?? "—";
-    public string RemindText => Item.RemindAt?.ToString(DateTimeText.DisplayFormat) ?? "—";
-    public string CreatedText => Item.CreatedAt.ToString(DateTimeText.DisplayFormat);
+    public string PlannedText => Item.PlannedAt?.ToString(TotoDateTimeFormatter.DisplayFormat) ?? "—";
+    public string RemindText => Item.RemindAt?.ToString(TotoDateTimeFormatter.DisplayFormat) ?? "—";
+    public string CreatedText => Item.CreatedAt.ToString(TotoDateTimeFormatter.DisplayFormat);
     public string Note => string.IsNullOrWhiteSpace(Item.Note) ? "—" : Item.Note;
     public string StatusText => Item.ReminderStatus switch
     {

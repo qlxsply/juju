@@ -6,10 +6,10 @@ using Juju.Tools.Toto.Infrastructure.Calendar;
 using Juju.Tools.Toto.Infrastructure.Items;
 using Juju.Tools.Toto.Infrastructure.Settings;
 using Juju.Tools.Toto.Infrastructure.Storage;
-using Toto.App.Domain;
+using Juju.Tools.Toto.Domain;
 using Xunit;
 
-namespace Toto.App.Tests;
+namespace Juju.Tools.Toto.Tests;
 
 public sealed class TotoApplicationServiceTests : IDisposable
 {
