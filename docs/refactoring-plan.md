@@ -507,21 +507,25 @@ App.Bootstrap                   -> App.Tools + App.Presentation + Platform.Windo
 
 ### 阶段 4：彻底移除旧应用兼容实现
 
-- [ ] 全仓库审查并删除旧独立 Toto 进程/启动项处理、旧 `.toto` 目录导入、旧 INI 设置导入、旧 CSV 列格式解析和迁移专用资源。
-- [ ] 清理只为旧 Toto 应用保留的分支、适配器、测试和过时注释/文档。
-- [ ] 保留当前 Juju 的 `tools/toto/` 数据目录、JSON 配置和现行 CSV 格式；不做旧格式转换或迁移。
-- [ ] 更新 Toto README 和架构学习文档，使项目结构、命名空间和运行时边界与代码一致。
+- [x] 全仓库确认没有旧独立 Toto 进程/启动项处理、`.toto` 目录导入或 INI 设置导入；CSV Repository 只读取现行 9 列格式，并移除旧模板及未引用的迁移资源。
+- [x] 清理旧 Toto Host/namespace/资源兼容分支和相关过时注释；保留测试以验证旧列布局不会被当作当前数据导入。
+- [x] 保留当前 Juju `tools/toto/` 数据目录、JSON 配置和现行 CSV 格式；未转换、覆盖或删除用户当前数据。
+- [x] 更新 `src/Juju.Tools.Toto/README.md` 和 `CSharp-WPF-Learning-Notes.md`，反映当前项目结构、命名空间、平台边界和运行时。
 
 **验收：** 搜索不到旧 Toto namespace、旧导入/格式解析和迁移兼容代码；当前 Juju 格式的数据照常读取和写入。
 
 ### 阶段 5：回归与发布验证
 
-- [ ] `IToolManager` 单元测试：验证 ToolId 到模块的映射、就绪失败、开发中占位和后台模块的单次启动/关停。
-- [ ] Toto 应用服务测试：验证其委托操作与现有 Repository 行为一致。
-- [ ] Windows 事件桥接测试：验证锁屏、解锁、电源恢复、时间变化信号传递及资源释放。
-- [ ] 运行 `dotnet test Juju.sln`。
-- [ ] 运行 `dotnet build src/Juju.App/Juju.App.csproj -c Release` 和 Windows x64 安装包构建。
+- [x] `IToolManager` 单元测试覆盖 ToolId 映射、就绪失败、开发中占位及必需后台模块单次启停。
+- [x] Toto 应用服务测试验证事项用例、设置校验/运行时通知和日历操作委托 Repository 的结果。
+- [x] Windows 生命周期信号测试验证锁屏、解锁、电源恢复、时间变化触发重检，以及 Runtime 订阅资源释放。
+- [x] 运行 `dotnet test Juju.sln`。
+- [x] 运行 `dotnet build src/Juju.App/Juju.App.csproj -c Release`，并生成 Windows x64 自包含发布目录和安装包。
 - [ ] 手动回归 Launcher 卡片/单键/全局热键、JSON/Toto 窗口、Toto 提醒、设置和应用关停。
+
+发布产物验证：`dotnet publish src/Juju.App/Juju.App.csproj -c Release -r win-x64 --self-contained true -o artifacts/win-x64`；
+使用 Inno Setup 6 编译 `installer/juju.iss`，输出 `artifacts/installer/juju_v0.1.0_setup_win64.exe`。
+手动 UI 场景仍记录在 `docs/behavior-baseline.md`，需要桌面交互后填写观察结果。
 
 ## 5. 明确不做的重构
 

@@ -158,16 +158,28 @@ public sealed class ItemRepositoryTests : IDisposable
     }
 
     [Fact]
-    public void Settings_are_persisted_as_json_and_unknown_setting_keys_are_not_loaded()
+    public void Legacy_eight_column_and_advance_minutes_csv_rows_are_not_imported()
+    {
+        File.WriteAllText(new TotoPaths(dataDirectory).ActiveCsvPath,
+            "事项ID,事项内容,计划时间,提前提醒分钟数,提醒时间,创建时间,创建序号,提醒状态\n" +
+            "old-eight,旧八列事项,,,,2026-10-22 10:00:00,1,未提醒\n" +
+            "事项ID,事项内容,计划时间,提前提醒分钟数,提醒时间,创建时间,创建序号,提醒状态,响铃时间\n" +
+            "old-minutes,旧提前分钟格式,2026-10-26 16:00:00,5,2026-10-26 15:55:00,2026-10-22 10:00:00,2,未提醒,\n");
+
+        Assert.Empty(repository.GetActive());
+    }
+
+    [Fact]
+    public void Settings_are_persisted_as_json_and_ignore_unknown_keys()
     {
         var settings = new SettingsRepository(new TotoPaths(dataDirectory));
         settings.EnsureExists();
         var path = Path.Combine(dataDirectory, "config.json");
         File.WriteAllText(path,
-            "{\"settings\":{\"hotkey\":\"None\",\"shortcut_settings\":\"Alt+S\"},\"scheduledPopups\":{},\"archiveProgressMonth\":\"\"}");
+            "{\"settings\":{\"hotkey\":\"None\",\"unsupported_option\":\"Alt+S\"},\"scheduledPopups\":{},\"archiveProgressMonth\":\"\"}");
 
         var values = settings.Load();
-        Assert.False(values.ContainsKey("shortcut_settings"));
+        Assert.False(values.ContainsKey("unsupported_option"));
         Assert.Equal("Alt+A", values["shortcut_add"]);
         Assert.Equal("", settings.ArchiveProgressMonth);
         Assert.Contains("archiveProgressMonth", File.ReadAllText(path));

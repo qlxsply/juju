@@ -203,11 +203,11 @@ internal sealed class ItemRepository(TotoPaths paths) : ITotoItemRepository
             if (row.All(string.IsNullOrEmpty)) continue;
             try
             {
-                if (row.Count < 8 || !long.TryParse(row[5], out var sequence) ||
+                if (row.Count != 9 || !long.TryParse(row[5], out var sequence) ||
                     TotoCsvDateTimeCodec.Read(row[4]) is not { } created) continue;
                 var planned = TotoCsvDateTimeCodec.Read(row[2]);
                 var remind = TotoCsvDateTimeCodec.Read(row[3]);
-                var note = row.Count > 8 ? row[^1] : "";
+                var note = row[8];
                 if (active)
                 {
                     var reminder = remind is null ? ReminderStatus.None :

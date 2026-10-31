@@ -5,7 +5,7 @@ namespace Juju.Tools.Toto.Infrastructure.Items;
 /// <summary>在持久化文件中以固定、与区域设置无关的格式读写日期时间。</summary>
 internal static class TotoCsvDateTimeCodec
 {
-    /// <summary>CSV 和 INI 文件使用的日期时间格式。</summary>
+    /// <summary>当前 Toto CSV 文件使用的日期时间格式。</summary>
     public const string Format = "yyyy-MM-dd HH:mm:ss";
     /// <summary>将可选日期时间格式化为空字符串或固定文本。</summary>
     // C# 的 DateTime? 是可空值类型；不同于 Java 引用，未设置时不分配对象。

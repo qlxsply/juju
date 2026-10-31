@@ -73,6 +73,47 @@ public sealed class TotoReminderRuntimeTests : IDisposable
         Assert.Equal(0, systemEvents.SubscriberCount);
     }
 
+    [Fact]
+    public async Task Resume_and_time_change_signals_immediately_recheck_due_items()
+    {
+        var paths = new TotoPaths(_root);
+        var items = new ItemRepository(paths);
+        var settings = new SettingsRepository(paths);
+        var calendars = new HolidayCalendarDownloadService(paths);
+        items.EnsureFiles();
+        settings.EnsureExists();
+        calendars.SaveLocal(DateTime.Today.Year, []);
+        if (DateTime.Today.AddDays(7).Year != DateTime.Today.Year)
+            calendars.SaveLocal(DateTime.Today.Year + 1, []);
+        var systemEvents = new FakeSystemLifecycleEvents();
+        using var runtime = new TotoReminderRuntime(items, settings, new WorkCalendarRepository(calendars),
+            systemEvents, NullLogger<TotoReminderRuntime>.Instance);
+        await runtime.StartAsync();
+
+        items.Add(new TodoItem("resume", "恢复后检查", null, DateTime.Now.AddMinutes(-1), DateTime.Now, 0,
+            ItemStatus.Active, ReminderStatus.Pending, null, null, ""));
+        var resumed = new TaskCompletionSource<IReadOnlyList<TotoItemSnapshot>>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        runtime.DueReminders += due =>
+        {
+            if (due.Any(item => item.Id == "resume")) resumed.TrySetResult(due);
+        };
+        systemEvents.Raise(SystemLifecycleSignal.Resumed);
+        Assert.Contains(await resumed.Task.WaitAsync(TimeSpan.FromSeconds(2)), item => item.Id == "resume");
+
+        items.Add(new TodoItem("time-change", "改时后检查", null, DateTime.Now.AddMinutes(-1), DateTime.Now, 0,
+            ItemStatus.Active, ReminderStatus.Pending, null, null, ""));
+        var timeChanged = new TaskCompletionSource<IReadOnlyList<TotoItemSnapshot>>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        runtime.DueReminders += due =>
+        {
+            if (due.Any(item => item.Id == "time-change")) timeChanged.TrySetResult(due);
+        };
+        systemEvents.Raise(SystemLifecycleSignal.TimeChanged);
+
+        Assert.Contains(await timeChanged.Task.WaitAsync(TimeSpan.FromSeconds(2)), item => item.Id == "time-change");
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_root)) Directory.Delete(_root, recursive: true);

@@ -28,6 +28,12 @@ dotnet test Juju.sln
 
 阶段 3 完成后的复验：`dotnet test Juju.sln --no-restore -m:1` 为 104 passed（JSON 38、Toto 54、架构 8、路由/目录/生命周期 4）；`dotnet build Juju.sln -c Release --no-restore -m:1 -v:q` 成功，0 warnings / 0 errors。手动 UI 对照仍需按下方清单执行。
 
+阶段 4 完成后的复验：`dotnet test Juju.sln --no-restore -m:1` 为 105 passed（JSON 38、Toto 55、架构 8、路由/目录/生命周期 4）；`dotnet build Juju.sln -c Release --no-restore -m:1 -v:q` 成功，0 warnings / 0 errors。手动 UI 对照仍需按下方清单执行。
+
+阶段 5 自动化与发布复验：`dotnet test Juju.sln` 为 106 passed（JSON 38、Toto 56、架构 8、App 4）；`dotnet build src/Juju.App/Juju.App.csproj -c Release` 成功，0 warnings / 0 errors；Inno Setup 成功生成 `artifacts/installer/juju_v0.1.0_setup_win64.exe`（56,690,730 bytes）。手动桌面 UI 回归仍待执行。
+
+阶段 5 自动化与发布复验：`dotnet test Juju.sln` 为 106 passed（JSON 38、Toto 56、架构 8、App 路由/目录/生命周期 4）；`dotnet build src/Juju.App/Juju.App.csproj -c Release` 成功；`artifacts/win-x64/` 自包含发布和 `artifacts/installer/juju_v0.1.0_setup_win64.exe` 安装包均已生成。手动桌面 UI 回归尚待执行。
+
 ## 当前项目引用基线
 
 `Juju.Architecture.Tests` 读取 `src/**/*.csproj`，精确锁定以下产品项目 DAG；测试项目自身不参与产品 DAG，也不引用产品项目：
