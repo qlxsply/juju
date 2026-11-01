@@ -4,7 +4,14 @@
   #define AppVersion "0.1.0"
 #endif
 #define AppPublisher "juju"
-#define AppExeName "Juju.App.exe"
+#define LauncherExeName "Juju.Launcher.exe"
+#define UpdaterExeName "Juju.Updater.exe"
+#ifndef BootstrapFilesDir
+  #define BootstrapFilesDir "..\artifacts\bootstrap"
+#endif
+#ifndef AppFilesDir
+  #define AppFilesDir "..\artifacts\win-x64"
+#endif
 
 #define AppMutexName "juju-single-instance-v1"
 
@@ -13,7 +20,7 @@ AppId={{3E2E8E5A-917A-46A0-BF5F-C4F2B3619FC5}
 AppName={#AppName}
 AppVersion={#AppVersion}
 AppPublisher={#AppPublisher}
-; Juju stores its configuration and data beside the executable, so install per-user.
+; Stable bootstrap, versioned application payloads, and shared user data all live under this per-user root.
 DefaultDirName={localappdata}\Programs\juju
 DefaultGroupName=juju
 PrivilegesRequired=lowest
@@ -30,17 +37,19 @@ Compression=lzma2
 SolidCompression=yes
 
 [Files]
-Source: "..\artifacts\win-x64\*"; DestDir: "{app}"; Flags: recursesubdirs ignoreversion
+Source: "{#BootstrapFilesDir}\{#LauncherExeName}"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#BootstrapFilesDir}\{#UpdaterExeName}"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#AppFilesDir}\*"; DestDir: "{app}\versions\{#AppVersion}"; Flags: recursesubdirs ignoreversion
 
 [Tasks]
 Name: "desktopicon"; Description: "创建桌面快捷方式"
 
 [Icons]
-Name: "{group}\juju"; Filename: "{app}\{#AppExeName}"; WorkingDir: "{app}"
-Name: "{autodesktop}\juju"; Filename: "{app}\{#AppExeName}"; WorkingDir: "{app}"; Tasks: desktopicon
+Name: "{group}\juju"; Filename: "{app}\{#LauncherExeName}"; Parameters: "--show-launcher"; WorkingDir: "{app}"
+Name: "{autodesktop}\juju"; Filename: "{app}\{#LauncherExeName}"; Parameters: "--show-launcher"; WorkingDir: "{app}"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\{#AppExeName}"; Parameters: "--show-launcher"; WorkingDir: "{app}"; Description: "启动 juju"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\{#LauncherExeName}"; Parameters: "--show-launcher"; WorkingDir: "{app}"; Description: "启动 juju"; Flags: nowait postinstall skipifsilent
 
 [Code]
 const
@@ -239,35 +248,57 @@ procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
   AppDirectory: String;
   LocalDataDirectory: String;
-  EditorDirectory: String;
-  WebViewDataDirectory: String;
+  VersionsDirectory: String;
+  StagingDirectory: String;
+  StateDirectory: String;
 begin
   if CurUninstallStep <> usPostUninstall then
     Exit;
 
   AppDirectory := ExpandConstant('{app}');
   LocalDataDirectory := PathCombine(AppDirectory, 'data');
-  EditorDirectory := PathCombine(AppDirectory, 'Editor');
-  WebViewDataDirectory := PathCombine(AppDirectory, '{#AppExeName}.WebView2');
+  VersionsDirectory := PathCombine(AppDirectory, 'versions');
+  StagingDirectory := PathCombine(AppDirectory, 'staging');
+  StateDirectory := PathCombine(AppDirectory, 'state');
 
   if not KeepLocalAppDataOnUninstall then
     if not RemoveOwnedDirectory(LocalDataDirectory, True) then
       MsgBox('无法完整清理安装目录数据：' + LocalDataDirectory + #13#10 +
         '请关闭占用该目录的程序后手动删除。外部数据目录未被触碰。', mbError, MB_OK);
 
-  if not RemoveOwnedDirectory(WebViewDataDirectory, True) then
-    MsgBox('无法完整清理 WebView2 数据：' + WebViewDataDirectory + #13#10 +
-      '请关闭占用该目录的 WebView2 进程后手动删除。', mbError, MB_OK);
-
-  if not RemoveOwnedDirectory(EditorDirectory, True) then
-    MsgBox('无法完整清理编辑器资源目录：' + EditorDirectory, mbError, MB_OK);
+  { Version directories only contain immutable application files and per-version WebView caches. }
+  if not RemoveOwnedDirectory(VersionsDirectory, True) then
+    MsgBox('无法完整清理版本目录：' + VersionsDirectory + #13#10 +
+      '请关闭占用该目录的程序后手动删除。', mbError, MB_OK);
+  if not RemoveOwnedDirectory(StagingDirectory, True) then
+    MsgBox('无法完整清理更新暂存目录：' + StagingDirectory, mbError, MB_OK);
+  if not RemoveOwnedDirectory(StateDirectory, True) then
+    MsgBox('无法完整清理更新状态目录：' + StateDirectory, mbError, MB_OK);
 
   { The pointer may identify an external data root. Remove the pointer only; never follow its target. }
   DeleteFile(PathCombine(AppDirectory, 'data-location.json'));
+  DeleteFile(PathCombine(AppDirectory, 'active.json'));
   if not DirExists(LocalDataDirectory) then
   begin
     if not RemoveDir(AppDirectory) and RestartAfterUninstall then
       MoveFileExW(AppDirectory, 0, MoveFileDelayUntilReboot);
+  end;
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+var
+  StateDirectory: String;
+  StateFile: String;
+begin
+  if CurStep <> ssPostInstall then
+    Exit;
+  StateDirectory := PathCombine(ExpandConstant('{app}'), 'state');
+  CreateDir(StateDirectory);
+  StateFile := PathCombine(StateDirectory, 'active.json');
+  if not FileExists(StateFile) then
+  begin
+    SaveStringToFile(StateFile, '{"activeVersion":"{#AppVersion}"}', False);
+    CopyFile(StateFile, StateFile + '.bak', False);
   end;
 end;
 

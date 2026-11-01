@@ -128,6 +128,12 @@ public partial class SettingsWindow : Window
         Select("system");
     }
 
+    public void NavigateToAbout()
+    {
+        ExpandApp(true);
+        Select("about");
+    }
+
     public void NavigateToTool(string id)
     {
         ExpandTools(true);

@@ -1,5 +1,6 @@
 using System.IO;
 using System.IO.Pipes;
+using System.Diagnostics;
 using System.Text;
 using System.Windows;
 using Juju.App.Bootstrap;
@@ -31,6 +32,7 @@ using Juju.Tools.Json.Metadata;
 using Juju.Tools.Json.Settings;
 using Juju.Tools.Json.Storage;
 using Juju.Tools.Toto.Application;
+using Juju.Update;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Application = System.Windows.Application;
@@ -41,7 +43,7 @@ namespace Juju.App;
 // 与 JavaFX 的 Application 类似，WPF 由框架创建 App 实例，再依次调用下面的生命周期方法。
 public partial class App
 {
-    private const string InstanceName = "juju-single-instance-v1";
+    private string _instanceName = "";
     private Mutex? _mutex;
     private bool _ownsMutex;
     private CancellationTokenSource? _shutdown;
@@ -49,6 +51,17 @@ public partial class App
     private IAppWindowManager? _windows;
     private IToolManager? _tools;
     private IAppLifecycle? _lifecycle;
+    private GitHubUpdateService? _updateService;
+
+    public App()
+    {
+        DispatcherUnhandledException += (_, eventArgs) => LogStartupFailure(eventArgs.Exception);
+        AppDomain.CurrentDomain.UnhandledException += (_, eventArgs) =>
+        {
+            if ( eventArgs.ExceptionObject is Exception exception )
+                LogStartupFailure(exception);
+        };
+    }
 
     // WPF 启动回调必须保持 void 签名，因此 async void 只用于此类框架事件入口；异常不能由调用方 await。
     // 初始化顺序刻意是：单实例检查 -> 可持久化服务加载 -> DI 容器构建 -> UI 服务启动。
@@ -56,17 +69,19 @@ public partial class App
     {
         base.OnStartup(e);
         // 命名 Mutex 由操作系统跨进程共享，作用相当于 Java 中基于文件锁实现的单实例守卫。
-        _mutex = new Mutex(true, InstanceName, out var firstInstance);
+        _instanceName = GetInstanceName(ApplicationPaths.InstallDirectory);
+        _mutex = new Mutex(true, _instanceName, out var firstInstance);
         _ownsMutex = firstInstance;
         if ( !firstInstance )
         {
-            await ActivateExistingInstanceAsync();
+            await ActivateExistingInstanceAsync(_instanceName);
             Shutdown();
             return;
         }
 
         _shutdown = new CancellationTokenSource();
         var writer = new AtomicFileWriter();
+        _updateService = new GitHubUpdateService(ApplicationPaths.InstallDirectory);
         await new DataRootService(writer).EnsureInitializedAsync(ApplicationPaths.DataRoot, _shutdown.Token);
         var settings = new SettingsService(writer);
         await settings.LoadAsync(_shutdown.Token);
@@ -90,6 +105,7 @@ public partial class App
         var services = new ServiceCollection();
         services.AddSingleton<IAtomicFileWriter>(writer);
         services.AddSingleton<ISettingsService>(settings);
+        services.AddSingleton(_updateService);
         services.AddSingleton<IJsonToolSettingsService>(jsonSettings);
         services.AddSingleton<ISettingsSection, SystemSettingsSection>();
         services.AddSingleton<ISettingsSection>(provider => new ShortcutSettingsSection(
@@ -106,7 +122,7 @@ public partial class App
             provider.GetRequiredService<DataDirectoryChangeService>(),
             provider.GetRequiredService<SettingsDialogService>(), provider.GetRequiredService<ISettingsService>()));
         services.AddSingleton<ISettingsSection, DisplaySettingsSection>();
-        services.AddSingleton<ISettingsSection, AboutSettingsSection>();
+        services.AddSingleton<ISettingsSection>(_ => new AboutSettingsSection(_updateService, BeginUpdateAsync));
         services.AddSingleton(roots);
         services.AddSingleton<DataDirectoryChangeService>();
         services.AddSingleton<IStorageManager>(storage);
@@ -152,7 +168,8 @@ public partial class App
         // ExitAsync 自己负责完整关闭流程，而非在 UI 回调中阻塞线程。
         services.AddSingleton<TrayController>(provider => new TrayController(
             provider.GetRequiredService<ITrayIconService>(), provider.GetRequiredService<IAppWindowManager>(),
-            () => _ = ExitAsync()));
+            () => _ = ExitAsync(), provider.GetRequiredService<GitHubUpdateService>(),
+            typeof(App).Assembly.GetName().Version?.ToString(3) ?? "0.0.0"));
         services.AddSingleton<IAppLifecycle, DesktopAppLifecycle>();
         _services = services.BuildServiceProvider();
         _services.GetRequiredService<DataDirectoryChangeService>().LoadPending(
@@ -166,7 +183,10 @@ public partial class App
         _services.GetRequiredService<DesktopWindowManager>().InitializeLauncher();
         _ = _services.GetRequiredService<TrayController>();
         // 后台管道监听与 UI 生命周期并行运行；其取消令牌由退出流程统一触发。
-        _ = ListenForActivationAsync(_shutdown.Token);
+        _ = ListenForActivationAsync(_instanceName, _shutdown.Token);
+        await SignalLauncherReadyAsync(e.Args, _shutdown.Token);
+        _ = CheckForUpdatesAtStartupAsync(_updateService, typeof(App).Assembly.GetName().Version?.ToString(3) ?? "0.0.0",
+            _shutdown.Token);
     }
 
     // 托盘等多条路径都可请求退出；实际幂等性由 IAppLifecycle 实现保证。
@@ -174,9 +194,80 @@ public partial class App
     {
         if ( _shutdown is null )
             return;
-        await _lifecycle!.ShutdownAsync(_shutdown.Token);
+        if ( !await _lifecycle!.ShutdownAsync(_shutdown.Token) )
+        {
+            MessageBox.Show("应用未能完成安全保存和关闭。请解决保存问题后重试。", "juju",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
         _shutdown.Cancel();
         Shutdown();
+    }
+
+    private async Task CheckForUpdatesAtStartupAsync(GitHubUpdateService updates, string currentVersion,
+        CancellationToken cancellationToken)
+    {
+        try { await updates.CheckAsync(currentVersion, manual: false, cancellationToken); }
+        catch ( OperationCanceledException ) { }
+        catch ( Exception ) { /* Update availability never blocks normal application startup. */ }
+    }
+
+    private async Task BeginUpdateAsync(PreparedUpdate update)
+    {
+        if ( _shutdown is null || _lifecycle is null )
+            throw new InvalidOperationException("应用尚未完成启动。");
+
+        var root = ApplicationPaths.InstallDirectory;
+        var installedUpdater = Path.Combine(root, "Juju.Updater.exe");
+        if ( !File.Exists(installedUpdater) )
+            throw new FileNotFoundException("更新辅助程序不存在，请重新安装 juju。", installedUpdater);
+
+        var helperDirectory = Path.Combine(Path.GetTempPath(), "juju-updater", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(helperDirectory);
+        var helperPath = Path.Combine(helperDirectory, "Juju.Updater.exe");
+        var gatePath = Path.Combine(helperDirectory, "continue-update");
+        File.Copy(installedUpdater, helperPath);
+        await File.WriteAllTextAsync(gatePath, "WAIT", _shutdown.Token);
+
+        var start = new ProcessStartInfo(helperPath) { WorkingDirectory = helperDirectory, UseShellExecute = false };
+        AddArgument(start, "root", root);
+        AddArgument(start, "package", update.PackagePath);
+        AddArgument(start, "manifest", update.ManifestPath);
+        AddArgument(start, "version", update.Manifest.Version);
+        AddArgument(start, "pid", Environment.ProcessId.ToString());
+        AddArgument(start, "gate", gatePath);
+        using var helper = Process.Start(start) ?? throw new InvalidOperationException("无法启动更新辅助程序。");
+
+        if ( !await _lifecycle.ShutdownAsync(_shutdown.Token) )
+        {
+            try { helper.Kill(entireProcessTree: true); }
+            catch ( InvalidOperationException ) { }
+            throw new InvalidOperationException("当前数据未能安全保存，更新已取消，应用仍保持运行。");
+        }
+
+        try
+        {
+            await using var gate = new FileStream(gatePath, FileMode.Create, FileAccess.Write, FileShare.Read,
+                4096, FileOptions.WriteThrough);
+            var bytes = Encoding.UTF8.GetBytes("GO");
+            await gate.WriteAsync(bytes);
+            await gate.FlushAsync();
+            gate.Flush(flushToDisk: true);
+        }
+        catch ( Exception ex )
+        {
+            MessageBox.Show("应用已完成安全关闭，但更新启动标记写入失败。更新辅助程序将恢复当前版本。\n\n" + ex.Message,
+                "juju 更新", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+
+        _shutdown.Cancel();
+        Shutdown();
+    }
+
+    private static void AddArgument(ProcessStartInfo process, string name, string value)
+    {
+        process.ArgumentList.Add("--" + name);
+        process.ArgumentList.Add(value);
     }
 
     // 无论正常退出还是启动失败后的 Shutdown，WPF 都会进入此处释放进程级资源。
@@ -190,13 +281,13 @@ public partial class App
     }
 
     // 首实例作为命名管道服务端，后续进程只发送一条激活消息后退出。
-    private async Task ListenForActivationAsync(CancellationToken cancellationToken)
+    private async Task ListenForActivationAsync(string instanceName, CancellationToken cancellationToken)
     {
         while ( !cancellationToken.IsCancellationRequested )
         {
             try
             {
-                await using var pipe = new NamedPipeServerStream(InstanceName, PipeDirection.In, 1,
+                await using var pipe = new NamedPipeServerStream(instanceName, PipeDirection.In, 1,
                     PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
                 await pipe.WaitForConnectionAsync(cancellationToken);
                 using var reader = new StreamReader(pipe, Encoding.UTF8, leaveOpen: true);
@@ -212,18 +303,60 @@ public partial class App
     }
 
     // 第二个进程不构建 DI 或窗口，仅尝试通知已运行的首实例；连接竞态失败时静默结束。
-    private static async Task ActivateExistingInstanceAsync()
+    private static async Task ActivateExistingInstanceAsync(string instanceName)
     {
         try
         {
             await using var pipe =
-                new NamedPipeClientStream(".", InstanceName, PipeDirection.Out, PipeOptions.Asynchronous);
+                new NamedPipeClientStream(".", instanceName, PipeDirection.Out, PipeOptions.Asynchronous);
             await pipe.ConnectAsync(1000);
             await using var writer = new StreamWriter(pipe, Encoding.UTF8, leaveOpen: true) { AutoFlush = true };
             await writer.WriteLineAsync("ActivateLauncher");
         }
         catch ( IOException )
         {
+        }
+    }
+
+    private static string GetInstanceName(string installRoot)
+    {
+        var canonical = Path.TrimEndingDirectorySeparator(Path.GetFullPath(installRoot)).ToUpperInvariant();
+        var hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(canonical)));
+        return "juju-single-instance-" + hash[..24];
+    }
+
+    private static void LogStartupFailure(Exception exception)
+    {
+        try
+        {
+            var state = Path.Combine(ApplicationPaths.InstallDirectory, "state");
+            Directory.CreateDirectory(state);
+            File.AppendAllText(Path.Combine(state, "startup-errors.log"),
+                $"[{DateTimeOffset.UtcNow:O}] {exception}\r\n\r\n");
+        }
+        catch ( Exception ) { }
+    }
+
+    private static async Task SignalLauncherReadyAsync(IReadOnlyList<string> args, CancellationToken cancellationToken)
+    {
+        for ( var index = 0; index + 1 < args.Count; index++ )
+        {
+            if ( !string.Equals(args[index], "--launcher-pipe", StringComparison.OrdinalIgnoreCase) )
+                continue;
+            try
+            {
+                await using var pipe = new NamedPipeClientStream(".", args[index + 1], PipeDirection.Out,
+                    PipeOptions.Asynchronous);
+                await pipe.ConnectAsync(15_000, cancellationToken);
+                await using var writer = new StreamWriter(pipe, Encoding.UTF8, leaveOpen: true) { AutoFlush = true };
+                await writer.WriteLineAsync("READY");
+            }
+            catch ( Exception ex ) when ( ex is IOException or TimeoutException or OperationCanceledException )
+            {
+                // Launcher independently times out and rolls back if this process cannot confirm readiness.
+            }
+
+            return;
         }
     }
 }

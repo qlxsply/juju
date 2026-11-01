@@ -69,6 +69,7 @@ public partial class JsonToolWindow : Window
     private bool _initializing;
     private bool _selecting;
     private bool _closing;
+    private bool _shutdownPrepared;
     private JsonViewMode _mode = JsonViewMode.Edit;
     private JsonDocumentId? _compareLeft;
     private JsonDocumentId? _compareRight;
@@ -175,21 +176,53 @@ public partial class JsonToolWindow : Window
     }
 
     // 显式应用关停与用户点击关闭不同：前者必须刷新内容、销毁 WebView2 并允许真正 Close。
-    public async Task ShutdownAsync()
+    public async Task<bool> PrepareShutdownAsync()
     {
+        if ( _shutdownPrepared )
+            return true;
+        if ( !await FlushCurrentAsync() )
+        {
+            SaveStateStatus.Text = "更新已取消：当前 JSON 内容未能保存，请先解决保存问题。";
+            return false;
+        }
+
+        _shutdownPrepared = true;
+        IsEnabled = false;
+        return true;
+    }
+
+    public void CancelShutdownPreparation()
+    {
+        if ( !_shutdownPrepared )
+            return;
+        _shutdownPrepared = false;
+        IsEnabled = true;
+        if ( _current is not null && _saveState is SaveState.Dirty or SaveState.SaveFailed )
+            _autosave.Start();
+    }
+
+    public async Task<bool> ShutdownAsync()
+    {
+        if ( !_shutdownPrepared && !await PrepareShutdownAsync() )
+            return false;
         _closing = true;
+        var closed = false;
         try
         {
-            await FlushCurrentAsync();
             DestroyEditor();
             Close();
+            closed = true;
+            return true;
         }
         finally
         {
-            _documents.ExternalChanged -= OnExternalDocumentChanged;
-            _settings.Changed -= OnSettingsChanged;
+            if ( closed )
+            {
+                _documents.ExternalChanged -= OnExternalDocumentChanged;
+                _settings.Changed -= OnSettingsChanged;
+                _lifetime.Cancel();
+            }
             _closing = false;
-            _lifetime.Cancel();
         }
     }
 
@@ -344,10 +377,15 @@ public partial class JsonToolWindow : Window
             if ( _editorReady && !_inDiffMode )
                 _editorContent = await GetEditorContentAsync();
             await SaveCurrentAsync(_editorContent);
-            return _saveState == SaveState.Clean;
+            var saved = _saveState == SaveState.Clean;
+            if ( !saved && _saveState is SaveState.Dirty or SaveState.SaveFailed )
+                _autosave.Start();
+            return saved;
         }
         catch
         {
+            if ( _saveState is SaveState.Dirty or SaveState.SaveFailed )
+                _autosave.Start();
             return false;
         }
     }

@@ -21,15 +21,20 @@ public sealed class DesktopAppLifecycle(
     private int _stopping;
 
     // Interlocked 使重复退出请求（托盘、窗口、系统关机）只执行一次，无需在 UI 线程加锁。
-    public async Task ShutdownAsync(CancellationToken cancellationToken = default)
+    public async Task<bool> ShutdownAsync(CancellationToken cancellationToken = default)
     {
         if ( Interlocked.Exchange(ref _stopping, 1) != 0 )
-            return;
+            return false;
+        var prepared = false;
+        var completed = false;
         try
         {
             log.LogInformation("Application shutdown started");
-            await windows.ShutdownAsync(states, cancellationToken);
             await settings.SaveAsync(settings.Current, cancellationToken);
+            prepared = await windows.PrepareShutdownAsync();
+            if ( !prepared )
+                return false;
+            await windows.ShutdownAsync(states, cancellationToken);
             await tools.StopAllAsync(cancellationToken);
             tray.Dispose();
             // JSON 窗口已写盘、Toto 调度器已停止；此时复制并提交下一次启动的数据目录。
@@ -46,10 +51,27 @@ public sealed class DesktopAppLifecycle(
             }
 
             log.LogInformation("Application shutdown completed");
+            completed = true;
+            return true;
         }
         catch ( Exception ex ) when ( ex is not OperationCanceledException )
         {
             log.LogError(ex, "Application shutdown failed");
+            return false;
+        }
+        catch ( OperationCanceledException )
+        {
+            log.LogInformation("Application shutdown was cancelled");
+            return false;
+        }
+        finally
+        {
+            if ( !completed )
+            {
+                Interlocked.Exchange(ref _stopping, 0);
+                if ( prepared )
+                    windows.CancelShutdownPreparation();
+            }
         }
     }
 }

@@ -158,12 +158,22 @@ XAML 的权威格式化器是仓库本地 XAML Styler，而不是 Rider 内置 X
 
 ### 生成 Windows x64 安装包
 
-从仓库根目录运行以下命令，将示例版本替换为实际版本。`dotnet publish` 输出自包含的 Windows x64 应用；随后 Inno Setup 6 将它打包为安装程序。
+正式安装布局由版本目录、稳定 Launcher 和共享数据根目录组成。Release workflow 会构建并打包所有组件；日常发布请使用下方的 GitHub Release 流程。下面命令演示本地构建首装包：
 
 ```powershell
+if (Test-Path -LiteralPath artifacts) { Remove-Item -LiteralPath artifacts -Recurse -Force }
+
 dotnet publish src/Juju.App/Juju.App.csproj `
   -c Release -r win-x64 --self-contained true `
   -p:Version=2.0.0 -o artifacts/win-x64
+
+dotnet publish src/Juju.Launcher/Juju.Launcher.csproj `
+  -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true `
+  -p:Version=1.0.0 -o artifacts/bootstrap
+
+dotnet publish src/Juju.Updater/Juju.Updater.csproj `
+  -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true `
+  -p:Version=1.0.0 -o artifacts/bootstrap
 
 $iscc = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'
 & $iscc '/DAppVersion=2.0.0' 'installer\juju.iss'
@@ -172,14 +182,27 @@ if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed with exit code $LASTEXITCODE
 
 安装包将生成在 `artifacts/installer/juju_v2.0.0_setup_win64.exe`。
 
+### 应用自动更新
+
+应用启动时每 24 小时检查一次 GitHub 最新稳定 Release；“更新与版本”页面也可手动检查。用户确认后，程序下载版本 ZIP、校验 SHA-256，保存并退出当前应用，再由独立更新助手安装到 `versions/<版本>`。稳定 Launcher 验证新版本成功启动后才提交版本切换；若启动失败则自动回退到上一版本。配置与工具数据放在版本目录之外，不随应用版本切换。
+
+Release 需要同时提供 `juju_vX.Y.Z_win-x64.zip`、`juju_vX.Y.Z_manifest.json` 和首次安装用的 Inno Setup 包。SHA-256 校验基于通过 HTTPS 获取的 GitHub Release manifest；当前未配置 Authenticode 代码签名证书。
+
+自动更新技术方案和分阶段实施状态见[自动更新设计文档](docs/auto-update-design.md)。新安装布局不提供旧平铺安装目录或旧版本数据的自动迁移；采用新布局前请先备份旧版数据。
+
+在 Windows 本地验证版本目录切换时，可先将 App 发布到 `artifacts/e2e-win-x64`、Launcher/Updater 发布到 `artifacts/e2e-bootstrap`，再运行 `./scripts/test-auto-update-e2e.ps1`。该脚本仅使用隔离的临时安装根目录。
+
 ## 自动发布
 
-向 GitHub 推送格式为 `juju_vx.y.z` 的 tag（例如 `juju_v2.0.0`）会触发 [Release workflow](.github/workflows/release.yml)。工作流会校验 tag、构建自包含的 Windows x64 应用、生成 Inno Setup 安装包，并将 `juju_vx.y.z_setup_win64.exe` 附加到 GitHub Release。
+向 GitHub 推送格式为 `juju_vx.y.z` 的 tag（例如 `juju_v2.0.0`）会触发 [Release workflow](.github/workflows/release.yml)。工作流会校验 tag、构建应用/Launcher/Updater、生成首次安装包、版本化 ZIP、manifest 和 SHA-256，并将资产及自动生成的 Release notes 发布到 GitHub Release。
 
 ## 项目结构
 
 ```text
 src/Juju.App/             WPF 启动器、设置窗口与工具窗口
+src/Juju.Launcher/        稳定入口、版本选择与启动回退
+src/Juju.Updater/         独立版本安装与更新恢复助手
+src/Juju.Update/          GitHub Release、版本状态、校验与安全解包
 src/Juju.Core/            宿主设置、数据根目录、工具抽象与共享基础设施
 src/Juju.Platform.Windows/ Windows 托盘、快捷键、开机启动等平台服务
 src/Juju.Tools.Json/      JSON 文档、元数据、设置与文件监控

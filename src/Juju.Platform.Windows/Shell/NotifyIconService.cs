@@ -59,6 +59,12 @@ public sealed class NotifyIconService : ITrayIconService
             CommandRequested?.Invoke(TrayCommand.ShowLauncher);
     }
 
+    public void ShowNotification(string title, string message)
+    {
+        if ( !_disposed )
+            _icon.ShowBalloonTip(5000, title, message, ToolTipIcon.Info);
+    }
+
     public void Dispose()
     {
         if ( _disposed )

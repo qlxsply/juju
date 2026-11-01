@@ -1,5 +1,6 @@
 using Juju.App.Contracts.Windows;
 using Juju.Core.Contracts.Platform;
+using Juju.Update;
 using MessageBox = System.Windows.MessageBox;
 
 namespace Juju.App.Bootstrap;
@@ -10,14 +11,21 @@ public sealed class TrayController : IDisposable
     private readonly ITrayIconService _tray;
     private readonly IAppWindowManager _windows;
     private readonly Action _exit;
+    private readonly GitHubUpdateService _updates;
+    private readonly string _currentVersion;
+    private string? _notifiedVersion;
     private bool _disposed;
 
-    public TrayController(ITrayIconService tray, IAppWindowManager windows, Action exit)
+    public TrayController(ITrayIconService tray, IAppWindowManager windows, Action exit,
+        GitHubUpdateService updates, string currentVersion)
     {
         _tray = tray;
         _windows = windows;
         _exit = exit;
+        _updates = updates;
+        _currentVersion = currentVersion;
         _tray.CommandRequested += OnCommandRequested;
+        _updates.CheckCompleted += OnUpdateCheckCompleted;
     }
 
     private void OnCommandRequested(TrayCommand command)
@@ -34,7 +42,8 @@ public sealed class TrayController : IDisposable
                 ShowHelp();
                 break;
             case TrayCommand.CheckForUpdates:
-                ShowUpdateStatus();
+                _windows.ShowUpdateSettings();
+                _ = _updates.CheckAsync(_currentVersion, manual: true);
                 break;
             case TrayCommand.Exit:
                 _exit();
@@ -46,9 +55,14 @@ public sealed class TrayController : IDisposable
         MessageBox.Show("juju Toolbox\n\n显示主界面可打开工具列表；应用设置集中管理工具箱和各工具选项。",
             "帮助", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Information);
 
-    private static void ShowUpdateStatus() =>
-        MessageBox.Show("当前版本没有配置在线更新服务。请使用 Toolbox 安装包更新应用。",
-            "检查更新", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Information);
+    private void OnUpdateCheckCompleted(UpdateCheckResult result)
+    {
+        if ( result.Update is not { } update || _notifiedVersion == update.Manifest.Version )
+            return;
+        _notifiedVersion = update.Manifest.Version;
+        System.Windows.Application.Current.Dispatcher.BeginInvoke(new Action(() =>
+            _tray.ShowNotification("juju 有可用更新", $"稳定版 {update.Manifest.Version} 已发布，可在“更新与版本”页面查看。")));
+    }
 
     public void Dispose()
     {
@@ -56,6 +70,7 @@ public sealed class TrayController : IDisposable
             return;
         _disposed = true;
         _tray.CommandRequested -= OnCommandRequested;
+        _updates.CheckCompleted -= OnUpdateCheckCompleted;
         _tray.Dispose();
     }
 }

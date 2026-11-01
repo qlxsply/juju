@@ -13,4 +13,5 @@ public enum TrayCommand
 public interface ITrayIconService : IDisposable
 {
     event Action<TrayCommand>? CommandRequested;
+    void ShowNotification(string title, string message);
 }

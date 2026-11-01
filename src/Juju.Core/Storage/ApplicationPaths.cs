@@ -3,8 +3,8 @@ namespace Juju.Core.Storage;
 /// <summary>配置文件与工具数据的统一定位；安装目录只保留“数据根目录指针”。</summary>
 public static class ApplicationPaths
 {
-    /// <summary>应用二进制的基目录。</summary>
-    public static string InstallDirectory => AppContext.BaseDirectory;
+    /// <summary>稳定安装根目录，由 Launcher 传入；开发时回退到当前程序目录。</summary>
+    public static string InstallDirectory { get; } = ResolveInstallDirectory();
     private static IReadOnlyDictionary<string, string> _toolDirectories = new Dictionary<string, string>();
     private static readonly string StartupDataRoot = ReadDataRoot();
 
@@ -44,4 +44,11 @@ public static class ApplicationPaths
 
     /// <summary>应用自身（非工具）的持久化目录。</summary>
     public static string ApplicationDataDirectory => Path.Combine(DataRoot, "app");
+
+    private static string ResolveInstallDirectory()
+    {
+        var configured = Environment.GetEnvironmentVariable("JUJU_INSTALL_ROOT");
+        return Path.TrimEndingDirectorySeparator(Path.GetFullPath(
+            string.IsNullOrWhiteSpace(configured) ? AppContext.BaseDirectory : configured));
+    }
 }

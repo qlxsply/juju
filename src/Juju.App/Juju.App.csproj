@@ -8,6 +8,7 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Juju.Core\Juju.Core.csproj" />
+    <ProjectReference Include="..\Juju.Update\Juju.Update.csproj" />
     <ProjectReference Include="..\Juju.Tools.Json\Juju.Tools.Json.csproj" />
     <ProjectReference Include="..\Juju.Tools.Toto\Juju.Tools.Toto.csproj" />
     <ProjectReference Include="..\Juju.Platform.Windows\Juju.Platform.Windows.csproj" />

@@ -69,10 +69,15 @@ public sealed class JsonWindowFactory : IJsonWindowFactory
 
     public void Close() => _window?.Close();
 
-    public async Task ShutdownAsync()
+    public Task<bool> PrepareShutdownAsync() => _window?.PrepareShutdownAsync() ?? Task.FromResult(true);
+
+    public void CancelShutdownPreparation() => _window?.CancelShutdownPreparation();
+
+    public async Task<bool> ShutdownAsync()
     {
         if ( _window is not null )
-            await _window.ShutdownAsync();
+            return await _window.ShutdownAsync();
+        return true;
     }
 
     private static void Show(Window window)

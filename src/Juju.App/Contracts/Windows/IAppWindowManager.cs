@@ -7,8 +7,11 @@ public interface IAppWindowManager
 {
     void ShowLauncher();
     void ShowSettings();
+    void ShowUpdateSettings();
     void PrepareToolWindowOpen();
     void CloseAllTools();
+    Task<bool> PrepareShutdownAsync();
+    void CancelShutdownPreparation();
 }
 
 public interface IJsonWindowFactory
@@ -16,7 +19,9 @@ public interface IJsonWindowFactory
     Window? MainWindow { get; }
     void ShowJson();
     void Close();
-    Task ShutdownAsync();
+    Task<bool> PrepareShutdownAsync();
+    void CancelShutdownPreparation();
+    Task<bool> ShutdownAsync();
     event Action? Hidden;
 }
 

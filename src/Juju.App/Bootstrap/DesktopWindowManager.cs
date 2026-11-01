@@ -108,6 +108,12 @@ public sealed class DesktopWindowManager : IAppWindowManager
         Show(_settingsWindow);
     }
 
+    public void ShowUpdateSettings()
+    {
+        ShowSettings();
+        _settingsWindow?.NavigateToAbout();
+    }
+
     public void PrepareToolWindowOpen()
     {
         if ( _settingsWindow?.IsVisible == true )
@@ -191,7 +197,8 @@ public sealed class DesktopWindowManager : IAppWindowManager
         await states.CaptureAsync([("launcher", _launcher), ("settings", _settingsWindow),
                 ("json", _jsonSettings.Current.RememberWindowPlacement ? _jsonWindows.MainWindow : null),
                 ("toto", _totoWindows.MainWindow)], cancellationToken);
-        await _jsonWindows.ShutdownAsync();
+        if ( !await _jsonWindows.ShutdownAsync() )
+            throw new InvalidOperationException("JSON 窗口未能安全刷新，应用关停已取消。");
         foreach ( var reminder in _reminders.ToArray() )
             reminder.Close();
         _totoWindows.CloseForShutdown();
@@ -201,6 +208,30 @@ public sealed class DesktopWindowManager : IAppWindowManager
             _settingsWindow.Close();
         }
         _launcher?.Close();
+    }
+
+    public async Task<bool> PrepareShutdownAsync()
+    {
+        if ( !await _jsonWindows.PrepareShutdownAsync() )
+            return false;
+        _shuttingDown = true;
+        _jsonWindows.Hidden -= OnJsonHidden;
+        _totoWindows.Hidden -= OnTotoHidden;
+        _totoRuntime.DueReminders -= OnDueReminders;
+        _totoRuntime.ScheduledPopup -= OnScheduledPopup;
+        return true;
+    }
+
+    public void CancelShutdownPreparation()
+    {
+        _jsonWindows.CancelShutdownPreparation();
+        if ( !_shuttingDown )
+            return;
+        _shuttingDown = false;
+        _jsonWindows.Hidden += OnJsonHidden;
+        _totoWindows.Hidden += OnTotoHidden;
+        _totoRuntime.DueReminders += OnDueReminders;
+        _totoRuntime.ScheduledPopup += OnScheduledPopup;
     }
 
     private static void Show(System.Windows.Window window)

@@ -126,8 +126,11 @@ public sealed class ToolManagerTests
     {
         public void ShowLauncher() { }
         public void ShowSettings() { }
+        public void ShowUpdateSettings() { }
         public void PrepareToolWindowOpen() => calls.Add("prepare");
         public void CloseAllTools() { }
+        public Task<bool> PrepareShutdownAsync() => Task.FromResult(true);
+        public void CancelShutdownPreparation() { }
     }
 
     private sealed class RecordingFeedback(List<string> calls) : IToolOpenFeedback

@@ -23,6 +23,14 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Juju.Architecture.Tests", "
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Juju.App.Tests", "tests\Juju.App.Tests\Juju.App.Tests.csproj", "{3B68FCB2-A402-451B-8E3E-A72C6B192A09}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Juju.Update", "src\Juju.Update\Juju.Update.csproj", "{B4EAD496-7596-41D5-8C05-8B7F3A17F121}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Juju.Update.Tests", "tests\Juju.Update.Tests\Juju.Update.Tests.csproj", "{AF5262B2-1128-49AE-A0AE-BC06DD7C64BB}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Juju.Launcher", "src\Juju.Launcher\Juju.Launcher.csproj", "{D2ACF2E7-7D11-44CD-A723-4C35B9F9292E}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Juju.Updater", "src\Juju.Updater\Juju.Updater.csproj", "{9926C00B-F815-4B08-84A8-4A7B3445F89A}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -129,6 +137,22 @@ Global
 		{3B68FCB2-A402-451B-8E3E-A72C6B192A09}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{3B68FCB2-A402-451B-8E3E-A72C6B192A09}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{3B68FCB2-A402-451B-8E3E-A72C6B192A09}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B4EAD496-7596-41D5-8C05-8B7F3A17F121}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B4EAD496-7596-41D5-8C05-8B7F3A17F121}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B4EAD496-7596-41D5-8C05-8B7F3A17F121}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B4EAD496-7596-41D5-8C05-8B7F3A17F121}.Release|Any CPU.Build.0 = Release|Any CPU
+		{AF5262B2-1128-49AE-A0AE-BC06DD7C64BB}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{AF5262B2-1128-49AE-A0AE-BC06DD7C64BB}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{AF5262B2-1128-49AE-A0AE-BC06DD7C64BB}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{AF5262B2-1128-49AE-A0AE-BC06DD7C64BB}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D2ACF2E7-7D11-44CD-A723-4C35B9F9292E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D2ACF2E7-7D11-44CD-A723-4C35B9F9292E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D2ACF2E7-7D11-44CD-A723-4C35B9F9292E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D2ACF2E7-7D11-44CD-A723-4C35B9F9292E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{9926C00B-F815-4B08-84A8-4A7B3445F89A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{9926C00B-F815-4B08-84A8-4A7B3445F89A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{9926C00B-F815-4B08-84A8-4A7B3445F89A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{9926C00B-F815-4B08-84A8-4A7B3445F89A}.Release|Any CPU.Build.0 = Release|Any CPU
 		{BCAB174D-455C-469B-88B2-D96B49915D95}.Release|x64.ActiveCfg = Release|Any CPU
 		{BCAB174D-455C-469B-88B2-D96B49915D95}.Release|x64.Build.0 = Release|Any CPU
 		{BCAB174D-455C-469B-88B2-D96B49915D95}.Release|x86.ActiveCfg = Release|Any CPU

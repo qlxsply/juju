@@ -17,6 +17,13 @@ jobs:
       - name: Check out source
         uses: actions/checkout@v4
 
+      - name: Start with clean release artifacts
+        shell: pwsh
+        run: |
+          if (Test-Path -LiteralPath 'artifacts') {
+            Remove-Item -LiteralPath 'artifacts' -Recurse -Force
+          }
+
       - name: Validate release tag
         id: tag
         shell: pwsh
@@ -49,6 +56,39 @@ jobs:
           -p:Version=${{ steps.tag.outputs.version }}
           -o artifacts/win-x64
 
+      - name: Publish stable launcher and updater
+        run: |
+          dotnet publish src/Juju.Launcher/Juju.Launcher.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:Version=1.0.0 -o artifacts/bootstrap
+          if ($LASTEXITCODE -ne 0) { throw "Launcher publish failed with exit code $LASTEXITCODE" }
+          dotnet publish src/Juju.Updater/Juju.Updater.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:Version=1.0.0 -o artifacts/bootstrap
+          if ($LASTEXITCODE -ne 0) { throw "Updater publish failed with exit code $LASTEXITCODE" }
+        shell: pwsh
+
+      - name: Create versioned update package and manifest
+        shell: pwsh
+        env:
+          APP_VERSION: ${{ steps.tag.outputs.version }}
+        run: |
+          $packageName = "juju_v{0}_win-x64.zip" -f $env:APP_VERSION
+          $manifestName = "juju_v{0}_manifest.json" -f $env:APP_VERSION
+          $packagePath = Join-Path $PWD "artifacts\release\$packageName"
+          $manifestPath = Join-Path $PWD "artifacts\release\$manifestName"
+          New-Item -ItemType Directory -Force -Path (Split-Path $packagePath) | Out-Null
+          Compress-Archive -Path 'artifacts\win-x64\*' -DestinationPath $packagePath -CompressionLevel Optimal
+          $hash = (Get-FileHash -LiteralPath $packagePath -Algorithm SHA256).Hash.ToLowerInvariant()
+          $manifest = [ordered]@{
+            schemaVersion = 1
+            version = $env:APP_VERSION
+            channel = 'stable'
+            rid = 'win-x64'
+            packageAsset = $packageName
+            sha256 = $hash
+            minimumLauncherVersion = '1.0.0'
+            releaseNotesUrl = "https://github.com/qlxsply/juju/releases/tag/juju_v$($env:APP_VERSION)"
+          } | ConvertTo-Json
+          [IO.File]::WriteAllText($manifestPath, $manifest, [Text.UTF8Encoding]::new($false))
+          if ((Get-Item -LiteralPath $packagePath).Length -gt 1GB) { throw 'Update package exceeds 1 GB.' }
+
       - name: Install Inno Setup
         run: choco install innosetup --yes --no-progress
 
@@ -70,4 +110,7 @@ jobs:
           tag_name: ${{ github.ref_name }}
           name: juju ${{ steps.tag.outputs.version }}
           generate_release_notes: true
-          files: artifacts/installer/juju_v${{ steps.tag.outputs.version }}_setup_win64.exe
+          files: |
+            artifacts/installer/juju_v${{ steps.tag.outputs.version }}_setup_win64.exe
+            artifacts/release/juju_v${{ steps.tag.outputs.version }}_win-x64.zip
+            artifacts/release/juju_v${{ steps.tag.outputs.version }}_manifest.json
