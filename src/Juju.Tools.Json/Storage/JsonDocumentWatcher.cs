@@ -117,6 +117,18 @@ public sealed class JsonDocumentWatcher : IAsyncDisposable
                     continue;
                 }
 
+                // The file may already contain our new bytes while SaveAsync is still
+                // updating metadata and has not registered the resulting revision yet.
+                // Keep the debounced event until that registration can identify it as
+                // our own write (or the short-lived intent expires after a failed save).
+                if ( _selfWriteIntents.TryGetValue(item.Key, out var activeIntent) &&
+                     activeIntent >= DateTimeOffset.UtcNow )
+                {
+                    _pending[item.Key] = pending;
+                    _timer.Change(150, Timeout.Infinite);
+                    continue;
+                }
+
                 Changed?.Invoke(this,
                     new JsonDocumentExternalChange(id.Value,
                         kind == WatcherChangeTypes.Renamed

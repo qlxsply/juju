@@ -541,6 +541,38 @@ public sealed class JsonDocumentServiceTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Document_watcher_defers_self_write_event_until_revision_is_registered()
+    {
+        // Hold the atomic writer after the file has changed, reproducing the gap before SaveAsync registers its revision.
+        await _documents.DisposeAsync();
+        var writer = new PausableAtomicFileWriter();
+        _documents = new JsonDocumentService(JsonRoot, new JsonMetadataStore(JsonRoot, writer), writer,
+            new DocumentRevisionService());
+        var created = await _documents.CreateAsync();
+        await Task.Delay(400);
+        var observed = new TaskCompletionSource<JsonDocumentExternalChange>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _documents.ExternalChanged += (_, change) => observed.TrySetResult(change);
+        var opened = await _documents.OpenAsync(created.Id);
+
+        writer.PauseNextWrite();
+        var save = _documents.SaveAsync(created.Id, "{\"self\":true}", opened.Revision);
+        await writer.WritePublished.WaitAsync(TimeSpan.FromSeconds(5));
+        await Task.Delay(400);
+
+        // The write intent is still active and registration has not run, so the watcher must defer this event.
+        Assert.False(observed.Task.IsCompleted);
+        writer.ResumeWrite();
+        await save;
+        await Task.Delay(400);
+        Assert.False(observed.Task.IsCompleted);
+
+        await File.WriteAllTextAsync(Path.Combine(JsonRoot, "documents", created.FileName), "{\"external\":true}");
+        var external = await observed.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(created.Id, external.DocumentId);
+        Assert.Equal(ExternalDocumentChangeKind.Changed, external.Kind);
+    }
+
+    [Fact]
     public async Task Save_with_current_revision_persists_invalid_json_text()
     {
         // 保存服务负责持久化与版本控制，而 JSON 语法校验由编辑器另行处理，因此允许保存未完成的输入。
@@ -609,5 +641,37 @@ public sealed class JsonDocumentServiceTests : IAsyncLifetime
             // 服务的 using/Dispose 结束测量范围时写入一条确定性的性能记录。
             public void Dispose() => measurements.Add(new(operation, TimeSpan.Zero, 1, 1));
         }
+    }
+
+    private sealed class PausableAtomicFileWriter : IAtomicFileWriter
+    {
+        private readonly AtomicFileWriter _inner = new();
+        private TaskCompletionSource _published = NewSignal();
+        private TaskCompletionSource _resume = NewSignal();
+        private int _pauseNext;
+
+        public Task WritePublished => _published.Task;
+
+        public void PauseNextWrite()
+        {
+            _published = NewSignal();
+            _resume = NewSignal();
+            Interlocked.Exchange(ref _pauseNext, 1);
+        }
+
+        public void ResumeWrite() => _resume.TrySetResult();
+
+        public async Task WriteTextAsync(string path, string content, CancellationToken cancellationToken = default)
+        {
+            await _inner.WriteTextAsync(path, content, cancellationToken);
+            if ( Interlocked.Exchange(ref _pauseNext, 0) == 1 )
+            {
+                _published.TrySetResult();
+                await _resume.Task.WaitAsync(cancellationToken);
+            }
+        }
+
+        private static TaskCompletionSource NewSignal() =>
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
     }
 }
