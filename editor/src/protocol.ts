@@ -22,7 +22,7 @@ export interface InitializePayload {
 }
 
 export type MonacoCommand = "Save" | "Format" | "FoldAll" | "UnfoldAll";
-export type JujuContext = "Editor" | "List" | "Diff";
+export type JujuContext = "Window" | "Editor" | "List" | "Diff";
 
 export interface MonacoBinding {
   command: MonacoCommand;

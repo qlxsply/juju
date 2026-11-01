@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Interop;
 using Juju.App.Presentation.Toto;
 using Juju.Platform.Windows;
 using Juju.Tools.Toto.Application;
@@ -30,16 +31,19 @@ public partial class TotoItemWindow : Window
     {
         _toto = toto;
         _defaultMinutes = int.TryParse(toto.Settings.GetValueOrDefault("default_remind_minutes"), out var minutes)
-            ? minutes : 5;
+            ? minutes
+            : 5;
         _mode = mode;
         _item = item;
         InitializeComponent();
         MaxHeight = SystemParameters.WorkArea.Height * 0.9;
-        SourceInitialized += (_, _) => WindowAppearance.UseSystemCorners(new System.Windows.Interop.WindowInteropHelper(this).Handle);
+        SourceInitialized += (_, _) =>
+            WindowAppearance.UseSystemCorners(new WindowInteropHelper(this).Handle);
         QuickPanel.Visibility = mode == TotoItemWindowMode.Add ? Visibility.Visible : Visibility.Collapsed;
         EditPanel.Visibility = mode == TotoItemWindowMode.Edit ? Visibility.Visible : Visibility.Collapsed;
         EndPanel.Visibility = mode is TotoItemWindowMode.Complete or TotoItemWindowMode.Cancel
-            ? Visibility.Visible : Visibility.Collapsed;
+            ? Visibility.Visible
+            : Visibility.Collapsed;
         DetailPanel.Visibility = mode == TotoItemWindowMode.Detail ? Visibility.Visible : Visibility.Collapsed;
         Title = mode switch
         {
@@ -59,12 +63,16 @@ public partial class TotoItemWindow : Window
                 EndNoteLabel.Text = mode == TotoItemWindowMode.Complete ? "完成备注" : "取消备注";
                 EndNote.Text = item.Note;
             }
+
             if ( mode == TotoItemWindowMode.Detail )
                 LoadDetail(item);
         }
+
         _initializingFields = true;
-        PlanHour.ItemsSource = RemindHour.ItemsSource = Enumerable.Range(0, 24).Select(value => value.ToString("D2")).ToArray();
-        PlanMinute.ItemsSource = RemindMinute.ItemsSource = Enumerable.Range(0, 60).Select(value => value.ToString("D2")).ToArray();
+        PlanHour.ItemsSource = RemindHour.ItemsSource =
+            Enumerable.Range(0, 24).Select(value => value.ToString("D2")).ToArray();
+        PlanMinute.ItemsSource = RemindMinute.ItemsSource =
+            Enumerable.Range(0, 60).Select(value => value.ToString("D2")).ToArray();
         if ( mode == TotoItemWindowMode.Add )
         {
             var now = DateTime.Now;
@@ -81,12 +89,14 @@ public partial class TotoItemWindow : Window
             SetTimePickers(PlanHour, PlanMinute, item.PlannedAt);
             SetTimePickers(RemindHour, RemindMinute, item.RemindAt);
         }
+
         _initializingFields = false;
         if ( mode == TotoItemWindowMode.Detail )
         {
             SaveButton.Content = "关闭";
             CancelButton.Visibility = Visibility.Collapsed;
         }
+
         if ( mode is TotoItemWindowMode.Complete or TotoItemWindowMode.Cancel )
             SaveButton.Content = "确认";
         Loaded += (_, _) =>
@@ -132,7 +142,7 @@ public partial class TotoItemWindow : Window
         if ( _mode == TotoItemWindowMode.Edit && ReferenceEquals(textBox, NoteInput) )
             return textBox;
         if ( (_mode == TotoItemWindowMode.Complete || _mode == TotoItemWindowMode.Cancel) &&
-            ReferenceEquals(textBox, EndNote) )
+             ReferenceEquals(textBox, EndNote) )
             return textBox;
         return null;
     }
@@ -163,32 +173,63 @@ public partial class TotoItemWindow : Window
     {
         foreach ( var (label, value) in new[]
                  {
-                     ("事项内容", item.Content), ("计划时间", Format(item.PlannedAt)),
-                     ("提醒时间", Format(item.RemindAt)), ("创建时间", Format(item.CreatedAt)),
-                      (item.Status == TotoItemStatus.Active ? "提醒状态" : "结束状态",
-                          item.Status == TotoItemStatus.Active ? item.ReminderStatus switch
-                          {
-                              TotoReminderStatus.Pending => "未提醒", TotoReminderStatus.Reminded => "已提醒", _ => "无提醒"
-                          } : item.Status == TotoItemStatus.Completed ? "已完成" : "已取消"),
-                      (item.Status == TotoItemStatus.Active ? "响铃时间" : "结束时间",
-                          Format(item.Status == TotoItemStatus.Active ? item.RemindedAt : item.EndedAt)),
+                     ("事项内容", item.Content), ("计划时间", Format(item.PlannedAt)), ("提醒时间", Format(item.RemindAt)),
+                     ("创建时间", Format(item.CreatedAt)), (item.Status == TotoItemStatus.Active ? "提醒状态" : "结束状态",
+                         item.Status == TotoItemStatus.Active ? item.ReminderStatus switch
+                         {
+                             TotoReminderStatus.Pending => "未提醒",
+                             TotoReminderStatus.Reminded => "已提醒",
+                             _ => "无提醒"
+                         } :
+                         item.Status == TotoItemStatus.Completed ? "已完成" : "已取消"),
+                     (item.Status == TotoItemStatus.Active ? "响铃时间" : "结束时间",
+                         Format(item.Status == TotoItemStatus.Active ? item.RemindedAt : item.EndedAt)),
                      ("备注", string.IsNullOrWhiteSpace(item.Note) ? "—" : item.Note)
                  } )
         {
             var row = new Grid { Margin = new Thickness(0, 0, 0, 12) };
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(92) });
             row.ColumnDefinitions.Add(new ColumnDefinition());
-            row.Children.Add(new TextBlock { Text = label, Foreground = (Brush) Application.Current.Resources["ToolboxMuted"] });
-            var text = new TextBlock
+
+            row.Children.Add(new TextBlock
+            {
+                Text = label, Foreground = (Brush) Application.Current.Resources["ToolboxMuted"]
+            });
+
+            var valueControl = new TextBox
             {
                 Text = value,
+                IsReadOnly = true,
+                IsReadOnlyCaretVisible = false,
+                AcceptsReturn = true,
                 TextWrapping = TextWrapping.Wrap,
-                Foreground = (Brush) Application.Current.Resources["ToolboxInk"]
+                MinLines = 1,
+                BorderThickness = new Thickness(0),
+                Padding = new Thickness(0),
+                Background = Brushes.Transparent,
+                Foreground = (Brush) Application.Current.Resources["ToolboxInk"],
+                VerticalContentAlignment = VerticalAlignment.Top,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Disabled,
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+                Focusable = true
             };
-            Grid.SetColumn(text, 1);
-            row.Children.Add(text);
+
+            valueControl.PreviewMouseLeftButtonDown += DetailValue_PreviewMouseLeftButtonDown;
+
+            Grid.SetColumn(valueControl, 1);
+            row.Children.Add(valueControl);
             DetailPanel.Children.Add(row);
         }
+    }
+
+    private static void DetailValue_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if ( e.ClickCount < 3 || sender is not TextBox textBox )
+            return;
+
+        textBox.Focus();
+        textBox.SelectAll();
+        e.Handled = true;
     }
 
     private static string Format(DateTime? time) => time?.ToString(TotoDateTimeFormatter.DisplayFormat) ?? "—";
@@ -201,6 +242,7 @@ public partial class TotoItemWindow : Window
             minute.SelectedItem = null;
             return;
         }
+
         var time = value.Value.ToString("HH:mm");
         hour.SelectedItem = time[..2];
         minute.SelectedItem = time[3..];
@@ -216,10 +258,13 @@ public partial class TotoItemWindow : Window
             QuickPreview.Foreground = (Brush) Application.Current.Resources["ToolboxMuted"];
             return;
         }
+
         var valid = QuickItemParser.TryParse(QuickInput.Text, DefaultMinutes(), out var name, out var plan,
             out var remind, out var error);
-        QuickPreview.Text = valid ? $"{name}　{(plan is null ? "无计划时间" : Format(plan))}" +
-            (remind is null ? "" : $"　提醒 {Format(remind)}") : error;
+        QuickPreview.Text = valid
+            ? $"{name}　{(plan is null ? "无计划时间" : Format(plan))}" +
+              (remind is null ? "" : $"　提醒 {Format(remind)}")
+            : error;
         QuickPreview.Foreground = valid ? (Brush) Application.Current.Resources["ToolboxInk"] : Brushes.IndianRed;
     }
 
@@ -244,10 +289,10 @@ public partial class TotoItemWindow : Window
     private void UpdateReminderFromPlan()
     {
         if ( _initializingFields || _mode != TotoItemWindowMode.Edit || PlanDate is null ||
-            UsePlan?.IsChecked != true || PlanDate.SelectedDate is not { } date ||
-            PlanHour.SelectedItem is not string hour || PlanMinute.SelectedItem is not string minute ||
-            !TimeOnly.TryParseExact(hour + ":" + minute, "HH:mm", CultureInfo.InvariantCulture,
-                DateTimeStyles.None, out var time) )
+             UsePlan?.IsChecked != true || PlanDate.SelectedDate is not { } date ||
+             PlanHour.SelectedItem is not string hour || PlanMinute.SelectedItem is not string minute ||
+             !TimeOnly.TryParseExact(hour + ":" + minute, "HH:mm", CultureInfo.InvariantCulture,
+                 DateTimeStyles.None, out var time) )
             return;
         var remind = date.Date.Add(time.ToTimeSpan()).AddMinutes(-DefaultMinutes());
         UseRemind.IsChecked = true;
@@ -261,9 +306,10 @@ public partial class TotoItemWindow : Window
         if ( !enabled )
             return null;
         if ( date.SelectedDate is not { } selected ||
-            hour.SelectedItem is not string hourValue || minute.SelectedItem is not string minuteValue ||
-            !TimeOnly.TryParseExact(hourValue + ":" + minuteValue, "HH:mm", CultureInfo.InvariantCulture, DateTimeStyles.None,
-                out var parsed) )
+             hour.SelectedItem is not string hourValue || minute.SelectedItem is not string minuteValue ||
+             !TimeOnly.TryParseExact(hourValue + ":" + minuteValue, "HH:mm", CultureInfo.InvariantCulture,
+                 DateTimeStyles.None,
+                 out var parsed) )
             throw new InvalidOperationException("请选择有效日期并以 24 小时制 HH:mm 输入时间。");
         return selected.Date.Add(parsed.ToTimeSpan());
     }
@@ -271,7 +317,11 @@ public partial class TotoItemWindow : Window
     private void Save_Click(object sender, RoutedEventArgs e)
     {
         if ( _mode == TotoItemWindowMode.Detail )
-        { Close(); return; }
+        {
+            Close();
+            return;
+        }
+
         if ( _saving )
             return;
         _saving = true;
@@ -293,23 +343,26 @@ public partial class TotoItemWindow : Window
                     var newRemind = ReadTime(UseRemind.IsChecked == true, RemindDate, RemindHour, RemindMinute);
                     var changed = newRemind != _item.RemindAt;
                     if ( !_toto.UpdateItem(_item with
-                    {
-                        Content = text,
-                        PlannedAt = newPlan,
-                        RemindAt = newRemind,
-                        ReminderStatus = newRemind is null ? TotoReminderStatus.None :
-                                changed ? TotoReminderStatus.Pending : _item.ReminderStatus,
-                        RemindedAt = changed || newRemind is null ? null : _item.RemindedAt,
-                        Note = NoteInput.Text
-                    }) )
+                        {
+                            Content = text,
+                            PlannedAt = newPlan,
+                            RemindAt = newRemind,
+                            ReminderStatus = newRemind is null ? TotoReminderStatus.None :
+                            changed ? TotoReminderStatus.Pending : _item.ReminderStatus,
+                            RemindedAt = changed || newRemind is null ? null : _item.RemindedAt,
+                            Note = NoteInput.Text
+                        }) )
                         throw new InvalidOperationException("事项不存在或已被处理。");
                     break;
                 case TotoItemWindowMode.Complete or TotoItemWindowMode.Cancel when _item is not null:
-                    var status = _mode == TotoItemWindowMode.Complete ? TotoItemStatus.Completed : TotoItemStatus.Cancelled;
+                    var status = _mode == TotoItemWindowMode.Complete
+                        ? TotoItemStatus.Completed
+                        : TotoItemStatus.Cancelled;
                     if ( !_toto.EndItem(_item.Id, status, EndNote.Text, DateTime.Now) )
                         throw new InvalidOperationException("事项不存在或已被处理。");
                     break;
             }
+
             DialogResult = true;
         }
         catch ( Exception ex )

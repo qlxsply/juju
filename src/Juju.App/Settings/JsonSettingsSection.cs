@@ -79,20 +79,23 @@ public sealed class JsonSettingsSection : ISettingsSection
 
         _rows = JsonToolShortcuts.Definitions
             .Select(definition => new ShortcutRow(definition, settings.Current.Shortcuts[definition.Command])).ToList();
-        var basicRows = _rows.Where(row => row.SourceKind == JsonToolShortcutSource.Juju &&
-                                            row.Command != JsonToolCommand.UnfoldLevel).ToArray();
-        var basicRenderers = SettingsViewFactory.ShortcutGroup(panel, "基础快捷键",
-            basicRows.Select(row => (row.Command.ToString(), row.CommandName, row.Shortcut,
-                (Action) (() => EditEditorShortcut(row)))));
-        foreach ( var row in basicRows )
-            _renderShortcutRows[row.Command] = basicRenderers[row.Command.ToString()];
-        var editorRows = _rows.Where(row => row.SourceKind == JsonToolShortcutSource.Monaco ||
-                                             row.Command == JsonToolCommand.UnfoldLevel).ToArray();
-        var editorRenderers = SettingsViewFactory.ShortcutGroup(panel, "编辑器快捷键",
-            editorRows.Select(row => (row.Command.ToString(), row.CommandName, row.Shortcut,
-                (Action) (() => EditEditorShortcut(row)))));
-        foreach ( var row in editorRows )
-            _renderShortcutRows[row.Command] = editorRenderers[row.Command.ToString()];
+        foreach ( var (context, heading) in new[]
+                 {
+                     (JsonToolShortcutContext.Window, "编辑模式窗口快捷键（编辑区和列表可用，文本框除外）"),
+                     (JsonToolShortcutContext.Editor, "编辑器快捷键"),
+                     (JsonToolShortcutContext.List, "文件列表快捷键"),
+                     (JsonToolShortcutContext.Diff, "对比模式快捷键")
+                 } )
+        {
+            var rows = _rows.Where(row => row.ContextKind == context).ToArray();
+            if ( rows.Length == 0 )
+                continue;
+            var renderers = SettingsViewFactory.ShortcutGroup(panel, heading,
+                rows.Select(row => (row.Command.ToString(), row.CommandName, row.Shortcut,
+                    (Action) (() => EditShortcut(row)))));
+            foreach ( var row in rows )
+                _renderShortcutRows[row.Command] = renderers[row.Command.ToString()];
+        }
         View = panel;
     }
 
@@ -249,7 +252,7 @@ public sealed class JsonSettingsSection : ISettingsSection
     }
 
     // 数据模型行来自已保存快照；点击铅笔后弹窗编辑副本，确认成功才替换行并落盘。
-    private void EditEditorShortcut(ShortcutRow row)
+    private void EditShortcut(ShortcutRow row)
     {
         _dialogs.EditShortcut("编辑快捷键 · " + row.CommandName, row.Shortcut, allowNone: false,
             allowSingle: false, allowSequence: row.Default.Contains(' '),
@@ -285,7 +288,7 @@ public sealed class JsonSettingsSection : ISettingsSection
         public string Shortcut { get; set; } = shortcut;
         public JsonToolCommand Command => definition.Command;
         public string CommandName => definition.DisplayName;
-        public JsonToolShortcutSource SourceKind => definition.Source;
+        public JsonToolShortcutContext ContextKind => definition.Context;
 
         public string Default => definition.Default;
 

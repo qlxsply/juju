@@ -157,9 +157,40 @@ public sealed class JsonDocumentServiceTests : IAsyncLifetime
         Assert.Equal("Alt+R", shortcuts[JsonToolCommand.Rename]);
         Assert.Equal("Delete", shortcuts[JsonToolCommand.Delete]);
         Assert.Equal(JsonToolShortcutSource.Monaco, JsonToolShortcuts.GetDefinition(JsonToolCommand.Save).Source);
-        Assert.Equal(JsonToolShortcutContext.Editor,
+        Assert.Equal(JsonToolShortcutContext.Window,
             JsonToolShortcuts.GetDefinition(JsonToolCommand.UnfoldLevel).Context);
+        Assert.Equal(JsonToolShortcutContext.Window,
+            JsonToolShortcuts.GetDefinition(JsonToolCommand.EnterDiff).Context);
+        Assert.Equal(JsonToolShortcutContext.Editor,
+            JsonToolShortcuts.GetDefinition(JsonToolCommand.CopyText).Context);
         Assert.Equal(JsonToolShortcutContext.List, JsonToolShortcuts.GetDefinition(JsonToolCommand.Rename).Context);
+    }
+
+    [Fact]
+    public void Window_shortcuts_work_in_editor_and_list_but_are_excluded_from_diff_mode()
+    {
+        Assert.True(JsonToolShortcuts.IsAvailableInContext(JsonToolShortcutContext.Window,
+            JsonToolShortcutContext.Editor));
+        Assert.True(JsonToolShortcuts.IsAvailableInContext(JsonToolShortcutContext.Window,
+            JsonToolShortcutContext.List));
+        Assert.False(JsonToolShortcuts.IsAvailableInContext(JsonToolShortcutContext.Window,
+            JsonToolShortcutContext.Diff));
+        Assert.True(JsonToolShortcuts.IsAvailableInContext(JsonToolShortcutContext.Diff,
+            JsonToolShortcutContext.Diff));
+        Assert.False(JsonToolShortcuts.IsAvailableInContext(JsonToolShortcutContext.Editor,
+            JsonToolShortcutContext.List));
+    }
+
+    [Fact]
+    public void Shortcut_validation_rejects_conflicts_between_overlapping_scopes_only()
+    {
+        var shortcuts = JsonToolShortcuts.Normalize(null).ToDictionary(pair => pair.Key, pair => pair.Value);
+        shortcuts[JsonToolCommand.Save] = shortcuts[JsonToolCommand.CopyText];
+        Assert.Throws<InvalidOperationException>(() => JsonToolShortcuts.Validate(shortcuts));
+
+        shortcuts = JsonToolShortcuts.Normalize(null).ToDictionary(pair => pair.Key, pair => pair.Value);
+        shortcuts[JsonToolCommand.CopyText] = shortcuts[JsonToolCommand.Rename];
+        JsonToolShortcuts.Validate(shortcuts);
     }
 
     [Fact]
@@ -314,17 +345,17 @@ public sealed class JsonDocumentServiceTests : IAsyncLifetime
     }
 
     [Fact]
-    public void Json_shortcuts_normalize_combinations_and_allow_cross_context_duplicates()
+    public void Json_shortcuts_normalize_combinations_and_allow_editor_list_duplicates()
     {
-        // 同一按键组合在不同上下文可共存；输入中的大小写与额外空白会被标准化。
+        // 编辑器和文件列表各自独立；输入中的大小写与额外空白会被标准化。
         var shortcuts = JsonToolShortcuts.Defaults.ToDictionary(pair => pair.Key, pair => pair.Value);
-        shortcuts[JsonToolCommand.New] = " control + alt + n ";
+        shortcuts[JsonToolCommand.CopyText] = " control + alt + n ";
         shortcuts[JsonToolCommand.Rename] = "ctrl+alt+n";
 
         var normalized = JsonToolShortcuts.Normalize(shortcuts);
 
-        // 两项最终使用统一的规范格式，说明规范化不因上下文不同而改变组合本身。
-        Assert.Equal("Ctrl+Alt+N", normalized[JsonToolCommand.New]);
+        // 两项最终使用统一的规范格式，说明独立的编辑器/列表上下文允许复用按键。
+        Assert.Equal("Ctrl+Alt+N", normalized[JsonToolCommand.CopyText]);
         Assert.Equal("Ctrl+Alt+N", normalized[JsonToolCommand.Rename]);
     }
 

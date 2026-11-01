@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
@@ -45,6 +46,10 @@ public interface IJsonFileClipboard
 public partial class JsonToolWindow : Window
 {
     private const int ProtocolVersion = 1;
+    private static readonly Brush AddedDiffBackground = CreateFrozenBrush(234, 248, 239);
+    private static readonly Brush RemovedDiffBackground = CreateFrozenBrush(255, 240, 239);
+    private static readonly Brush EmptyDiffBackground = CreateFrozenBrush(247, 249, 252);
+    private static readonly Brush DiffTextForeground = CreateFrozenBrush(38, 69, 108);
     private readonly JsonDocumentService _documents;
     private readonly IJsonToolSettingsService _settings;
     private readonly DispatcherTimer _autosave = new() { Interval = TimeSpan.FromMilliseconds(800) };
@@ -410,7 +415,7 @@ public partial class JsonToolWindow : Window
                         shortcut.ValueKind == JsonValueKind.String )
                     {
                         var combination = shortcut.GetString();
-                        if ( !string.IsNullOrWhiteSpace(combination) && !TryHandleNewShortcut(combination) )
+                        if ( !string.IsNullOrWhiteSpace(combination) )
                             ExecuteShortcut(combination,
                                 _inDiffMode ? JsonToolShortcutContext.Diff : JsonToolShortcutContext.Editor);
                     }
@@ -695,8 +700,7 @@ public partial class JsonToolWindow : Window
         _mode = JsonViewMode.Edit;
         _compareLeft = null;
         _compareRight = null;
-        LeftDiffRows.ItemsSource = null;
-        RightDiffRows.ItemsSource = null;
+        ClearDiffDocuments();
         RenderMode();
         UpdateStatus();
     }
@@ -717,8 +721,7 @@ public partial class JsonToolWindow : Window
         if ( _mode == JsonViewMode.CompareResult )
         {
             _mode = JsonViewMode.SelectCompare;
-            LeftDiffRows.ItemsSource = null;
-            RightDiffRows.ItemsSource = null;
+            ClearDiffDocuments();
         }
         RenderMode();
     }
@@ -737,14 +740,20 @@ public partial class JsonToolWindow : Window
             var lines = JsonLineDiff.Compare(original.Content, modified.Content);
             if ( _mode == JsonViewMode.Edit || _compareLeft != left || _compareRight != right )
                 return;
-            LeftDiffRows.ItemsSource = lines.Select(line => new DiffDisplayLine(
+            var leftLines = lines.Select(line => new DiffDisplayLine(
                 line.LeftNumber?.ToString() ?? "", line.LeftText, line.LeftKind.ToString())).ToArray();
-            RightDiffRows.ItemsSource = lines.Select(line => new DiffDisplayLine(
+            var rightLines = lines.Select(line => new DiffDisplayLine(
                 line.RightNumber?.ToString() ?? "", line.RightText, line.RightKind.ToString())).ToArray();
+            LeftDiffNumbers.ItemsSource = leftLines;
+            RightDiffNumbers.ItemsSource = rightLines;
+            LeftDiffRows.Document = BuildDiffDocument(leftLines);
+            RightDiffRows.Document = BuildDiffDocument(rightLines);
             LeftCompareName.Text = _items.First(item => item.Id == left).FileName;
             RightCompareName.Text = _items.First(item => item.Id == right).FileName;
-            LeftDiffScroll.ScrollToTop();
-            RightDiffScroll.ScrollToTop();
+            LeftDiffRows.ScrollToHome();
+            RightDiffRows.ScrollToHome();
+            LeftDiffLineNumbersScroll.ScrollToTop();
+            RightDiffLineNumbersScroll.ScrollToTop();
             _mode = JsonViewMode.CompareResult;
             RenderMode();
             ValidationStatus.Text = lines.All(line => line.LeftKind == JsonDiffKind.Same)
@@ -764,11 +773,133 @@ public partial class JsonToolWindow : Window
 
     private void ExitCompare_Click(object sender, RoutedEventArgs e) => _ = ExecuteAsync(JsonToolCommand.ExitDiff);
 
+    private FlowDocument BuildDiffDocument(IEnumerable<DiffDisplayLine> source)
+    {
+        var lines = source.ToArray();
+        var textViewportWidth = Math.Max(260, (ActualWidth - 330) / 2);
+        var longestLineWidth = lines.Length == 0 ? 0 : lines.Max(line => MeasureDiffText(line.Text));
+        var contentWidth = Math.Max(textViewportWidth, longestLineWidth) + 25;
+        var document = new FlowDocument
+        {
+            Background = Brushes.White,
+            FontFamily = new FontFamily("Consolas"),
+            FontSize = 12,
+            PagePadding = new Thickness(10, 0, 15, 0),
+            PageWidth = contentWidth,
+            PageHeight = Math.Max(1000, lines.Length * 22 + 20),
+            ColumnWidth = contentWidth,
+            ColumnGap = 0
+        };
+
+        foreach ( var line in lines )
+        {
+            var paragraph = new Paragraph
+            {
+                Margin = new Thickness(0),
+                LineHeight = 22,
+                Background = line.Kind switch
+                {
+                    nameof(JsonDiffKind.Added) => AddedDiffBackground,
+                    nameof(JsonDiffKind.Removed) => RemovedDiffBackground,
+                    nameof(JsonDiffKind.Empty) => EmptyDiffBackground,
+                    _ => Brushes.White
+                }
+            };
+            paragraph.Inlines.Add(new Run(line.Text) { Foreground = DiffTextForeground });
+            document.Blocks.Add(paragraph);
+        }
+
+        return document;
+    }
+
+    private static double MeasureDiffText(string text) =>
+        text.Sum(character => character switch
+        {
+            '\t' => 28.8,
+            <= '\u00FF' => 7.2,
+            _ => 12.0
+        });
+
+    private static Brush CreateFrozenBrush(byte red, byte green, byte blue)
+    {
+        var brush = new SolidColorBrush(Color.FromRgb(red, green, blue));
+        brush.Freeze();
+        return brush;
+    }
+
+    private void LeftDiffScroll_Changed(object sender, ScrollChangedEventArgs e) =>
+        SynchronizeDiffScroll(RightDiffRows, LeftDiffLineNumbersScroll,
+            RightDiffLineNumbersScroll, e);
+
+    private void RightDiffScroll_Changed(object sender, ScrollChangedEventArgs e) =>
+        SynchronizeDiffScroll(LeftDiffRows, RightDiffLineNumbersScroll,
+            LeftDiffLineNumbersScroll, e);
+
+    private void LeftDiffLineNumbersScroll_Changed(object sender, ScrollChangedEventArgs e) =>
+        SynchronizeDiffScrollFromLineNumbers(LeftDiffRows, RightDiffRows, RightDiffLineNumbersScroll, e);
+
+    private void RightDiffLineNumbersScroll_Changed(object sender, ScrollChangedEventArgs e) =>
+        SynchronizeDiffScrollFromLineNumbers(RightDiffRows, LeftDiffRows, LeftDiffLineNumbersScroll, e);
+
+    private void SynchronizeDiffScroll(RichTextBox target, ScrollViewer sourceNumbers,
+        ScrollViewer targetNumbers, ScrollChangedEventArgs e)
+    {
+        if ( _syncingDiff || _mode != JsonViewMode.CompareResult ||
+            (e.VerticalChange == 0 && e.HorizontalChange == 0) )
+            return;
+        _syncingDiff = true;
+        target.ScrollToVerticalOffset(e.VerticalOffset);
+        target.ScrollToHorizontalOffset(e.HorizontalOffset);
+        sourceNumbers.ScrollToVerticalOffset(e.VerticalOffset);
+        targetNumbers.ScrollToVerticalOffset(e.VerticalOffset);
+        _syncingDiff = false;
+    }
+
+    private void SynchronizeDiffScrollFromLineNumbers(RichTextBox source, RichTextBox target,
+        ScrollViewer targetNumbers, ScrollChangedEventArgs e)
+    {
+        if ( _syncingDiff || _mode != JsonViewMode.CompareResult || e.VerticalChange == 0 )
+            return;
+        _syncingDiff = true;
+        source.ScrollToVerticalOffset(e.VerticalOffset);
+        target.ScrollToVerticalOffset(e.VerticalOffset);
+        targetNumbers.ScrollToVerticalOffset(e.VerticalOffset);
+        _syncingDiff = false;
+    }
+
+    private void LeftDiffLineNumbers_PreviewMouseWheel(object sender, MouseWheelEventArgs e) =>
+        ScrollDiffByWheel(LeftDiffRows, e);
+
+    private void RightDiffLineNumbers_PreviewMouseWheel(object sender, MouseWheelEventArgs e) =>
+        ScrollDiffByWheel(RightDiffRows, e);
+
+    private static void ScrollDiffByWheel(RichTextBox rows, MouseWheelEventArgs e)
+    {
+        var lineCount = Math.Max(1, Math.Abs(e.Delta) / 120);
+        for ( var index = 0; index < lineCount; index++ )
+        {
+            if ( e.Delta > 0 )
+                rows.LineUp();
+            else
+                rows.LineDown();
+        }
+        e.Handled = true;
+    }
+
+    private void ClearDiffDocuments()
+    {
+        LeftDiffRows.Document.Blocks.Clear();
+        RightDiffRows.Document.Blocks.Clear();
+        LeftDiffNumbers.ItemsSource = null;
+        RightDiffNumbers.ItemsSource = null;
+    }
+
     private void RenderMode()
     {
         if ( CompareBar is null )
             return;
-        FileMenu.IsEnabled = EditMenu.IsEnabled = ViewMenu.IsEnabled = _mode == JsonViewMode.Edit;
+        FileMenu.IsEnabled = EditMenu.IsEnabled = ViewMenu.IsEnabled = ToolMenu.IsEnabled =
+            _mode == JsonViewMode.Edit;
         CompareBar.Visibility = _mode == JsonViewMode.Edit ? Visibility.Collapsed : Visibility.Visible;
         NormalWorkspace.Visibility = _mode == JsonViewMode.Edit ? Visibility.Visible : Visibility.Collapsed;
         CompareSelectionWorkspace.Visibility = _mode == JsonViewMode.SelectCompare ? Visibility.Visible : Visibility.Collapsed;
@@ -798,15 +929,6 @@ public partial class JsonToolWindow : Window
         }
         if ( _mode != JsonViewMode.Edit )
             Documents.SelectedItem = null;
-    }
-
-    private void DiffScroll_ScrollChanged(object sender, ScrollChangedEventArgs e)
-    {
-        if ( _syncingDiff || _mode != JsonViewMode.CompareResult || e.VerticalChange == 0 )
-            return;
-        _syncingDiff = true;
-        (ReferenceEquals(sender, LeftDiffScroll) ? RightDiffScroll : LeftDiffScroll).ScrollToVerticalOffset(e.VerticalOffset);
-        _syncingDiff = false;
     }
 
     private void UpdateEditorHeader()
@@ -1242,8 +1364,7 @@ public partial class JsonToolWindow : Window
                 _mode = JsonViewMode.Edit;
                 _compareLeft = null;
                 _compareRight = null;
-                LeftDiffRows.ItemsSource = null;
-                RightDiffRows.ItemsSource = null;
+                ClearDiffDocuments();
                 RenderMode();
                 UpdateStatus();
             }
@@ -1319,8 +1440,10 @@ public partial class JsonToolWindow : Window
     {
         if ( !IsVisible || (!IsActive && !FileMenu.IsSubmenuOpen && !EditMenu.IsSubmenuOpen &&
             !ViewMenu.IsSubmenuOpen && !ToolMenu.IsSubmenuOpen) || _closing ||
+            _mode != JsonViewMode.Edit ||
             args.StagingItem.Input is not KeyEventArgs e ||
             e.RoutedEvent != Keyboard.PreviewKeyDownEvent || e.Handled || e.IsRepeat ||
+            IsTextEntryFocused(e) ||
             !TryGetShortcutStroke(e, out var stroke) )
             return;
         if ( TryHandleNewShortcut(stroke) )
@@ -1331,11 +1454,10 @@ public partial class JsonToolWindow : Window
     {
         if ( e.Handled || e.IsRepeat || !TryGetShortcutStroke(e, out var stroke) )
             return;
-        if ( TryHandleNewShortcut(stroke) )
-        { e.Handled = true; return; }
-        if ( _renaming is not null || e.OriginalSource is WpfTextBox ||
-            Keyboard.FocusedElement is WpfTextBox )
+        if ( IsTextEntryFocused(e) )
             return;
+        if ( _mode == JsonViewMode.Edit && TryHandleNewShortcut(stroke) )
+        { e.Handled = true; return; }
         var context = _inDiffMode ? JsonToolShortcutContext.Diff :
             Documents.IsKeyboardFocusWithin ? JsonToolShortcutContext.List : JsonToolShortcutContext.Editor;
         if ( ExecuteShortcut(stroke, context) )
@@ -1366,6 +1488,10 @@ public partial class JsonToolWindow : Window
         return true;
     }
 
+    private bool IsTextEntryFocused(KeyEventArgs e) =>
+        _renaming is not null || e.OriginalSource is WpfTextBox { IsReadOnly: false } ||
+        Keyboard.FocusedElement is WpfTextBox { IsReadOnly: false };
+
     protected override void OnClosed(EventArgs e)
     {
         InputManager.Current.PreProcessInput -= NewShortcut_PreProcessInput;
@@ -1393,8 +1519,9 @@ public partial class JsonToolWindow : Window
 
     private bool ExecuteShortcutCombination(string combination, JsonToolShortcutContext context, DateTime now)
     {
-        var bindings = JsonToolShortcuts.Definitions.Where(definition =>
-            definition.Source == JsonToolShortcutSource.Juju && definition.Context == context).ToArray();
+        var bindings = JsonToolShortcuts.Definitions
+            .Where(definition => JsonToolShortcuts.IsAvailableInContext(definition.Context, context))
+            .ToArray();
         var binding = bindings.FirstOrDefault(definition =>
             string.Equals(_settings.Current.Shortcuts[definition.Command], combination, StringComparison.Ordinal));
         if ( binding is not null )

@@ -128,7 +128,8 @@ export class EditorAdapter {
     const stroke = shortcutStroke(event);
     if (!stroke) return false;
     const context: JujuContext = this.inDiffMode ? "Diff" : "Editor";
-    const bindings = this.jujuBindings.filter((binding) => binding.context === context);
+    const bindings = this.jujuBindings.filter((binding) => binding.context === context
+      || (!this.inDiffMode && binding.context === "Window"));
     const now = Date.now();
     if (this.pendingShortcut !== null && now - this.pendingShortcutAt <= 1000) {
       const chord = `${this.pendingShortcut} ${stroke}`;

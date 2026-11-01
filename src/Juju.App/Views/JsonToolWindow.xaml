@@ -234,54 +234,32 @@
             </Setter>
         </Style>
         <Style
-            x:Key="DiffLine"
+            x:Key="DiffLineNumber"
             TargetType="Border">
+            <Setter Property="Height" Value="22" />
             <Setter Property="Background" Value="White" />
             <Style.Triggers>
-                <DataTrigger
-                    Binding="{Binding Kind}"
-                    Value="Added">
+                <DataTrigger Binding="{Binding Kind}" Value="Added">
                     <Setter Property="Background" Value="#EAF8EF" />
                 </DataTrigger>
-                <DataTrigger
-                    Binding="{Binding Kind}"
-                    Value="Removed">
+                <DataTrigger Binding="{Binding Kind}" Value="Removed">
                     <Setter Property="Background" Value="#FFF0EF" />
                 </DataTrigger>
-                <DataTrigger
-                    Binding="{Binding Kind}"
-                    Value="Empty">
+                <DataTrigger Binding="{Binding Kind}" Value="Empty">
                     <Setter Property="Background" Value="#F7F9FC" />
                 </DataTrigger>
             </Style.Triggers>
         </Style>
-        <DataTemplate
-            x:Key="DiffLineTemplate">
-            <Border
-                MinHeight="22"
-                Style="{StaticResource DiffLine}">
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition
-                            Width="42" />
-                        <ColumnDefinition
-                            Width="*" />
-                    </Grid.ColumnDefinitions>
-                    <TextBlock
-                        Margin="0,0,11,0"
-                        HorizontalAlignment="Right"
-                        Text="{Binding Number}"
-                        Foreground="#9BA8BA"
-                        FontFamily="Consolas"
-                        FontSize="12" />
-                    <TextBlock
-                        Grid.Column="1"
-                        Margin="10,0,15,0"
-                        Text="{Binding Text}"
-                        FontFamily="Consolas"
-                        FontSize="12"
-                        Foreground="#26456C" />
-                </Grid>
+        <DataTemplate x:Key="DiffLineNumberTemplate">
+            <Border Width="42" Style="{StaticResource DiffLineNumber}">
+                <TextBlock
+                    Margin="0,0,11,0"
+                    HorizontalAlignment="Right"
+                    VerticalAlignment="Center"
+                    Text="{Binding Number}"
+                    Foreground="#9BA8BA"
+                    FontFamily="Consolas"
+                    FontSize="12" />
             </Border>
         </DataTemplate>
     </Window.Resources>
@@ -716,16 +694,36 @@
                                 BorderThickness="0,0,0,1"
                                 IsHitTestVisible="False" />
                         </Grid>
-                        <ScrollViewer
-                            x:Name="LeftDiffScroll"
-                            Grid.Row="1"
-                            VerticalScrollBarVisibility="Auto"
-                            HorizontalScrollBarVisibility="Auto"
-                            ScrollChanged="DiffScroll_ScrollChanged">
-                            <ItemsControl
+                        <Grid Grid.Row="1">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="42" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <ScrollViewer
+                                x:Name="LeftDiffLineNumbersScroll"
+                                Grid.Column="0"
+                                VerticalScrollBarVisibility="Hidden"
+                                HorizontalScrollBarVisibility="Disabled"
+                                PreviewMouseWheel="LeftDiffLineNumbers_PreviewMouseWheel"
+                                ScrollViewer.ScrollChanged="LeftDiffLineNumbersScroll_Changed">
+                                <ItemsControl
+                                    x:Name="LeftDiffNumbers"
+                                    ItemTemplate="{StaticResource DiffLineNumberTemplate}" />
+                            </ScrollViewer>
+                            <RichTextBox
                                 x:Name="LeftDiffRows"
-                                ItemTemplate="{StaticResource DiffLineTemplate}" />
-                        </ScrollViewer>
+                                Grid.Column="1"
+                                Background="White"
+                                BorderThickness="0"
+                                IsReadOnly="True"
+                                IsReadOnlyCaretVisible="False"
+                                IsDocumentEnabled="False"
+                                FontFamily="Consolas"
+                                FontSize="12"
+                                VerticalScrollBarVisibility="Auto"
+                                HorizontalScrollBarVisibility="Auto"
+                                ScrollViewer.ScrollChanged="LeftDiffScroll_Changed" />
+                        </Grid>
                     </Grid>
                     <Grid
                         Grid.Column="1">
@@ -758,16 +756,36 @@
                                 BorderThickness="0,0,0,1"
                                 IsHitTestVisible="False" />
                         </Grid>
-                        <ScrollViewer
-                            x:Name="RightDiffScroll"
-                            Grid.Row="1"
-                            VerticalScrollBarVisibility="Auto"
-                            HorizontalScrollBarVisibility="Auto"
-                            ScrollChanged="DiffScroll_ScrollChanged">
-                            <ItemsControl
+                        <Grid Grid.Row="1">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="42" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <ScrollViewer
+                                x:Name="RightDiffLineNumbersScroll"
+                                Grid.Column="0"
+                                VerticalScrollBarVisibility="Hidden"
+                                HorizontalScrollBarVisibility="Disabled"
+                                PreviewMouseWheel="RightDiffLineNumbers_PreviewMouseWheel"
+                                ScrollViewer.ScrollChanged="RightDiffLineNumbersScroll_Changed">
+                                <ItemsControl
+                                    x:Name="RightDiffNumbers"
+                                    ItemTemplate="{StaticResource DiffLineNumberTemplate}" />
+                            </ScrollViewer>
+                            <RichTextBox
                                 x:Name="RightDiffRows"
-                                ItemTemplate="{StaticResource DiffLineTemplate}" />
-                        </ScrollViewer>
+                                Grid.Column="1"
+                                Background="White"
+                                BorderThickness="0"
+                                IsReadOnly="True"
+                                IsReadOnlyCaretVisible="False"
+                                IsDocumentEnabled="False"
+                                FontFamily="Consolas"
+                                FontSize="12"
+                                VerticalScrollBarVisibility="Auto"
+                                HorizontalScrollBarVisibility="Auto"
+                                ScrollViewer.ScrollChanged="RightDiffScroll_Changed" />
+                        </Grid>
                     </Grid>
                     <Border
                         Grid.Column="1"

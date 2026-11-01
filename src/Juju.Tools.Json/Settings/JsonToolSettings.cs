@@ -31,9 +31,10 @@ public enum JsonToolShortcutSource
     Monaco
 }
 
-/// <summary>快捷键生效的 UI 上下文；不同上下文可合法复用同一组合键。</summary>
+/// <summary>快捷键生效的 UI 上下文；Window 与编辑/列表上下文重叠，Diff 与普通编辑隔离。</summary>
 public enum JsonToolShortcutContext
 {
+    Window,
     Editor,
     List,
     Diff
@@ -75,23 +76,23 @@ public static class JsonToolShortcuts
     /// <summary>所有支持命令的权威定义；集合表达式创建初始只读列表。</summary>
     public static IReadOnlyList<JsonToolCommandMetadata> Definitions { get; } =
     [
-        new(JsonToolCommand.Save, "保存", JsonToolShortcutSource.Monaco, JsonToolShortcutContext.Editor, "Alt+S"),
-        new(JsonToolCommand.Format, "格式化", JsonToolShortcutSource.Monaco, JsonToolShortcutContext.Editor,
+        new(JsonToolCommand.Save, "保存", JsonToolShortcutSource.Monaco, JsonToolShortcutContext.Window, "Alt+S"),
+        new(JsonToolCommand.Format, "格式化", JsonToolShortcutSource.Monaco, JsonToolShortcutContext.Window,
             "Alt+F"),
-        new(JsonToolCommand.FoldAll, "折叠全部", JsonToolShortcutSource.Monaco, JsonToolShortcutContext.Editor,
+        new(JsonToolCommand.FoldAll, "折叠全部", JsonToolShortcutSource.Monaco, JsonToolShortcutContext.Window,
             "Alt+Q"),
-        new(JsonToolCommand.UnfoldAll, "展开全部", JsonToolShortcutSource.Monaco, JsonToolShortcutContext.Editor,
+        new(JsonToolCommand.UnfoldAll, "展开全部", JsonToolShortcutSource.Monaco, JsonToolShortcutContext.Window,
             "Alt+W"),
-        new(JsonToolCommand.New, "新建", JsonToolShortcutSource.Juju, JsonToolShortcutContext.Editor, "Alt+A"),
-        new(JsonToolCommand.UnfoldLevel, "逐层展开", JsonToolShortcutSource.Juju, JsonToolShortcutContext.Editor,
+        new(JsonToolCommand.New, "新建", JsonToolShortcutSource.Juju, JsonToolShortcutContext.Window, "Alt+A"),
+        new(JsonToolCommand.UnfoldLevel, "逐层展开", JsonToolShortcutSource.Juju, JsonToolShortcutContext.Window,
             "Alt+E"),
         new(JsonToolCommand.CopyText, "复制文本", JsonToolShortcutSource.Juju, JsonToolShortcutContext.Editor,
             "Ctrl+C"),
-        new(JsonToolCommand.CopyMinified, "复制压缩文本", JsonToolShortcutSource.Juju, JsonToolShortcutContext.Editor,
+        new(JsonToolCommand.CopyMinified, "复制压缩文本", JsonToolShortcutSource.Juju, JsonToolShortcutContext.Window,
             "Ctrl+Shift+C"),
-        new(JsonToolCommand.CopyFile, "复制文件", JsonToolShortcutSource.Juju, JsonToolShortcutContext.Editor,
+        new(JsonToolCommand.CopyFile, "复制文件", JsonToolShortcutSource.Juju, JsonToolShortcutContext.Window,
             "Ctrl+Alt+Shift+C"),
-        new(JsonToolCommand.EnterDiff, "进入对比", JsonToolShortcutSource.Juju, JsonToolShortcutContext.Editor,
+        new(JsonToolCommand.EnterDiff, "进入对比", JsonToolShortcutSource.Juju, JsonToolShortcutContext.Window,
             "Alt+D"),
         new(JsonToolCommand.ExitDiff, "退出对比", JsonToolShortcutSource.Juju, JsonToolShortcutContext.Diff, "Escape"),
         new(JsonToolCommand.Rename, "重命名", JsonToolShortcutSource.Juju, JsonToolShortcutContext.List, "Alt+R"),
@@ -129,17 +130,35 @@ public static class JsonToolShortcuts
         var normalized = Commands.ToDictionary(command => command, command => NormalizeCombination(shortcuts[command]));
         if ( normalized.Values.Any(IsReserved) )
             throw new InvalidOperationException("JSON 快捷键不能使用系统或启动器保留组合键。");
-        foreach ( var context in Definitions.GroupBy(definition => definition.Context) )
+        foreach ( var activeContext in new[]
+                 {
+                     JsonToolShortcutContext.Window, JsonToolShortcutContext.Editor,
+                     JsonToolShortcutContext.List, JsonToolShortcutContext.Diff
+                 } )
         {
-            var bindings = context.Select(definition => normalized[definition.Command]).ToArray();
+            var bindings = Definitions
+                .Where(definition => IsAvailableInContext(definition.Context, activeContext))
+                .Select(definition => normalized[definition.Command])
+                .ToArray();
             if ( bindings.Distinct(StringComparer.OrdinalIgnoreCase).Count() != bindings.Length )
-                throw new InvalidOperationException("同一上下文中的 JSON 快捷键不能重复。");
+                throw new InvalidOperationException("同一生效上下文中的 JSON 快捷键不能重复。");
         }
     }
 
     /// <summary>取得命令的元数据；未知命令因 <c>Single</c> 的集合语义而失败。</summary>
     public static JsonToolCommandMetadata GetDefinition(JsonToolCommand command) =>
         Definitions.Single(definition => definition.Command == command);
+
+    /// <summary>
+    /// Window shortcuts are available from the editor and file list during normal editing.
+    /// Diff mode is intentionally isolated from all normal-edit shortcuts.
+    /// </summary>
+    public static bool IsAvailableInContext(JsonToolShortcutContext binding, JsonToolShortcutContext active) =>
+        active == JsonToolShortcutContext.Window
+            ? binding == JsonToolShortcutContext.Window
+            : active == JsonToolShortcutContext.Diff
+                ? binding == JsonToolShortcutContext.Diff
+                : binding == JsonToolShortcutContext.Window || binding == active;
 
     /// <summary>规范化一到两个按键步骤，并统一加号周围的空白。</summary>
     private static string NormalizeCombination(string? shortcut)

@@ -84,7 +84,7 @@ function isJujuBindings(value: unknown): value is JujuBinding[] {
   return Array.isArray(value) && value.every((binding) => typeof binding === "object" && binding !== null
     && typeof (binding as Record<string, unknown>).command === "string"
     && typeof (binding as Record<string, unknown>).shortcut === "string"
-    && ["Editor", "List", "Diff"].includes((binding as Record<string, unknown>).context as string));
+    && ["Window", "Editor", "List", "Diff"].includes((binding as Record<string, unknown>).context as string));
 }
 
 function openDocumentPayload(message: HostMessage): OpenDocumentPayload {
