@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using Juju.App.Resources;
 using Juju.App.Views;
 using Juju.Core.Settings;
 using Juju.Core.Storage;
@@ -139,7 +140,7 @@ public sealed class TotoSettingsSection : ISettingsSection
             Text = "年份",
             FontSize = 12,
             FontWeight = FontWeights.SemiBold,
-            Foreground = (Brush) Application.Current.Resources["ToolboxInk"],
+            Foreground = AppResources.GetRequired<Brush>("ToolboxInk"),
             VerticalAlignment = VerticalAlignment.Center,
             Margin = new Thickness(0, 0, 10, 0)
         });
@@ -154,7 +155,7 @@ public sealed class TotoSettingsSection : ISettingsSection
         add.Margin = new Thickness(0, 0, 7, 0);
         actions.Children.Add(add);
         _deleteSelected.Content = "删除选中";
-        _deleteSelected.Style = (Style) Application.Current.Resources["ToolboxSoftButton"];
+        _deleteSelected.Style = AppResources.GetRequired<Style>("ToolboxSoftButton");
         _deleteSelected.Margin = new Thickness(0, 0, 7, 0);
         _deleteSelected.Click += (_, _) => DeleteHoliday();
         actions.Children.Add(_deleteSelected);
@@ -168,7 +169,7 @@ public sealed class TotoSettingsSection : ISettingsSection
         var headerBorder = new Border
         {
             Background = (Brush) new BrushConverter().ConvertFromString("#F6F8FC")!,
-            BorderBrush = (Brush) Application.Current.Resources["ToolboxLine"],
+            BorderBrush = AppResources.GetRequired<Brush>("ToolboxLine"),
             BorderThickness = new Thickness(0, 1, 0, 1),
             Child = header
         };
@@ -212,7 +213,7 @@ public sealed class TotoSettingsSection : ISettingsSection
 
         var rowsBorder = new Border
         {
-            BorderBrush = (Brush) Application.Current.Resources["ToolboxLine"],
+            BorderBrush = AppResources.GetRequired<Brush>("ToolboxLine"),
             BorderThickness = new Thickness(0, 0, 0, 1),
             Background = Brushes.White
         };
@@ -255,7 +256,7 @@ public sealed class TotoSettingsSection : ISettingsSection
             Text = text,
             FontSize = 11,
             FontWeight = FontWeights.SemiBold,
-            Foreground = (Brush) Application.Current.Resources["ToolboxMuted"],
+            Foreground = AppResources.GetRequired<Brush>("ToolboxMuted"),
             VerticalAlignment = VerticalAlignment.Center,
             Margin = new Thickness(8, 0, 4, 0)
         };
@@ -267,7 +268,7 @@ public sealed class TotoSettingsSection : ISettingsSection
     {
         Text = text,
         FontSize = 11,
-        Foreground = (Brush) Application.Current.Resources["ToolboxInk"],
+        Foreground = AppResources.GetRequired<Brush>("ToolboxInk"),
         VerticalAlignment = VerticalAlignment.Center,
         Margin = new Thickness(8, 0, 4, 0),
         TextTrimming = TextTrimming.CharacterEllipsis
@@ -317,15 +318,15 @@ public sealed class TotoSettingsSection : ISettingsSection
                 Width = 28,
                 Height = 28,
                 ToolTip = "删除此日期",
-                Style = (Style) Application.Current.Resources["ToolboxHeaderButton"],
-                Foreground = (Brush) Application.Current.Resources["ToolboxMuted"]
+                Style = AppResources.GetRequired<Style>("ToolboxHeaderButton"),
+                Foreground = AppResources.GetRequired<Brush>("ToolboxMuted")
             };
             remove.Click += (_, _) => DeleteHoliday([day.Date]);
             Grid.SetColumn(remove, 4);
             row.Children.Add(remove);
             var shell = new Border
             {
-                BorderBrush = (Brush) Application.Current.Resources["ToolboxLine"],
+                BorderBrush = AppResources.GetRequired<Brush>("ToolboxLine"),
                 BorderThickness = new Thickness(0, 0, 0, 1),
                 Background = Brushes.White,
                 Child = row
@@ -518,7 +519,7 @@ public sealed class TotoSettingsSection : ISettingsSection
             Width = 66,
             Height = 34,
             Margin = new Thickness(9, 0, 0, 0),
-            Style = (Style) Application.Current.Resources["TotoButton"]
+            Style = AppResources.GetRequired<Style>("TotoButton")
         };
         clear.Click += (_, _) => { picker.Time = null; SaveDailyReview(); };
         controls.Children.Add(clear);
@@ -560,7 +561,7 @@ public sealed class TotoSettingsSection : ISettingsSection
             Text = existing?.Name ?? string.Empty,
             Width = 330,
             Height = 34,
-            Style = (Style) Application.Current.Resources["ToolboxFieldInput"],
+            Style = AppResources.GetRequired<Style>("ToolboxFieldInput"),
             VerticalContentAlignment = VerticalAlignment.Center
         };
         var type = new ComboBox
@@ -595,7 +596,7 @@ public sealed class TotoSettingsSection : ISettingsSection
         {
             Text = label,
             FontSize = 11,
-            Foreground = (Brush) Application.Current.Resources["ToolboxMuted"],
+            Foreground = AppResources.GetRequired<Brush>("ToolboxMuted"),
             Margin = new Thickness(0, 0, 0, 6)
         });
         control.Margin = new Thickness(0, 0, 0, 14);

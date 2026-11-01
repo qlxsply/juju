@@ -239,19 +239,28 @@
             <Setter Property="Height" Value="22" />
             <Setter Property="Background" Value="White" />
             <Style.Triggers>
-                <DataTrigger Binding="{Binding Kind}" Value="Added">
+                <DataTrigger
+                    Binding="{Binding Kind}"
+                    Value="Added">
                     <Setter Property="Background" Value="#EAF8EF" />
                 </DataTrigger>
-                <DataTrigger Binding="{Binding Kind}" Value="Removed">
+                <DataTrigger
+                    Binding="{Binding Kind}"
+                    Value="Removed">
                     <Setter Property="Background" Value="#FFF0EF" />
                 </DataTrigger>
-                <DataTrigger Binding="{Binding Kind}" Value="Empty">
+                <DataTrigger
+                    Binding="{Binding Kind}"
+                    Value="Empty">
                     <Setter Property="Background" Value="#F7F9FC" />
                 </DataTrigger>
             </Style.Triggers>
         </Style>
-        <DataTemplate x:Key="DiffLineNumberTemplate">
-            <Border Width="42" Style="{StaticResource DiffLineNumber}">
+        <DataTemplate
+            x:Key="DiffLineNumberTemplate">
+            <Border
+                Width="42"
+                Style="{StaticResource DiffLineNumber}">
                 <TextBlock
                     Margin="0,0,11,0"
                     HorizontalAlignment="Right"
@@ -694,10 +703,13 @@
                                 BorderThickness="0,0,0,1"
                                 IsHitTestVisible="False" />
                         </Grid>
-                        <Grid Grid.Row="1">
+                        <Grid
+                            Grid.Row="1">
                             <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="42" />
-                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition
+                                    Width="42" />
+                                <ColumnDefinition
+                                    Width="*" />
                             </Grid.ColumnDefinitions>
                             <ScrollViewer
                                 x:Name="LeftDiffLineNumbersScroll"
@@ -756,10 +768,13 @@
                                 BorderThickness="0,0,0,1"
                                 IsHitTestVisible="False" />
                         </Grid>
-                        <Grid Grid.Row="1">
+                        <Grid
+                            Grid.Row="1">
                             <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="42" />
-                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition
+                                    Width="42" />
+                                <ColumnDefinition
+                                    Width="*" />
                             </Grid.ColumnDefinitions>
                             <ScrollViewer
                                 x:Name="RightDiffLineNumbersScroll"

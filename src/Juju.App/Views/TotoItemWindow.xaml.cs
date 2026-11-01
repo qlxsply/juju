@@ -4,6 +4,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Interop;
 using Juju.App.Presentation.Toto;
+using Juju.App.Resources;
 using Juju.Platform.Windows;
 using Juju.Tools.Toto.Application;
 using Juju.Tools.Toto.Application.Items;
@@ -193,7 +194,8 @@ public partial class TotoItemWindow : Window
 
             row.Children.Add(new TextBlock
             {
-                Text = label, Foreground = (Brush) Application.Current.Resources["ToolboxMuted"]
+                Text = label,
+                Foreground = AppResources.GetRequired<Brush>("ToolboxMuted")
             });
 
             var valueControl = new TextBox
@@ -207,7 +209,7 @@ public partial class TotoItemWindow : Window
                 BorderThickness = new Thickness(0),
                 Padding = new Thickness(0),
                 Background = Brushes.Transparent,
-                Foreground = (Brush) Application.Current.Resources["ToolboxInk"],
+                Foreground = AppResources.GetRequired<Brush>("ToolboxInk"),
                 VerticalContentAlignment = VerticalAlignment.Top,
                 VerticalScrollBarVisibility = ScrollBarVisibility.Disabled,
                 HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
@@ -255,7 +257,7 @@ public partial class TotoItemWindow : Window
         if ( string.IsNullOrWhiteSpace(QuickInput.Text) )
         {
             QuickPreview.Text = "输入事项内容及计划时间";
-            QuickPreview.Foreground = (Brush) Application.Current.Resources["ToolboxMuted"];
+            QuickPreview.Foreground = AppResources.GetRequired<Brush>("ToolboxMuted");
             return;
         }
 
@@ -265,7 +267,7 @@ public partial class TotoItemWindow : Window
             ? $"{name}　{(plan is null ? "无计划时间" : Format(plan))}" +
               (remind is null ? "" : $"　提醒 {Format(remind)}")
             : error;
-        QuickPreview.Foreground = valid ? (Brush) Application.Current.Resources["ToolboxInk"] : Brushes.IndianRed;
+        QuickPreview.Foreground = valid ? AppResources.GetRequired<Brush>("ToolboxInk") : Brushes.IndianRed;
     }
 
     private int DefaultMinutes() => _defaultMinutes;
@@ -343,15 +345,15 @@ public partial class TotoItemWindow : Window
                     var newRemind = ReadTime(UseRemind.IsChecked == true, RemindDate, RemindHour, RemindMinute);
                     var changed = newRemind != _item.RemindAt;
                     if ( !_toto.UpdateItem(_item with
-                        {
-                            Content = text,
-                            PlannedAt = newPlan,
-                            RemindAt = newRemind,
-                            ReminderStatus = newRemind is null ? TotoReminderStatus.None :
+                    {
+                        Content = text,
+                        PlannedAt = newPlan,
+                        RemindAt = newRemind,
+                        ReminderStatus = newRemind is null ? TotoReminderStatus.None :
                             changed ? TotoReminderStatus.Pending : _item.ReminderStatus,
-                            RemindedAt = changed || newRemind is null ? null : _item.RemindedAt,
-                            Note = NoteInput.Text
-                        }) )
+                        RemindedAt = changed || newRemind is null ? null : _item.RemindedAt,
+                        Note = NoteInput.Text
+                    }) )
                         throw new InvalidOperationException("事项不存在或已被处理。");
                     break;
                 case TotoItemWindowMode.Complete or TotoItemWindowMode.Cancel when _item is not null:

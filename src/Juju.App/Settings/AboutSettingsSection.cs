@@ -1,4 +1,5 @@
 using System.Windows;
+using Juju.App.Resources;
 
 namespace Juju.App.Settings;
 
@@ -19,7 +20,7 @@ public sealed class AboutSettingsSection : ISettingsSection
             {
                 Text = "Windows x64",
                 FontSize = 11,
-                Foreground = (System.Windows.Media.Brush) System.Windows.Application.Current.Resources["ToolboxMuted"]
+                Foreground = AppResources.GetRequired<System.Windows.Media.Brush>("ToolboxMuted")
             });
         View = page;
     }

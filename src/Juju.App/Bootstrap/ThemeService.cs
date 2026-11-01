@@ -23,7 +23,9 @@ public sealed class ThemeService
         var theme = preference == ThemePreference.System ? GetSystemTheme() :
             preference == ThemePreference.Dark ? EffectiveTheme.Dark : EffectiveTheme.Light;
         Current = theme;
-        var resources = System.Windows.Application.Current.Resources;
+        var application = System.Windows.Application.Current ??
+            throw new InvalidOperationException("The WPF application has not been initialized.");
+        var resources = application.Resources;
         resources["JujuBackground"] = theme == EffectiveTheme.Dark
             ? System.Windows.Media.Brushes.Black
             : System.Windows.Media.Brushes.WhiteSmoke;

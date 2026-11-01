@@ -3,6 +3,7 @@ using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using Juju.App.Resources;
 using Juju.Core.Tools;
 using Brush = System.Windows.Media.Brush;
 using BrushConverter = System.Windows.Media.BrushConverter;
@@ -19,7 +20,7 @@ namespace Juju.App.Settings;
 /// </summary>
 internal static class SettingsViewFactory
 {
-    private static Brush Resource(string name) => (Brush) System.Windows.Application.Current.Resources[name];
+    private static Brush Resource(string name) => AppResources.GetRequired<Brush>(name);
 
     public static StackPanel Page()
     {
@@ -37,7 +38,7 @@ internal static class SettingsViewFactory
             Foreground = Resource("ToolboxInk"),
             Margin = new Thickness(0, 21, 0, 11)
         });
-        var card = new Border { Style = (Style) System.Windows.Application.Current.Resources["ToolboxSettingsCard"] };
+        var card = new Border { Style = AppResources.GetRequired<Style>("ToolboxSettingsCard") };
         card.Child = new StackPanel();
         page.Children.Add(card);
         return card;
@@ -73,19 +74,29 @@ internal static class SettingsViewFactory
             };
             copy.Children.Add(description);
         }
+
         grid.Children.Add(copy);
         Grid.SetColumn(control, 1);
         control.VerticalAlignment = VerticalAlignment.Center;
         grid.Children.Add(control);
-        var row = new Border { BorderBrush = Resource("ToolboxLine"), BorderThickness = new Thickness(0, 0, 0, 1), Child = grid };
+        var row = new Border
+        {
+            BorderBrush = Resource("ToolboxLine"),
+            BorderThickness = new Thickness(0, 0, 0, 1),
+            Child = grid
+        };
         rows.Children.Add(row);
-        return value => { if ( description is not null ) description.Text = value; };
+        return value =>
+        {
+            if ( description is not null )
+                description.Text = value;
+        };
     }
 
     public static CheckBox Switch(string accessibleName, bool value) => new()
     {
         IsChecked = value,
-        Style = (Style) System.Windows.Application.Current.Resources["ToolboxSwitch"],
+        Style = AppResources.GetRequired<Style>("ToolboxSwitch"),
         ToolTip = accessibleName
     };
 
@@ -94,14 +105,14 @@ internal static class SettingsViewFactory
         Text = value,
         Width = width,
         MinHeight = 32,
-        Style = (Style) System.Windows.Application.Current.Resources["ToolboxTextInput"],
+        Style = AppResources.GetRequired<Style>("ToolboxTextInput"),
         VerticalContentAlignment = VerticalAlignment.Center
     };
 
     public static Button SoftButton(string text, RoutedEventHandler click) => new Button()
     {
         Content = text,
-        Style = (Style) System.Windows.Application.Current.Resources["ToolboxSoftButton"],
+        Style = AppResources.GetRequired<Style>("ToolboxSoftButton"),
         HorizontalAlignment = System.Windows.HorizontalAlignment.Left
     }.Also(click);
 
@@ -130,14 +141,21 @@ internal static class SettingsViewFactory
             Orientation = System.Windows.Controls.Orientation.Horizontal,
             VerticalAlignment = VerticalAlignment.Center
         };
+
         void RenderKeys(string value)
         {
             keycaps.Children.Clear();
             if ( value == GlobalHotkeyPolicy.None )
             {
-                keycaps.Children.Add(new TextBlock { Text = "未设置", FontSize = 12, Foreground = Resource("ToolboxMuted") });
+                keycaps.Children.Add(new TextBlock
+                {
+                    Text = "未设置",
+                    FontSize = 12,
+                    Foreground = Resource("ToolboxMuted")
+                });
                 return;
             }
+
             var strokes = value.Split(' ');
             for ( var index = 0; index < strokes.Length; index++ )
             {
@@ -168,6 +186,7 @@ internal static class SettingsViewFactory
                     });
             }
         }
+
         RenderKeys(shortcut);
         panel.Children.Add(keycaps);
         var editButton = new Button
@@ -175,7 +194,7 @@ internal static class SettingsViewFactory
             Width = 36,
             Height = 36,
             ToolTip = "编辑快捷键",
-            Style = (Style) System.Windows.Application.Current.Resources["ToolboxHeaderButton"],
+            Style = AppResources.GetRequired<Style>("ToolboxHeaderButton"),
             Content = new System.Windows.Shapes.Path
             {
                 Data = Geometry.Parse("M4,16.5 L3,21 L7.5,20 L20.5,7.5 L16.5,3.5 Z M14.5,5.5 L18.5,9.5"),
@@ -217,7 +236,7 @@ internal static class SettingsViewFactory
 
         var actions = new StackPanel
         {
-            Orientation = System.Windows.Controls.Orientation.Horizontal,
+            Orientation = Orientation.Horizontal,
             VerticalAlignment = VerticalAlignment.Center,
             Margin = new Thickness(12, 0, 0, 0)
         };
@@ -254,11 +273,13 @@ internal static class SettingsViewFactory
             throw new InvalidOperationException("目录设置必须位于设置卡片中。");
         card.CornerRadius = new CornerRadius(3);
         card.Child = layout;
+
         void UpdatePath(string value)
         {
             location.Text = value;
             location.ToolTip = value;
         }
+
         return UpdatePath;
     }
 
@@ -269,7 +290,7 @@ internal static class SettingsViewFactory
             Width = 36,
             Height = 36,
             ToolTip = tooltip,
-            Style = (Style) System.Windows.Application.Current.Resources["ToolboxHeaderButton"],
+            Style = AppResources.GetRequired<Style>("ToolboxHeaderButton"),
             Content = new System.Windows.Shapes.Path
             {
                 Data = Geometry.Parse(geometry),
@@ -308,5 +329,4 @@ internal static class SettingsViewFactory
         button.Click += click;
         return button;
     }
-
 }

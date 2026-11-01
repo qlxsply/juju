@@ -6,6 +6,7 @@ using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Shapes;
+using Juju.App.Resources;
 using Juju.App.Settings;
 using Juju.Core.Tools;
 using Juju.Platform.Windows;
@@ -156,7 +157,7 @@ public partial class SettingsWindow : Window
         var capture = new Border
         {
             MinHeight = 95,
-            BorderBrush = (Brush) Application.Current.Resources["ToolboxLine"],
+            BorderBrush = AppResources.GetRequired<Brush>("ToolboxLine"),
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(2),
             Background = (Brush) new BrushConverter().ConvertFromString("#FCFDFF")!,
@@ -180,7 +181,7 @@ public partial class SettingsWindow : Window
             // Text = allowSequence ? "点击“追加第二段”后录入第二组键。修改只保存为弹窗草稿。" :
             //     "修改只保存为弹窗草稿；只有点击“保存”才注册并持久化快捷键。",
             FontSize = 11,
-            Foreground = (Brush) Application.Current.Resources["ToolboxMuted"],
+            Foreground = AppResources.GetRequired<Brush>("ToolboxMuted"),
             TextWrapping = TextWrapping.Wrap,
             Margin = new Thickness(0, 0, 0, 8)
         };
@@ -265,7 +266,7 @@ public partial class SettingsWindow : Window
             {
                 Text = "按下快捷键组合",
                 Foreground =
-                (Brush) Application.Current.Resources["ToolboxMuted"],
+                AppResources.GetRequired<Brush>("ToolboxMuted"),
                 VerticalAlignment = VerticalAlignment.Center
             });
         else
@@ -280,7 +281,7 @@ public partial class SettingsWindow : Window
                         Margin = new Thickness(4),
                         VerticalAlignment = VerticalAlignment.Center,
                         Foreground =
-                        (Brush) Application.Current.Resources["ToolboxMuted"]
+                        AppResources.GetRequired<Brush>("ToolboxMuted")
                     });
                 foreach ( var key in strokes[index].Split('+') )
                     panel.Children.Add(new Border
