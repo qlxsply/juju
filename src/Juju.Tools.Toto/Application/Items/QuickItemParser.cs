@@ -32,7 +32,8 @@ public static class QuickItemParser
             error = "请输入计划时间。";
             return false;
         }
-        if ( !TryParsePlan(token, referenceTime ?? DateTime.Now, out var plan, out error) )
+        var now = referenceTime ?? DateTime.Now;
+        if ( !TryParsePlan(token, now, out var plan, out error) )
             return false;
 
         var minutes = defaultMinutes;
@@ -60,14 +61,23 @@ public static class QuickItemParser
         string clock;
         try
         {
-            var weekly = Regex.Match(token, @"^(W+)([1-7])([0-9]{4})$", RegexOptions.IgnoreCase);
+            var relative = Regex.Match(token, @"^(?:H([0-9]+)(?:M([0-9]+))?|M([0-9]+))$",
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            if ( relative.Success )
+                return TryAddRelativeTime(relative, now, out plannedAt, out error);
+
+            var weekly = Regex.Match(token, @"^(W+)(?:([1-7])([0-9]{4})|([0-9]{4}))$",
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
             var daily = Regex.Match(token, @"^(\++)([0-9]{4})$");
             if ( weekly.Success )
             {
                 var mondayOffset = ((int) now.DayOfWeek + 6) % 7;
-                calendarDate = calendarDate.AddDays(-mondayOffset + weekly.Groups[1].Length * 7 +
-                                                    int.Parse(weekly.Groups[2].Value) - 1);
-                clock = weekly.Groups[3].Value;
+                var weekdayOffset = weekly.Groups[2].Success
+                    ? int.Parse(weekly.Groups[2].Value) - 1
+                    : mondayOffset;
+                var dayOffset = checked(-mondayOffset + (long) weekly.Groups[1].Length * 7 + weekdayOffset);
+                calendarDate = calendarDate.AddDays(dayOffset);
+                clock = weekly.Groups[2].Success ? weekly.Groups[3].Value : weekly.Groups[4].Value;
             }
             else if ( daily.Success )
             {
@@ -124,7 +134,46 @@ public static class QuickItemParser
             error = "日期不合法。";
             return false;
         }
+        catch ( OverflowException )
+        {
+            error = "不支持的时间格式。";
+            return false;
+        }
     }
+
+    private static bool TryAddRelativeTime(Match match, DateTime now, out DateTime plannedAt, out string error)
+    {
+        plannedAt = default;
+        error = "不支持的时间格式。";
+        if ( (match.Groups[1].Success && !TryParsePositive(match.Groups[1].Value, out _)) ||
+             (match.Groups[2].Success && !TryParsePositive(match.Groups[2].Value, out _)) ||
+             (match.Groups[3].Success && !TryParsePositive(match.Groups[3].Value, out _)) )
+            return false;
+
+        try
+        {
+            var hours = match.Groups[1].Success ? long.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture) : 0;
+            var minutes = match.Groups[2].Success
+                ? long.Parse(match.Groups[2].Value, CultureInfo.InvariantCulture)
+                : match.Groups[3].Success
+                    ? long.Parse(match.Groups[3].Value, CultureInfo.InvariantCulture)
+                    : 0;
+            var durationTicks = checked(hours * TimeSpan.TicksPerHour + minutes * TimeSpan.TicksPerMinute);
+            var resultTicks = checked(now.Ticks + durationTicks);
+            if ( resultTicks > DateTime.MaxValue.Ticks )
+                return false;
+            plannedAt = new DateTime(resultTicks, now.Kind);
+            error = "";
+            return true;
+        }
+        catch ( Exception ex ) when ( ex is OverflowException or ArgumentOutOfRangeException )
+        {
+            return false;
+        }
+    }
+
+    private static bool TryParsePositive(string value, out long number) =>
+        long.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out number) && number > 0;
 
     private static bool TryDate(int year, int month, int day, out DateTime date)
     {

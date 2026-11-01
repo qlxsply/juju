@@ -79,4 +79,59 @@ public sealed class QuickItemParserTests
             out _, Reference));
         Assert.Equal(plan!.Value.AddMinutes(-10), remind);
     }
+
+    [Theory]
+    [InlineData("事项@w21400", 2026, 10, 27, 14, 0)]
+    [InlineData("事项@ww21200", 2026, 11, 3, 12, 0)]
+    [InlineData("事项@WW21200", 2026, 11, 3, 12, 0)]
+    [InlineData("事项@Ww21200", 2026, 11, 3, 12, 0)]
+    [InlineData("事项@wW21200", 2026, 11, 3, 12, 0)]
+    [InlineData("事项@wwWW1400", 2026, 11, 19, 14, 0)]
+    public void Parses_case_insensitive_week_offsets_with_optional_weekday(string input, int year, int month, int day,
+        int hour, int minute)
+    {
+        Assert.True(QuickItemParser.TryParse(input, 5, out _, out var plan, out _, out var error, Reference), error);
+        Assert.Equal(new DateTime(year, month, day, hour, minute, 0), plan);
+    }
+
+    [Theory]
+    [InlineData("事项@h2m30", 2, 30)]
+    [InlineData("事项@H2M30", 2, 30)]
+    [InlineData("事项@m150", 2, 30)]
+    [InlineData("事项@M150", 2, 30)]
+    [InlineData("事项@h5", 5, 0)]
+    public void Parses_relative_hours_and_minutes(string input, int hours, int minutes)
+    {
+        Assert.True(QuickItemParser.TryParse(input, 5, out _, out var plan, out var remind, out var error, Reference), error);
+        var expected = Reference.AddHours(hours).AddMinutes(minutes);
+        Assert.Equal(expected, plan);
+        Assert.Equal(expected.AddMinutes(-5), remind);
+    }
+
+    [Fact]
+    public void Relative_time_can_override_reminder_minutes()
+    {
+        Assert.True(QuickItemParser.TryParse("事项@h2m30@10", 5, out _, out var plan, out var remind,
+            out var error, Reference), error);
+        Assert.Equal(Reference.AddHours(2).AddMinutes(30), plan);
+        Assert.Equal(plan!.Value.AddMinutes(-10), remind);
+    }
+
+    [Theory]
+    [InlineData("事项@h0")]
+    [InlineData("事项@m0")]
+    [InlineData("事项@h2m0")]
+    [InlineData("事项@h2h3")]
+    [InlineData("事项@m5m10")]
+    [InlineData("事项@m5h2")]
+    [InlineData("事项@h")]
+    [InlineData("事项@m")]
+    [InlineData("事项@h999999999999999999999999")]
+    public void Rejects_invalid_relative_time_as_unsupported_format(string input)
+    {
+        Assert.False(QuickItemParser.TryParse(input, 5, out _, out var plan, out var remind, out var error, Reference));
+        Assert.Null(plan);
+        Assert.Null(remind);
+        Assert.Equal("不支持的时间格式。", error);
+    }
 }

@@ -75,7 +75,7 @@
                         AutomationProperties.Name="事项内容 @计划时间" />
                     <TextBlock
                         Margin="0,8,0,0"
-                        Text="快捷语法：事项内容 @计划时间[@提前分钟]&#xA;指定日期：HHmm（今天） · ddHHmm（本月） · MMddHHmm（今年） · yyyyMMddHHmm&#xA;相对日期：+…HHmm（每个 + 后移一天）；W…DHHmm（每个 W 后移一周，D=1–7：周一至周日）&#xA;提前分钟可省略并使用默认值，例如：会议 @1600"
+                        Text="快捷语法：事项内容@计划时间[@提前分钟]&#xA;指定日期：HHmm（今天） · ddHHmm（本月） · MMddHHmm（今年） · yyyyMMddHHmm&#xA;相对日期：+…HHmm（每个 + 后移一天）；W…[D]HHmm（每个 W 后移一周；D=1–7，周一至周日，省略则沿用今天星期）&#xA;相对时间：@h小时数[m分钟数] 或 @m分钟数&#xA;字母不区分大小写，提前分钟可省略并使用默认值"
                         Foreground="#8996A8"
                         FontSize="11"
                         TextWrapping="Wrap" />
