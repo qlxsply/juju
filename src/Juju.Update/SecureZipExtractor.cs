@@ -77,7 +77,8 @@ public static class SecureZipExtractor
             while ( true )
             {
                 var read = await source.ReadAsync(buffer, cancellationToken);
-                if ( read == 0 ) break;
+                if ( read == 0 )
+                    break;
                 copied = checked(copied + read);
                 if ( copied > entry.Length )
                     throw new InvalidDataException("An update archive entry expands beyond its declared size.");
@@ -150,7 +151,8 @@ public static class VersionPackageStager
         }
         catch
         {
-            if ( Directory.Exists(stage) ) Directory.Delete(stage, recursive: true);
+            if ( Directory.Exists(stage) )
+                Directory.Delete(stage, recursive: true);
             throw;
         }
     }

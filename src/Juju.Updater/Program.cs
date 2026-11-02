@@ -66,7 +66,8 @@ internal static class Program
             if ( launcherProcess.ExitCode == 0 )
             {
                 var current = await store.ReadAsync();
-                if ( current is not null ) VersionDirectoryManager.Prune(root, current);
+                if ( current is not null )
+                    VersionDirectoryManager.Prune(root, current);
                 TryDelete(package);
                 TryDelete(manifestPath);
                 TryDelete(gatePath);
@@ -130,7 +131,8 @@ internal static class Program
 
     private static bool IsProcessRunning(int processId)
     {
-        try { return !Process.GetProcessById(processId).HasExited; }
+        try
+        { return !Process.GetProcessById(processId).HasExited; }
         catch ( ArgumentException ) { return false; }
     }
 
@@ -138,7 +140,8 @@ internal static class Program
     {
         try
         {
-            if ( File.Exists(path) ) File.Delete(path);
+            if ( File.Exists(path) )
+                File.Delete(path);
         }
         catch ( IOException ) { }
         catch ( UnauthorizedAccessException ) { }
@@ -159,7 +162,8 @@ internal static class Program
     private static void ScheduleTemporaryHelperCleanup()
     {
         var executable = Environment.ProcessPath;
-        if ( string.IsNullOrWhiteSpace(executable) ) return;
+        if ( string.IsNullOrWhiteSpace(executable) )
+            return;
         var directory = Path.GetDirectoryName(executable);
         var tempRoot = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "juju-updater"));
         if ( string.IsNullOrWhiteSpace(directory) ||

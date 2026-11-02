@@ -1,8 +1,8 @@
 using System.Diagnostics;
 using System.IO.Pipes;
 using System.Text;
-using Juju.Update;
 using System.Windows.Forms;
+using Juju.Update;
 
 namespace Juju.Launcher;
 
@@ -34,14 +34,16 @@ internal static class Program
                     catch ( Exception ex )
                     {
                         StopCandidate(candidateProcess);
-                        try { await store.RollbackPendingAsync(); }
+                        try
+                        { await store.RollbackPendingAsync(); }
                         catch ( Exception ) { }
                         ShowError("新版本已启动，但无法提交版本状态；已尝试恢复旧版本。\n\n" + ex.Message);
                     }
                 }
                 else
                 {
-                    try { await store.RollbackPendingAsync(); }
+                    try
+                    { await store.RollbackPendingAsync(); }
                     catch ( Exception ) { /* Continue with the unchanged active version if state writes fail. */ }
                     ShowError($"新版本 {candidate} 未能正常启动，已恢复到 {state.ActiveVersion}。");
                 }
@@ -71,7 +73,8 @@ internal static class Program
     private static async Task<Process?> TryStartCandidateAsync(string root, string candidate, string[] originalArgs)
     {
         string executable;
-        try { executable = ResolveExecutable(root, candidate); }
+        try
+        { executable = ResolveExecutable(root, candidate); }
         catch ( Exception ex ) when ( ex is IOException or InvalidDataException or UnauthorizedAccessException )
         {
             WriteDiagnostic(root, $"Candidate {candidate} could not be resolved: {ex}");
@@ -92,7 +95,8 @@ internal static class Program
             {
                 WriteDiagnostic(root, $"Candidate {candidate} exited before readiness with code {process.ExitCode}.");
                 timeout.Cancel();
-                try { await connected; }
+                try
+                { await connected; }
                 catch ( OperationCanceledException ) { }
                 catch ( IOException ) { }
                 return null;
@@ -125,7 +129,8 @@ internal static class Program
         {
             if ( !keepProcess && process is { HasExited: false } )
                 StopCandidate(process);
-            if ( !keepProcess ) process?.Dispose();
+            if ( !keepProcess )
+                process?.Dispose();
         }
     }
 
@@ -133,10 +138,12 @@ internal static class Program
     {
         if ( !process.HasExited )
         {
-            try { process.Kill(entireProcessTree: true); }
+            try
+            { process.Kill(entireProcessTree: true); }
             catch ( InvalidOperationException ) { }
             catch ( System.ComponentModel.Win32Exception ) { }
-            try { process.WaitForExit(); }
+            try
+            { process.WaitForExit(); }
             catch ( InvalidOperationException ) { }
         }
         process.Dispose();

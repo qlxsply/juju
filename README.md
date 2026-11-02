@@ -125,13 +125,15 @@ dotnet test Juju.sln --configuration Release
 dotnet clean Juju.sln --configuration Release
 ```
 
-清理自包含发布目录和安装包目录（不会删除源码）：
+清空 `artifacts` 下全部本地编译/打包结果（不会删除源码）。必须从仓库根目录运行：
 
 ```powershell
-foreach ($path in @('artifacts\win-x64', 'artifacts\installer')) {
-    if (Test-Path -LiteralPath $path) {
-        Remove-Item -LiteralPath $path -Recurse -Force
-    }
+if (-not (Test-Path -LiteralPath '.\Juju.sln' -PathType Leaf)) {
+    throw '请先切换到 juju 仓库根目录。'
+}
+$artifactRoot = Join-Path (Get-Location).Path 'artifacts'
+if (Test-Path -LiteralPath $artifactRoot) {
+    Remove-Item -LiteralPath $artifactRoot -Recurse -Force
 }
 ```
 
@@ -158,29 +160,54 @@ XAML 的权威格式化器是仓库本地 XAML Styler，而不是 Rider 内置 X
 
 ### 生成 Windows x64 安装包
 
-正式安装布局由版本目录、稳定 Launcher 和共享数据根目录组成。Release workflow 会构建并打包所有组件；日常发布请使用下方的 GitHub Release 流程。下面命令演示本地构建首装包：
+正式安装布局由版本目录、稳定 Launcher 和共享数据根目录组成。以下命令从空的 `artifacts` 开始，完整重建本地可安装的 Windows x64 Setup.exe。示例版本 `2.0.4` 请替换为你准备发布的版本；这一步只在本机生成文件，不会上传 GitHub。
 
 ```powershell
-if (Test-Path -LiteralPath artifacts) { Remove-Item -LiteralPath artifacts -Recurse -Force }
+if (-not (Test-Path -LiteralPath '.\Juju.sln' -PathType Leaf)) {
+    throw '请先切换到 juju 仓库根目录。'
+}
+$version = '2.0.4'
+if (Test-Path -LiteralPath (Join-Path (Get-Location).Path 'artifacts')) {
+    Remove-Item -LiteralPath (Join-Path (Get-Location).Path 'artifacts') -Recurse -Force
+}
+
+dotnet restore Juju.sln
+if ($LASTEXITCODE -ne 0) { throw 'dotnet restore failed.' }
+npm ci --prefix editor
+if ($LASTEXITCODE -ne 0) { throw 'npm ci failed.' }
 
 dotnet publish src/Juju.App/Juju.App.csproj `
   -c Release -r win-x64 --self-contained true `
-  -p:Version=2.0.0 -o artifacts/win-x64
+  "-p:Version=$version" -o artifacts/win-x64
+if ($LASTEXITCODE -ne 0) { throw 'Juju.App publish failed.' }
 
 dotnet publish src/Juju.Launcher/Juju.Launcher.csproj `
   -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true `
   -p:Version=1.0.0 -o artifacts/bootstrap
+if ($LASTEXITCODE -ne 0) { throw 'Juju.Launcher publish failed.' }
 
 dotnet publish src/Juju.Updater/Juju.Updater.csproj `
   -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true `
   -p:Version=1.0.0 -o artifacts/bootstrap
+if ($LASTEXITCODE -ne 0) { throw 'Juju.Updater publish failed.' }
 
 $iscc = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'
-& $iscc '/DAppVersion=2.0.0' 'installer\juju.iss'
+if (-not (Test-Path -LiteralPath $iscc -PathType Leaf)) { throw 'Inno Setup 6 is not installed.' }
+& $iscc "/DAppVersion=$version" 'installer\juju.iss'
 if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed with exit code $LASTEXITCODE" }
+$installer = "artifacts\installer\juju_v{0}_setup_win64.exe" -f $version
+if (-not (Test-Path -LiteralPath $installer -PathType Leaf)) { throw "Installer was not created: $installer" }
+Write-Host "Created $installer"
 ```
 
-安装包将生成在 `artifacts/installer/juju_v2.0.0_setup_win64.exe`。
+生成文件：`artifacts/installer/juju_v2.0.4_setup_win64.exe`（版本名以 `$version` 为准）。本地 Inno 编译会生成首装包；GitHub Release workflow 还会生成供应用内更新使用的版本 ZIP 和 SHA-256 manifest。
+
+#### 在 Rider 中操作
+
+1. 用 Rider 打开仓库根目录的 `Juju.sln`，确认 **Settings → Build, Execution, Deployment → Toolset and Build** 使用 .NET SDK 10.0.400，并且已安装 Node.js 22/npm 与 Inno Setup 6。
+2. 选择 **View → Tool Windows → Terminal**，确认终端当前目录是包含 `Juju.sln` 的仓库根目录。
+3. 粘贴并运行上方 PowerShell 命令；它会重建 `artifacts` 下的全部发布文件，并在结束时显示生成的 Setup.exe 路径。
+4. Rider 的 **Build → Rebuild Solution** 只重建解决方案项目，不会创建 Inno Setup 安装包；生成可安装 Setup.exe 仍需运行上方发布命令。
 
 ### 应用自动更新
 

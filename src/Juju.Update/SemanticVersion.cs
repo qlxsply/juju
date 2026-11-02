@@ -26,7 +26,8 @@ public readonly record struct SemanticVersion(int Major, int Minor, int Patch) :
     public int CompareTo(SemanticVersion other)
     {
         var major = Major.CompareTo(other.Major);
-        if ( major != 0 ) return major;
+        if ( major != 0 )
+            return major;
         var minor = Minor.CompareTo(other.Minor);
         return minor != 0 ? minor : Patch.CompareTo(other.Patch);
     }

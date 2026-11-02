@@ -1,8 +1,8 @@
-using System.Security.Cryptography;
-using System.Text;
 using System.IO.Compression;
 using System.Net;
 using System.Net.Http.Headers;
+using System.Security.Cryptography;
+using System.Text;
 using Juju.Update;
 using Xunit;
 
@@ -40,9 +40,14 @@ public sealed class VersionAndManifestTests
     {
         var manifest = new ReleaseManifest
         {
-            SchemaVersion = 1, Version = "1.2.3", Channel = "stable", Rid = "win-x64",
-            PackageAsset = "juju_v1.2.3_win-x64.zip", Sha256 = new string('a', 64),
-            MinimumLauncherVersion = "1.0.0", ReleaseNotesUrl = "https://github.com/qlxsply/juju/releases/tag/juju_v1.2.3"
+            SchemaVersion = 1,
+            Version = "1.2.3",
+            Channel = "stable",
+            Rid = "win-x64",
+            PackageAsset = "juju_v1.2.3_win-x64.zip",
+            Sha256 = new string('a', 64),
+            MinimumLauncherVersion = "1.0.0",
+            ReleaseNotesUrl = "https://github.com/qlxsply/juju/releases/tag/juju_v1.2.3"
         };
         manifest.Validate("1.2.3");
         Assert.Throws<InvalidDataException>(() => (manifest with { PackageAsset = "../evil.zip" }).Validate("1.2.3"));
@@ -62,7 +67,8 @@ public sealed class VersionAndManifestTests
         }
         finally
         {
-            if ( File.Exists(path) ) File.Delete(path);
+            if ( File.Exists(path) )
+                File.Delete(path);
         }
     }
 
@@ -81,7 +87,8 @@ public sealed class VersionAndManifestTests
         }
         finally
         {
-            if ( Directory.Exists(root) ) Directory.Delete(root, recursive: true);
+            if ( Directory.Exists(root) )
+                Directory.Delete(root, recursive: true);
         }
     }
 
@@ -109,7 +116,8 @@ public sealed class VersionAndManifestTests
         }
         finally
         {
-            if ( Directory.Exists(root) ) Directory.Delete(root, recursive: true);
+            if ( Directory.Exists(root) )
+                Directory.Delete(root, recursive: true);
         }
     }
 
@@ -128,7 +136,8 @@ public sealed class VersionAndManifestTests
         }
         finally
         {
-            if ( Directory.Exists(root) ) Directory.Delete(root, recursive: true);
+            if ( Directory.Exists(root) )
+                Directory.Delete(root, recursive: true);
         }
     }
 
@@ -210,7 +219,10 @@ public sealed class VersionAndManifestTests
             }
             var manifest = new ReleaseManifest
             {
-                SchemaVersion = 1, Version = "1.2.3", Channel = "stable", Rid = "win-x64",
+                SchemaVersion = 1,
+                Version = "1.2.3",
+                Channel = "stable",
+                Rid = "win-x64",
                 PackageAsset = "juju_v1.2.3_win-x64.zip",
                 Sha256 = Convert.ToHexString(SHA256.HashData(await File.ReadAllBytesAsync(packagePath))),
                 MinimumLauncherVersion = "1.0.0"
@@ -224,7 +236,8 @@ public sealed class VersionAndManifestTests
         }
         finally
         {
-            if ( Directory.Exists(root) ) Directory.Delete(root, recursive: true);
+            if ( Directory.Exists(root) )
+                Directory.Delete(root, recursive: true);
         }
     }
 
@@ -265,7 +278,8 @@ public sealed class VersionAndManifestTests
         }
         finally
         {
-            if ( Directory.Exists(root) ) Directory.Delete(root, recursive: true);
+            if ( Directory.Exists(root) )
+                Directory.Delete(root, recursive: true);
         }
     }
 
@@ -294,8 +308,10 @@ public sealed class VersionAndManifestTests
         }
         finally
         {
-            if ( Directory.Exists(root + "-prerelease") ) Directory.Delete(root + "-prerelease", recursive: true);
-            if ( Directory.Exists(root + "-offline") ) Directory.Delete(root + "-offline", recursive: true);
+            if ( Directory.Exists(root + "-prerelease") )
+                Directory.Delete(root + "-prerelease", recursive: true);
+            if ( Directory.Exists(root + "-offline") )
+                Directory.Delete(root + "-offline", recursive: true);
         }
     }
 
@@ -316,7 +332,8 @@ public sealed class VersionAndManifestTests
         }
         finally
         {
-            if ( Directory.Exists(root) ) Directory.Delete(root, recursive: true);
+            if ( Directory.Exists(root) )
+                Directory.Delete(root, recursive: true);
         }
     }
 
@@ -353,7 +370,8 @@ public sealed class VersionAndManifestTests
         }
         finally
         {
-            if ( Directory.Exists(root) ) Directory.Delete(root, recursive: true);
+            if ( Directory.Exists(root) )
+                Directory.Delete(root, recursive: true);
         }
     }
 
@@ -365,8 +383,13 @@ public sealed class VersionAndManifestTests
         var hash = Convert.ToHexString(SHA256.HashData(payload));
         var manifest = new ReleaseManifest
         {
-            SchemaVersion = 1, Version = "1.2.3", Channel = "stable", Rid = "win-x64",
-            PackageAsset = "juju_v1.2.3_win-x64.zip", Sha256 = hash, MinimumLauncherVersion = "1.0.0"
+            SchemaVersion = 1,
+            Version = "1.2.3",
+            Channel = "stable",
+            Rid = "win-x64",
+            PackageAsset = "juju_v1.2.3_win-x64.zip",
+            Sha256 = hash,
+            MinimumLauncherVersion = "1.0.0"
         };
         var update = new AvailableUpdate(manifest, "", "https://github.com/qlxsply/juju/releases/tag/juju_v1.2.3",
             "https://github.com/qlxsply/juju/releases/download/juju_v1.2.3/juju_v1.2.3_win-x64.zip",
@@ -385,7 +408,8 @@ public sealed class VersionAndManifestTests
         }
         finally
         {
-            if ( Directory.Exists(root) ) Directory.Delete(root, recursive: true);
+            if ( Directory.Exists(root) )
+                Directory.Delete(root, recursive: true);
         }
     }
 
@@ -395,8 +419,12 @@ public sealed class VersionAndManifestTests
         var root = Path.Combine(Path.GetTempPath(), "juju-update-tests", Guid.NewGuid().ToString("N"));
         var manifest = new ReleaseManifest
         {
-            SchemaVersion = 1, Version = "1.2.3", Channel = "stable", Rid = "win-x64",
-            PackageAsset = "juju_v1.2.3_win-x64.zip", Sha256 = new string('a', 64),
+            SchemaVersion = 1,
+            Version = "1.2.3",
+            Channel = "stable",
+            Rid = "win-x64",
+            PackageAsset = "juju_v1.2.3_win-x64.zip",
+            Sha256 = new string('a', 64),
             MinimumLauncherVersion = "1.0.0"
         };
         var update = new AvailableUpdate(manifest, "", "https://github.com/qlxsply/juju/releases/tag/juju_v1.2.3",
@@ -413,7 +441,8 @@ public sealed class VersionAndManifestTests
         }
         finally
         {
-            if ( Directory.Exists(root) ) Directory.Delete(root, recursive: true);
+            if ( Directory.Exists(root) )
+                Directory.Delete(root, recursive: true);
         }
     }
 
@@ -441,7 +470,8 @@ public sealed class VersionAndManifestTests
         }
         finally
         {
-            if ( Directory.Exists(root) ) Directory.Delete(root, recursive: true);
+            if ( Directory.Exists(root) )
+                Directory.Delete(root, recursive: true);
         }
     }
 

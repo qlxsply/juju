@@ -24,8 +24,10 @@ public sealed class VersionStateStore(string installRoot)
         }
         catch ( Exception primaryError ) when ( primaryError is JsonException or InvalidDataException or IOException )
         {
-            if ( !File.Exists(BackupPath) ) throw;
-            try { return await ReadStateFileAsync(BackupPath, cancellationToken); }
+            if ( !File.Exists(BackupPath) )
+                throw;
+            try
+            { return await ReadStateFileAsync(BackupPath, cancellationToken); }
             catch ( Exception backupError ) when ( backupError is JsonException or InvalidDataException or IOException )
             {
                 throw new InvalidDataException("Active version state and its backup are invalid.", primaryError);
@@ -47,8 +49,10 @@ public sealed class VersionStateStore(string installRoot)
             if ( File.Exists(StatePath) )
             {
                 File.Copy(StatePath, backupTemporary);
-                if ( File.Exists(BackupPath) ) File.Replace(backupTemporary, BackupPath, null, ignoreMetadataErrors: true);
-                else File.Move(backupTemporary, BackupPath);
+                if ( File.Exists(BackupPath) )
+                    File.Replace(backupTemporary, BackupPath, null, ignoreMetadataErrors: true);
+                else
+                    File.Move(backupTemporary, BackupPath);
             }
             await using ( var stream = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None,
                              4096, FileOptions.Asynchronous | FileOptions.WriteThrough) )

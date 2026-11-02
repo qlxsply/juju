@@ -53,7 +53,8 @@ public sealed class GitHubUpdateService : IDisposable
         CancellationToken cancellationToken = default)
     {
         await _checkGate.WaitAsync(cancellationToken);
-        try { return await CheckCoreAsync(currentVersion, manual, cancellationToken); }
+        try
+        { return await CheckCoreAsync(currentVersion, manual, cancellationToken); }
         finally { _checkGate.Release(); }
     }
 
@@ -78,7 +79,8 @@ public sealed class GitHubUpdateService : IDisposable
             return Publish(CompareCached(cache.Latest, current, skipped: true));
 
         cache = cache with { LastAttemptUtc = DateTimeOffset.UtcNow };
-        try { await WriteCacheAsync(cache, cancellationToken); }
+        try
+        { await WriteCacheAsync(cache, cancellationToken); }
         catch ( Exception ex ) when ( ex is IOException or UnauthorizedAccessException ) { }
 
         try
@@ -140,7 +142,8 @@ public sealed class GitHubUpdateService : IDisposable
         CancellationToken cancellationToken = default)
     {
         await _downloadGate.WaitAsync(cancellationToken);
-        try { return await DownloadCoreAsync(update, progress, cancellationToken); }
+        try
+        { return await DownloadCoreAsync(update, progress, cancellationToken); }
         finally { _downloadGate.Release(); }
     }
 
@@ -173,7 +176,8 @@ public sealed class GitHubUpdateService : IDisposable
                 while ( true )
                 {
                     var count = await input.ReadAsync(buffer, requestToken);
-                    if ( count == 0 ) break;
+                    if ( count == 0 )
+                        break;
                     received = checked(received + count);
                     if ( received > MaximumPackageBytes || (total.HasValue && received > total.Value) )
                         throw new InvalidDataException("下载内容超出声明大小或允许上限。");
@@ -193,9 +197,12 @@ public sealed class GitHubUpdateService : IDisposable
         }
         catch
         {
-            if ( File.Exists(partialPath) ) File.Delete(partialPath);
-            if ( File.Exists(packagePath) ) File.Delete(packagePath);
-            if ( File.Exists(manifestPath) ) File.Delete(manifestPath);
+            if ( File.Exists(partialPath) )
+                File.Delete(partialPath);
+            if ( File.Exists(packagePath) )
+                File.Delete(packagePath);
+            if ( File.Exists(manifestPath) )
+                File.Delete(manifestPath);
             throw;
         }
     }
@@ -221,7 +228,8 @@ public sealed class GitHubUpdateService : IDisposable
         while ( true )
         {
             var read = await stream.ReadAsync(bytes, cancellationToken);
-            if ( read == 0 ) break;
+            if ( read == 0 )
+                break;
             if ( buffer.Length + read > maximumBytes )
                 throw new InvalidDataException("Release manifest exceeds the size limit.");
             await buffer.WriteAsync(bytes.AsMemory(0, read), cancellationToken);
@@ -231,7 +239,8 @@ public sealed class GitHubUpdateService : IDisposable
 
     private async Task<CheckCache> ReadCacheAsync(CancellationToken cancellationToken)
     {
-        if ( !File.Exists(_statePath) ) return new CheckCache();
+        if ( !File.Exists(_statePath) )
+            return new CheckCache();
         await using var stream = new FileStream(_statePath, FileMode.Open, FileAccess.Read, FileShare.Read,
             4096, FileOptions.Asynchronous | FileOptions.SequentialScan);
         return await JsonSerializer.DeserializeAsync<CheckCache>(stream, JsonOptions, cancellationToken) ?? new CheckCache();
@@ -250,12 +259,15 @@ public sealed class GitHubUpdateService : IDisposable
                 await stream.FlushAsync(cancellationToken);
                 stream.Flush(flushToDisk: true);
             }
-            if ( File.Exists(_statePath) ) File.Replace(temp, _statePath, null, ignoreMetadataErrors: true);
-            else File.Move(temp, _statePath);
+            if ( File.Exists(_statePath) )
+                File.Replace(temp, _statePath, null, ignoreMetadataErrors: true);
+            else
+                File.Move(temp, _statePath);
         }
         finally
         {
-            if ( File.Exists(temp) ) File.Delete(temp);
+            if ( File.Exists(temp) )
+                File.Delete(temp);
         }
     }
 
@@ -271,7 +283,8 @@ public sealed class GitHubUpdateService : IDisposable
     private UpdateCheckResult Publish(UpdateCheckResult result)
     {
         LastResult = result;
-        try { CheckCompleted?.Invoke(result); }
+        try
+        { CheckCompleted?.Invoke(result); }
         catch ( Exception ) { /* Presentation notifications cannot invalidate the network result. */ }
         return result;
     }

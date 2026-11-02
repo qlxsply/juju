@@ -10,7 +10,8 @@ public static class VersionDirectoryManager
         if ( (File.GetAttributes(versionsRoot) & FileAttributes.ReparsePoint) != 0 )
             return [];
         var keep = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { state.ActiveVersion };
-        if ( state.PreviousVersion is not null ) keep.Add(state.PreviousVersion);
+        if ( state.PreviousVersion is not null )
+            keep.Add(state.PreviousVersion);
         var removed = new List<string>();
         foreach ( var directory in Directory.EnumerateDirectories(versionsRoot) )
         {
@@ -38,8 +39,10 @@ public static class VersionDirectoryManager
         var attributes = File.GetAttributes(directory);
         if ( (attributes & FileAttributes.ReparsePoint) != 0 )
         {
-            if ( (attributes & FileAttributes.Directory) != 0 ) Directory.Delete(directory, recursive: false);
-            else File.Delete(directory);
+            if ( (attributes & FileAttributes.Directory) != 0 )
+                Directory.Delete(directory, recursive: false);
+            else
+                File.Delete(directory);
             return;
         }
 

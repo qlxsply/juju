@@ -1,6 +1,6 @@
+using System.Diagnostics;
 using System.IO;
 using System.IO.Pipes;
-using System.Diagnostics;
 using System.Text;
 using System.Windows;
 using Juju.App.Bootstrap;
@@ -207,7 +207,8 @@ public partial class App
     private async Task CheckForUpdatesAtStartupAsync(GitHubUpdateService updates, string currentVersion,
         CancellationToken cancellationToken)
     {
-        try { await updates.CheckAsync(currentVersion, manual: false, cancellationToken); }
+        try
+        { await updates.CheckAsync(currentVersion, manual: false, cancellationToken); }
         catch ( OperationCanceledException ) { }
         catch ( Exception ) { /* Update availability never blocks normal application startup. */ }
     }
@@ -240,7 +241,8 @@ public partial class App
 
         if ( !await _lifecycle.ShutdownAsync(_shutdown.Token) )
         {
-            try { helper.Kill(entireProcessTree: true); }
+            try
+            { helper.Kill(entireProcessTree: true); }
             catch ( InvalidOperationException ) { }
             throw new InvalidOperationException("当前数据未能安全保存，更新已取消，应用仍保持运行。");
         }
