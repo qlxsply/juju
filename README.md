@@ -99,7 +99,7 @@ Juju 默认显示主界面启动；开机自启动、启动时最小化到托盘
 
 ## 从源码构建
 
-构建需要 Windows、.NET SDK **10.0.400**、Node.js 22/npm；生成安装包还需要 Inno Setup 6。SDK 与前端依赖初始化后，可在仓库根目录使用以下命令。
+构建需要 Windows、.NET SDK **10.0.400**、Node.js **22.12+ 或 24+**/npm；生成安装包还需要 Inno Setup 6。GitHub Release workflow 固定使用 Node.js 22；本地发布脚本也允许兼容的 Node.js 24。
 
 ```powershell
 git clone https://github.com/qlxsply/juju.git
@@ -125,16 +125,11 @@ dotnet test Juju.sln --configuration Release
 dotnet clean Juju.sln --configuration Release
 ```
 
-清空 `artifacts` 下全部本地编译/打包结果（不会删除源码）。必须从仓库根目录运行：
+可单独清空 `artifacts` 下全部本地编译/打包结果（不会删除源码）。可加 `-WhatIf` 先预览：
 
 ```powershell
-if (-not (Test-Path -LiteralPath '.\Juju.sln' -PathType Leaf)) {
-    throw '请先切换到 juju 仓库根目录。'
-}
-$artifactRoot = Join-Path (Get-Location).Path 'artifacts'
-if (Test-Path -LiteralPath $artifactRoot) {
-    Remove-Item -LiteralPath $artifactRoot -Recurse -Force
-}
+.\scripts\clean-artifacts.ps1 -WhatIf
+.\scripts\clean-artifacts.ps1
 ```
 
 ### 统一格式化
@@ -160,60 +155,29 @@ XAML 的权威格式化器是仓库本地 XAML Styler，而不是 Rider 内置 X
 
 ### 生成 Windows x64 安装包
 
-正式安装布局由版本目录、稳定 Launcher 和共享数据根目录组成。以下命令从空的 `artifacts` 开始，完整重建本地可安装的 Windows x64 Setup.exe。示例版本 `2.0.4` 请替换为你准备发布的版本；这一步只在本机生成文件，不会上传 GitHub。
+正式安装布局由版本目录、稳定 Launcher 和共享数据根目录组成。先确认已安装 Windows x64、.NET SDK **10.0.400**、Node.js **22.12+ 或 24+**/npm 和 Inno Setup 6。以下脚本会清空 `artifacts`，重新 restore 并构建 App、Launcher、Updater，再调用 Inno Setup 生成本地安装包。示例版本 `2.0.4` 请替换为你准备发布的版本；脚本只在本机生成文件，不会上传 GitHub。
 
 ```powershell
-if (-not (Test-Path -LiteralPath '.\Juju.sln' -PathType Leaf)) {
-    throw '请先切换到 juju 仓库根目录。'
-}
-$version = '2.0.4'
-if (Test-Path -LiteralPath (Join-Path (Get-Location).Path 'artifacts')) {
-    Remove-Item -LiteralPath (Join-Path (Get-Location).Path 'artifacts') -Recurse -Force
-}
-
-dotnet restore Juju.sln
-if ($LASTEXITCODE -ne 0) { throw 'dotnet restore failed.' }
-npm ci --prefix editor
-if ($LASTEXITCODE -ne 0) { throw 'npm ci failed.' }
-
-dotnet publish src/Juju.App/Juju.App.csproj `
-  -c Release -r win-x64 --self-contained true `
-  "-p:Version=$version" -o artifacts/win-x64
-if ($LASTEXITCODE -ne 0) { throw 'Juju.App publish failed.' }
-
-dotnet publish src/Juju.Launcher/Juju.Launcher.csproj `
-  -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true `
-  -p:Version=1.0.0 -o artifacts/bootstrap
-if ($LASTEXITCODE -ne 0) { throw 'Juju.Launcher publish failed.' }
-
-dotnet publish src/Juju.Updater/Juju.Updater.csproj `
-  -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true `
-  -p:Version=1.0.0 -o artifacts/bootstrap
-if ($LASTEXITCODE -ne 0) { throw 'Juju.Updater publish failed.' }
-
-$iscc = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'
-if (-not (Test-Path -LiteralPath $iscc -PathType Leaf)) { throw 'Inno Setup 6 is not installed.' }
-& $iscc "/DAppVersion=$version" 'installer\juju.iss'
-if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed with exit code $LASTEXITCODE" }
-$installer = "artifacts\installer\juju_v{0}_setup_win64.exe" -f $version
-if (-not (Test-Path -LiteralPath $installer -PathType Leaf)) { throw "Installer was not created: $installer" }
-Write-Host "Created $installer"
+.\scripts\build-release.ps1 -Version 2.0.4
 ```
 
-生成文件：`artifacts/installer/juju_v2.0.4_setup_win64.exe`（版本名以 `$version` 为准）。本地 Inno 编译会生成首装包；GitHub Release workflow 还会生成供应用内更新使用的版本 ZIP 和 SHA-256 manifest。
+生成文件：`artifacts/installer/juju_v2.0.4_setup_win64.exe`。`build-release.ps1` 开始时会自动清空整个 `artifacts`；如果只想清理、不构建，可单独运行 `clean-artifacts.ps1`。本地脚本生成首装包；GitHub Release workflow 还会生成应用内更新用的版本 ZIP 和 SHA-256 manifest。
 
 #### 在 Rider 中操作
 
 1. 用 Rider 打开仓库根目录的 `Juju.sln`，确认 **Settings → Build, Execution, Deployment → Toolset and Build** 使用 .NET SDK 10.0.400，并且已安装 Node.js 22/npm 与 Inno Setup 6。
-2. 选择 **View → Tool Windows → Terminal**，确认终端当前目录是包含 `Juju.sln` 的仓库根目录。
-3. 粘贴并运行上方 PowerShell 命令；它会重建 `artifacts` 下的全部发布文件，并在结束时显示生成的 Setup.exe 路径。
-4. Rider 的 **Build → Rebuild Solution** 只重建解决方案项目，不会创建 Inno Setup 安装包；生成可安装 Setup.exe 仍需运行上方发布命令。
+2. 选择 **View → Tool Windows → Terminal**，使用 PowerShell 并确认当前目录是包含 `Juju.sln` 的仓库根目录。
+3. 运行 `./scripts/clean-artifacts.ps1 -WhatIf` 预览清理范围；确认后可以单独运行 `./scripts/clean-artifacts.ps1`。
+4. 运行 `./scripts/build-release.ps1 -Version 2.0.4`（替换为目标版本）；脚本会自行清理并重建，然后输出 Setup.exe 路径。
+5. Rider 的 **Build → Rebuild Solution** 只重建解决方案项目，不会创建 Inno Setup 安装包；要得到可安装的 Setup.exe，需运行上述发布脚本。
 
 ### 应用自动更新
 
-应用启动时每 24 小时检查一次 GitHub 最新稳定 Release；“更新与版本”页面也可手动检查。用户确认后，程序下载版本 ZIP、校验 SHA-256，保存并退出当前应用，再由独立更新助手安装到 `versions/<版本>`。稳定 Launcher 验证新版本成功启动后才提交版本切换；若启动失败则自动回退到上一版本。配置与工具数据放在版本目录之外，不随应用版本切换。
+应用启动时每 24 小时检查一次 GitHub 最新稳定 Release；“更新与版本”页面及托盘菜单也可手动检查。检查通过 GitHub Releases 的 `latest/download/juju_latest.json` 获取，不调用有较低未认证请求额度的 REST API。用户确认后，程序下载版本 ZIP、校验 SHA-256，保存并退出当前应用，再由独立更新助手安装到 `versions/<版本>`。稳定 Launcher 验证新版本成功启动后才提交版本切换；若启动失败则自动回退到上一版本。配置与工具数据放在版本目录之外，不随应用版本切换。
 
-Release 需要同时提供 `juju_vX.Y.Z_win-x64.zip`、`juju_vX.Y.Z_manifest.json` 和首次安装用的 Inno Setup 包。SHA-256 校验基于通过 HTTPS 获取的 GitHub Release manifest；当前未配置 Authenticode 代码签名证书。
+Release 需要同时提供 `juju_vX.Y.Z_win-x64.zip`、`juju_vX.Y.Z_manifest.json`、指向最新稳定版的 `juju_latest.json` 和首次安装用的 Inno Setup 包。SHA-256 校验基于通过 HTTPS 获取的 GitHub Release manifest；当前未配置 Authenticode 代码签名证书。桌面快捷方式指向带 juju 图标的稳定 Launcher。
+
+已有 Release 在启用自动更新前没有 `juju_latest.json`；应用会显示“GitHub 最新稳定版尚未发布自动更新清单”。下一次通过更新后的 Release workflow 发布后，自动检查即可使用该清单。
 
 自动更新技术方案和分阶段实施状态见[自动更新设计文档](docs/auto-update-design.md)。新安装布局不提供旧平铺安装目录或旧版本数据的自动迁移；采用新布局前请先备份旧版数据。
 

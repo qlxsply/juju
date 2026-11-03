@@ -4,6 +4,7 @@
     <OutputType>WinExe</OutputType>
     <UseWindowsForms>true</UseWindowsForms>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <ApplicationIcon>..\Juju.App\Assets\juju.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Juju.Update\Juju.Update.csproj" />

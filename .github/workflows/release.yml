@@ -73,20 +73,25 @@ jobs:
           $manifestName = "juju_v{0}_manifest.json" -f $env:APP_VERSION
           $packagePath = Join-Path $PWD "artifacts\release\$packageName"
           $manifestPath = Join-Path $PWD "artifacts\release\$manifestName"
+          $latestManifestPath = Join-Path $PWD 'artifacts\release\juju_latest.json'
           New-Item -ItemType Directory -Force -Path (Split-Path $packagePath) | Out-Null
           Compress-Archive -Path 'artifacts\win-x64\*' -DestinationPath $packagePath -CompressionLevel Optimal
           $hash = (Get-FileHash -LiteralPath $packagePath -Algorithm SHA256).Hash.ToLowerInvariant()
+          $packageSize = (Get-Item -LiteralPath $packagePath).Length
           $manifest = [ordered]@{
             schemaVersion = 1
             version = $env:APP_VERSION
             channel = 'stable'
             rid = 'win-x64'
             packageAsset = $packageName
+            packageSizeBytes = $packageSize
             sha256 = $hash
             minimumLauncherVersion = '1.0.0'
             releaseNotesUrl = "https://github.com/qlxsply/juju/releases/tag/juju_v$($env:APP_VERSION)"
           } | ConvertTo-Json
-          [IO.File]::WriteAllText($manifestPath, $manifest, [Text.UTF8Encoding]::new($false))
+          $encoding = [Text.UTF8Encoding]::new($false)
+          [IO.File]::WriteAllText($manifestPath, $manifest, $encoding)
+          [IO.File]::WriteAllText($latestManifestPath, $manifest, $encoding)
           if ((Get-Item -LiteralPath $packagePath).Length -gt 1GB) { throw 'Update package exceeds 1 GB.' }
 
       - name: Install Inno Setup
@@ -114,3 +119,4 @@ jobs:
             artifacts/installer/juju_v${{ steps.tag.outputs.version }}_setup_win64.exe
             artifacts/release/juju_v${{ steps.tag.outputs.version }}_win-x64.zip
             artifacts/release/juju_v${{ steps.tag.outputs.version }}_manifest.json
+            artifacts/release/juju_latest.json

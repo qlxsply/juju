@@ -13,7 +13,7 @@
 ## 新成员初始化
 
 1. 安装 .NET SDK 10.0.400（Windows Desktop Runtime/SDK 支持 WPF 项目）。
-2. 安装 Node.js 22（应用构建会调用 `editor/` 的 npm 构建）。
+2. 安装 Node.js 22.12+ 或 24+（应用构建会调用 `editor/` 的 npm 构建）。
 3. 在仓库根目录运行：
 
    ```powershell

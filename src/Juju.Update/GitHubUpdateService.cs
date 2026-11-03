@@ -1,8 +1,6 @@
 using System.Net;
 using System.Net.Http.Headers;
-using System.Net.Http.Json;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 
 namespace Juju.Update;
 
@@ -21,7 +19,7 @@ public sealed record PreparedUpdate(string PackagePath, string ManifestPath, Rel
 
 public sealed class GitHubUpdateService : IDisposable
 {
-    private const string LatestReleaseUrl = "https://api.github.com/repos/qlxsply/juju/releases/latest";
+    private const string LatestManifestUrl = "https://github.com/qlxsply/juju/releases/latest/download/juju_latest.json";
     private static readonly TimeSpan StartupCheckCooldown = TimeSpan.FromHours(24);
     private const long MaximumManifestBytes = 256 * 1024;
     private const long MaximumPackageBytes = 1024L * 1024 * 1024;
@@ -88,36 +86,26 @@ public sealed class GitHubUpdateService : IDisposable
             using var requestTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             requestTimeout.CancelAfter(TimeSpan.FromSeconds(30));
             var requestToken = requestTimeout.Token;
-            using var request = new HttpRequestMessage(HttpMethod.Get, LatestReleaseUrl);
-            if ( !string.IsNullOrWhiteSpace(cache.ETag) )
-                request.Headers.TryAddWithoutValidation("If-None-Match", cache.ETag);
-            using var response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, requestToken);
+            var latestUri = new Uri(LatestManifestUrl);
+            using var response = await GetTrustedAssetResponseAsync(latestUri, requestToken, cache.ETag);
             if ( response.StatusCode == HttpStatusCode.NotModified && cache.Latest is not null )
                 return Publish(CompareCached(cache.Latest, current, skipped: false));
             response.EnsureSuccessStatusCode();
 
-            var release = await response.Content.ReadFromJsonAsync<GitHubRelease>(JsonOptions, requestToken)
-                          ?? throw new InvalidDataException("GitHub returned an empty release response.");
-            if ( release.Draft || release.Prerelease )
-                throw new InvalidDataException("GitHub latest release is not a valid stable juju release.");
-            if ( !SemanticVersion.TryParse(release.TagName, out var version) )
-                throw new InvalidDataException("GitHub latest release tag is not a valid stable juju version.");
-            if ( version.CompareTo(current) <= 0 )
-                return Publish(new(false, null));
-            var manifestName = $"juju_v{version}_manifest.json";
-            var packageName = $"juju_v{version}_win-x64.zip";
-            var manifestAsset = FindAsset(release.Assets, manifestName);
-            var packageAsset = FindAsset(release.Assets, packageName);
-            var manifestBytes = await ReadBoundedAsync(manifestAsset.BrowserDownloadUrl, MaximumManifestBytes,
-                requestToken);
+            EnsureTrustedFinalUri(response, latestUri);
+            var manifestBytes = await ReadBoundedContentAsync(response.Content, MaximumManifestBytes, requestToken);
             var manifest = ReleaseManifest.Deserialize(manifestBytes);
-            manifest.Validate(version.ToString());
-            if ( !string.Equals(manifest.PackageAsset, packageAsset.Name, StringComparison.Ordinal) ||
-                 packageAsset.Size is <= 0 or > MaximumPackageBytes )
-                throw new InvalidDataException("Release package metadata is inconsistent or exceeds the size limit.");
-            var notesUrl = ValidateGitHubUrl(release.HtmlUrl);
-            var available = new AvailableUpdate(manifest, release.Body ?? "", notesUrl,
-                ValidateGitHubUrl(packageAsset.BrowserDownloadUrl), packageAsset.Size, release.TagName);
+            manifest.Validate(manifest.Version);
+            var version = manifest.ParsedVersion;
+            var packageName = $"juju_v{version}_win-x64.zip";
+            if ( !string.Equals(manifest.PackageAsset, packageName, StringComparison.Ordinal) )
+                throw new InvalidDataException("Latest manifest does not point to the expected win-x64 update package.");
+            var tagName = $"juju_v{version}";
+            var packageUrl = $"https://github.com/qlxsply/juju/releases/download/{tagName}/{Uri.EscapeDataString(packageName)}";
+            var notesUrl = manifest.ReleaseNotesUrl ?? $"https://github.com/qlxsply/juju/releases/tag/{tagName}";
+            var releaseNotes = manifest.ReleaseNotes ?? $"发布说明：{notesUrl}";
+            var available = new AvailableUpdate(manifest, releaseNotes, ValidateGitHubUrl(notesUrl),
+                ValidateGitHubUrl(packageUrl), manifest.PackageSizeBytes, tagName);
             var latest = CachedRelease.From(available);
             var etag = response.Headers.ETag?.ToString();
             cache = cache with { ETag = etag, Latest = latest };
@@ -131,6 +119,10 @@ public sealed class GitHubUpdateService : IDisposable
         catch ( OperationCanceledException ex )
         {
             return Publish(new(false, null, "检查更新失败：" + ex.Message));
+        }
+        catch ( HttpRequestException ex ) when ( ex.StatusCode == HttpStatusCode.NotFound )
+        {
+            return Publish(new(false, null, "GitHub 最新稳定版尚未发布自动更新清单。"));
         }
         catch ( Exception ex ) when ( ex is not OperationCanceledException )
         {
@@ -213,16 +205,13 @@ public sealed class GitHubUpdateService : IDisposable
             _http.Dispose();
     }
 
-    private async Task<byte[]> ReadBoundedAsync(string url, long maximumBytes, CancellationToken cancellationToken)
+    private async Task<byte[]> ReadBoundedContentAsync(HttpContent content, long maximumBytes,
+        CancellationToken cancellationToken)
     {
-        var requestUri = new Uri(ValidateGitHubUrl(url));
-        using var response = await GetTrustedAssetResponseAsync(requestUri, cancellationToken);
-        response.EnsureSuccessStatusCode();
-        EnsureTrustedFinalUri(response, requestUri);
-        var declaredLength = response.Content.Headers.ContentLength;
+        var declaredLength = content.Headers.ContentLength;
         if ( declaredLength.HasValue && declaredLength.Value > maximumBytes )
             throw new InvalidDataException("Release manifest exceeds the size limit.");
-        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        await using var stream = await content.ReadAsStreamAsync(cancellationToken);
         using var buffer = new MemoryStream();
         var bytes = new byte[8192];
         while ( true )
@@ -289,10 +278,6 @@ public sealed class GitHubUpdateService : IDisposable
         return result;
     }
 
-    private static GitHubReleaseAsset FindAsset(IReadOnlyList<GitHubReleaseAsset>? assets, string expectedName) =>
-        assets?.SingleOrDefault(asset => string.Equals(asset.Name, expectedName, StringComparison.Ordinal))
-        ?? throw new InvalidDataException($"GitHub Release asset '{expectedName}' was not found.");
-
     private static string ValidateGitHubUrl(string value)
     {
         if ( !Uri.TryCreate(value, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps ||
@@ -312,12 +297,14 @@ public sealed class GitHubUpdateService : IDisposable
     }
 
     private async Task<HttpResponseMessage> GetTrustedAssetResponseAsync(Uri initialUri,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, string? etag = null)
     {
         var current = initialUri;
         for ( var redirects = 0; redirects <= 5; redirects++ )
         {
             using var request = new HttpRequestMessage(HttpMethod.Get, current);
+            if ( !string.IsNullOrWhiteSpace(etag) )
+                request.Headers.TryAddWithoutValidation("If-None-Match", etag);
             var response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
             if ( !IsRedirect(response.StatusCode) )
             {
@@ -355,16 +342,4 @@ public sealed class GitHubUpdateService : IDisposable
             PackageSize, TagName);
     }
 
-    private sealed record GitHubRelease(
-        [property: JsonPropertyName("tag_name")] string TagName,
-        [property: JsonPropertyName("draft")] bool Draft,
-        [property: JsonPropertyName("prerelease")] bool Prerelease,
-        [property: JsonPropertyName("html_url")] string HtmlUrl,
-        [property: JsonPropertyName("body")] string? Body,
-        [property: JsonPropertyName("assets")] IReadOnlyList<GitHubReleaseAsset>? Assets);
-
-    private sealed record GitHubReleaseAsset(
-        [property: JsonPropertyName("name")] string Name,
-        [property: JsonPropertyName("browser_download_url")] string BrowserDownloadUrl,
-        [property: JsonPropertyName("size")] long Size);
 }

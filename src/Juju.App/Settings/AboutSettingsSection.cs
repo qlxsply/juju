@@ -185,7 +185,7 @@ public sealed class AboutSettingsSection : ISettingsSection
 
         _status.Text = $"发现稳定版 {update.Manifest.Version}（下载 {FormatBytes(update.PackageSize)}）。";
         _releaseNotes.Text = string.IsNullOrWhiteSpace(update.ReleaseNotes)
-            ? "此版本没有发布说明。"
+            ? $"发布说明：{update.ReleaseNotesUrl}"
             : update.ReleaseNotes.Length <= 1200 ? update.ReleaseNotes : update.ReleaseNotes[..1200] + "…";
         _releaseNotes.Visibility = Visibility.Visible;
         _updateButton.IsEnabled = true;

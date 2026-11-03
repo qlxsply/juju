@@ -97,6 +97,7 @@
 juju_vX.Y.Z_setup_win64.exe       首次安装/修复用 Inno Setup 包
 juju_vX.Y.Z_win-x64.zip           供已安装应用增量切换版本使用的自包含程序包
 juju_vX.Y.Z_manifest.json         版本、平台、包名、SHA-256、最低 Launcher 协议版本等
+juju_latest.json                  GitHub latest-release 下载入口指向的稳定版 manifest 副本
 ```
 
 Manifest 建议字段：
@@ -108,8 +109,10 @@ Manifest 建议字段：
   "channel": "stable",
   "rid": "win-x64",
   "packageAsset": "juju_v1.3.0_win-x64.zip",
+  "packageSizeBytes": 123456789,
   "sha256": "<64 个十六进制字符>",
-  "minimumLauncherVersion": "1.0.0"
+  "minimumLauncherVersion": "1.0.0",
+  "releaseNotesUrl": "https://github.com/qlxsply/juju/releases/tag/juju_v1.3.0"
 }
 ```
 
@@ -119,7 +122,7 @@ SHA-256 从同一 GitHub Release 通过 HTTPS 获取，可检测下载损坏和�
 
 ### 4.2 检查策略
 
-- 使用 GitHub REST API 查询 `qlxsply/juju` 的最新正式 Release；不采用 prerelease 或 draft。
+- 从 `https://github.com/qlxsply/juju/releases/latest/download/juju_latest.json` 读取最新稳定版 manifest；不采用 prerelease 或 draft，也不依赖未认证额度较低的 GitHub REST API。
 - 启动检查遵循 24 小时冷却。检查时间及 ETag 缓存在稳定状态目录；手动检查绕过冷却。
 - 使用 `HttpClient`、请求超时、取消令牌和 ETag 条件请求；离线、限流或 GitHub 暂时不可用不得阻止应用启动。
 - 使用 SemVer 比较版本，不用字符串排序；拒绝降级、无效 tag、错误 RID、包名不匹配及低于最低 Launcher 协议版本的 manifest。

@@ -45,6 +45,7 @@ public sealed class VersionAndManifestTests
             Channel = "stable",
             Rid = "win-x64",
             PackageAsset = "juju_v1.2.3_win-x64.zip",
+            PackageSizeBytes = 10,
             Sha256 = new string('a', 64),
             MinimumLauncherVersion = "1.0.0",
             ReleaseNotesUrl = "https://github.com/qlxsply/juju/releases/tag/juju_v1.2.3"
@@ -224,6 +225,7 @@ public sealed class VersionAndManifestTests
                 Channel = "stable",
                 Rid = "win-x64",
                 PackageAsset = "juju_v1.2.3_win-x64.zip",
+                PackageSizeBytes = new FileInfo(packagePath).Length,
                 Sha256 = Convert.ToHexString(SHA256.HashData(await File.ReadAllBytesAsync(packagePath))),
                 MinimumLauncherVersion = "1.0.0"
             };
@@ -259,9 +261,7 @@ public sealed class VersionAndManifestTests
         var handler = new StubHandler(_ =>
         {
             calls++;
-            if ( calls == 1 )
-                return JsonResponse("""{"tag_name":"juju_v1.2.3","draft":false,"prerelease":false,"html_url":"https://github.com/qlxsply/juju/releases/tag/juju_v1.2.3","body":"notes","assets":[{"name":"juju_v1.2.3_manifest.json","browser_download_url":"https://github.com/qlxsply/juju/releases/download/juju_v1.2.3/juju_v1.2.3_manifest.json","size":100},{"name":"juju_v1.2.3_win-x64.zip","browser_download_url":"https://github.com/qlxsply/juju/releases/download/juju_v1.2.3/juju_v1.2.3_win-x64.zip","size":10}]}""");
-            var manifest = $$"""{"schemaVersion":1,"version":"1.2.3","channel":"stable","rid":"win-x64","packageAsset":"juju_v1.2.3_win-x64.zip","sha256":"{{new string('a', 64)}}","minimumLauncherVersion":"1.0.0","releaseNotesUrl":"https://github.com/qlxsply/juju/releases/tag/juju_v1.2.3"}""";
+            var manifest = $$"""{"schemaVersion":1,"version":"1.2.3","channel":"stable","rid":"win-x64","packageAsset":"juju_v1.2.3_win-x64.zip","packageSizeBytes":10,"sha256":"{{new string('a', 64)}}","minimumLauncherVersion":"1.0.0","releaseNotesUrl":"https://github.com/qlxsply/juju/releases/tag/juju_v1.2.3","releaseNotes":"notes"}""";
             return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(manifest) };
         });
         try
@@ -274,7 +274,7 @@ public sealed class VersionAndManifestTests
             Assert.Equal("1.2.3", first.Update!.Manifest.Version);
             Assert.True(second.IsUpdateAvailable);
             Assert.True(second.WasSkippedByCooldown);
-            Assert.Equal(2, calls);
+            Assert.Equal(1, calls);
         }
         finally
         {
@@ -289,13 +289,16 @@ public sealed class VersionAndManifestTests
         var root = Path.Combine(Path.GetTempPath(), "juju-update-tests", Guid.NewGuid().ToString("N"));
         try
         {
-            using ( var client = new HttpClient(new StubHandler(_ => JsonResponse(
-                       """{"tag_name":"juju_v2.0.0-beta.1","draft":false,"prerelease":true,"html_url":"https://github.com/qlxsply/juju/releases/tag/juju_v2.0.0-beta.1","assets":[]}"""))) )
+            var prereleaseManifest = $$"""{"schemaVersion":1,"version":"2.0.0-beta.1","channel":"stable","rid":"win-x64","packageAsset":"juju_v2.0.0-beta.1_win-x64.zip","packageSizeBytes":10,"sha256":"{{new string('a', 64)}}","minimumLauncherVersion":"1.0.0"}""";
+            using ( var client = new HttpClient(new StubHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+                       {
+                           Content = new StringContent(prereleaseManifest)
+                       })) )
             using ( var updates = new GitHubUpdateService(root + "-prerelease", client) )
             {
                 var result = await updates.CheckAsync("1.0.0", manual: true);
                 Assert.False(result.IsUpdateAvailable);
-                Assert.Contains("stable", result.Error!, StringComparison.OrdinalIgnoreCase);
+                Assert.Contains("manifest", result.Error!, StringComparison.OrdinalIgnoreCase);
             }
 
             using ( var client = new HttpClient(new StubHandler(_ => throw new HttpRequestException("offline"))) )
@@ -321,8 +324,11 @@ public sealed class VersionAndManifestTests
         var root = Path.Combine(Path.GetTempPath(), "juju-update-tests", Guid.NewGuid().ToString("N"));
         try
         {
-            using var client = new HttpClient(new StubHandler(_ => JsonResponse(
-                """{"tag_name":"juju_v2.0.3","draft":false,"prerelease":false,"html_url":"https://github.com/qlxsply/juju/releases/tag/juju_v2.0.3","assets":[]}""")));
+            var manifest = $$"""{"schemaVersion":1,"version":"2.0.3","channel":"stable","rid":"win-x64","packageAsset":"juju_v2.0.3_win-x64.zip","packageSizeBytes":10,"sha256":"{{new string('a', 64)}}","minimumLauncherVersion":"1.0.0"}""";
+            using var client = new HttpClient(new StubHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(manifest)
+            }));
             using var updates = new GitHubUpdateService(root, client);
 
             var result = await updates.CheckAsync("2.0.3", manual: true);
@@ -338,26 +344,40 @@ public sealed class VersionAndManifestTests
     }
 
     [Fact]
+    public async Task Missing_latest_manifest_returns_a_friendly_no_update_metadata_result()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "juju-update-tests", Guid.NewGuid().ToString("N"));
+        try
+        {
+            using var client = new HttpClient(new StubHandler(_ => new HttpResponseMessage(HttpStatusCode.NotFound)));
+            using var updates = new GitHubUpdateService(root, client);
+
+            var result = await updates.CheckAsync("2.0.4", manual: true);
+
+            Assert.False(result.IsUpdateAvailable);
+            Assert.Equal("GitHub 最新稳定版尚未发布自动更新清单。", result.Error);
+        }
+        finally
+        {
+            if ( Directory.Exists(root) )
+                Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task Manual_check_uses_cached_etag_and_release_when_server_returns_not_modified()
     {
         var root = Path.Combine(Path.GetTempPath(), "juju-update-tests", Guid.NewGuid().ToString("N"));
-        var apiCalls = 0;
         var manifestCalls = 0;
         var handler = new StubHandler(request =>
         {
-            if ( request.RequestUri!.AbsolutePath.EndsWith("/latest", StringComparison.Ordinal) )
-            {
-                apiCalls++;
-                if ( request.Headers.IfNoneMatch.Count > 0 )
-                    return new HttpResponseMessage(HttpStatusCode.NotModified);
-                var response = JsonResponse("""{"tag_name":"juju_v1.2.3","draft":false,"prerelease":false,"html_url":"https://github.com/qlxsply/juju/releases/tag/juju_v1.2.3","assets":[{"name":"juju_v1.2.3_manifest.json","browser_download_url":"https://github.com/qlxsply/juju/releases/download/juju_v1.2.3/juju_v1.2.3_manifest.json","size":20},{"name":"juju_v1.2.3_win-x64.zip","browser_download_url":"https://github.com/qlxsply/juju/releases/download/juju_v1.2.3/juju_v1.2.3_win-x64.zip","size":10}]}""");
-                response.Headers.ETag = new EntityTagHeaderValue("\"release-v1\"");
-                return response;
-            }
-
             manifestCalls++;
-            var manifest = $$"""{"schemaVersion":1,"version":"1.2.3","channel":"stable","rid":"win-x64","packageAsset":"juju_v1.2.3_win-x64.zip","sha256":"{{new string('a', 64)}}","minimumLauncherVersion":"1.0.0"}""";
-            return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(manifest) };
+            if ( request.Headers.IfNoneMatch.Count > 0 )
+                return new HttpResponseMessage(HttpStatusCode.NotModified);
+            var json = $$"""{"schemaVersion":1,"version":"1.2.3","channel":"stable","rid":"win-x64","packageAsset":"juju_v1.2.3_win-x64.zip","packageSizeBytes":10,"sha256":"{{new string('a', 64)}}","minimumLauncherVersion":"1.0.0"}""";
+            var response = new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(json) };
+            response.Headers.ETag = new EntityTagHeaderValue("\"release-v1\"");
+            return response;
         });
         try
         {
@@ -365,8 +385,7 @@ public sealed class VersionAndManifestTests
             using var updates = new GitHubUpdateService(root, client);
             Assert.True((await updates.CheckAsync("1.0.0", manual: true)).IsUpdateAvailable);
             Assert.True((await updates.CheckAsync("1.0.0", manual: true)).IsUpdateAvailable);
-            Assert.Equal(2, apiCalls);
-            Assert.Equal(1, manifestCalls);
+            Assert.Equal(2, manifestCalls);
         }
         finally
         {
@@ -388,6 +407,7 @@ public sealed class VersionAndManifestTests
             Channel = "stable",
             Rid = "win-x64",
             PackageAsset = "juju_v1.2.3_win-x64.zip",
+            PackageSizeBytes = payload.Length,
             Sha256 = hash,
             MinimumLauncherVersion = "1.0.0"
         };
@@ -424,6 +444,7 @@ public sealed class VersionAndManifestTests
             Channel = "stable",
             Rid = "win-x64",
             PackageAsset = "juju_v1.2.3_win-x64.zip",
+            PackageSizeBytes = 10,
             Sha256 = new string('a', 64),
             MinimumLauncherVersion = "1.0.0"
         };

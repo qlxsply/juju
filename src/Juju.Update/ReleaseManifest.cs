@@ -11,9 +11,11 @@ public sealed record ReleaseManifest
     [JsonPropertyName("channel")] public string Channel { get; init; } = "";
     [JsonPropertyName("rid")] public string Rid { get; init; } = "";
     [JsonPropertyName("packageAsset")] public string PackageAsset { get; init; } = "";
+    [JsonPropertyName("packageSizeBytes")] public long PackageSizeBytes { get; init; }
     [JsonPropertyName("sha256")] public string Sha256 { get; init; } = "";
     [JsonPropertyName("minimumLauncherVersion")] public string MinimumLauncherVersion { get; init; } = "";
     [JsonPropertyName("releaseNotesUrl")] public string? ReleaseNotesUrl { get; init; }
+    [JsonPropertyName("releaseNotes")] public string? ReleaseNotes { get; init; }
 
     public SemanticVersion ParsedVersion => SemanticVersion.TryParse(Version, out var version)
         ? version
@@ -27,7 +29,8 @@ public sealed record ReleaseManifest
     {
         if ( SchemaVersion != 1 || Channel != "stable" || Rid != expectedRid ||
              !SemanticVersion.TryParse(Version, out _) || !string.Equals(Version, expectedVersion, StringComparison.Ordinal) ||
-             !IsSafeAssetName(PackageAsset) || PackageAsset.Length == 0 || !IsSha256(Sha256) ||
+             !IsSafeAssetName(PackageAsset) || PackageAsset.Length == 0 || PackageSizeBytes is <= 0 or > 1024L * 1024 * 1024 ||
+             !IsSha256(Sha256) ||
              !SemanticVersion.TryParse(MinimumLauncherVersion, out _) )
             throw new InvalidDataException("Release manifest is invalid or does not match the requested release.");
 

@@ -45,8 +45,8 @@ Source: "{#AppFilesDir}\*"; DestDir: "{app}\versions\{#AppVersion}"; Flags: recu
 Name: "desktopicon"; Description: "创建桌面快捷方式"
 
 [Icons]
-Name: "{group}\juju"; Filename: "{app}\{#LauncherExeName}"; Parameters: "--show-launcher"; WorkingDir: "{app}"
-Name: "{autodesktop}\juju"; Filename: "{app}\{#LauncherExeName}"; Parameters: "--show-launcher"; WorkingDir: "{app}"; Tasks: desktopicon
+Name: "{group}\juju"; Filename: "{app}\{#LauncherExeName}"; Parameters: "--show-launcher"; IconFilename: "{app}\{#LauncherExeName}"; IconIndex: 0; WorkingDir: "{app}"
+Name: "{autodesktop}\juju"; Filename: "{app}\{#LauncherExeName}"; Parameters: "--show-launcher"; IconFilename: "{app}\{#LauncherExeName}"; IconIndex: 0; WorkingDir: "{app}"; Tasks: desktopicon
 
 [Run]
 Filename: "{app}\{#LauncherExeName}"; Parameters: "--show-launcher"; WorkingDir: "{app}"; Description: "启动 juju"; Flags: nowait postinstall skipifsilent
