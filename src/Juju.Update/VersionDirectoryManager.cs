@@ -2,6 +2,34 @@ namespace Juju.Update;
 
 public static class VersionDirectoryManager
 {
+    public static void PruneForInstaller(string installRoot, string activeVersion)
+    {
+        if ( !SemanticVersion.TryParse(activeVersion, out _) )
+            throw new InvalidDataException("Cannot prune versions for an invalid active version.");
+        var root = InstallRootLock.NormalizeRoot(installRoot);
+        var versionsRoot = Path.Combine(root, "versions");
+        if ( !Directory.Exists(versionsRoot) )
+            throw new DirectoryNotFoundException("The installed versions directory is missing.");
+        InstallRootLock.EnsureNotReparsePoint(root, versionsRoot);
+
+        foreach ( var entry in Directory.EnumerateFileSystemEntries(versionsRoot) )
+        {
+            var name = Path.GetFileName(entry);
+            if ( string.Equals(name, activeVersion, StringComparison.OrdinalIgnoreCase) )
+                continue;
+            DeleteTreeWithoutFollowingLinks(entry);
+        }
+
+        var stagingRoot = Path.Combine(root, "staging");
+        if ( Directory.Exists(stagingRoot) )
+        {
+            InstallRootLock.EnsureNotReparsePoint(root, stagingRoot);
+            foreach ( var entry in Directory.EnumerateFileSystemEntries(stagingRoot) )
+                DeleteTreeWithoutFollowingLinks(entry);
+            Directory.Delete(stagingRoot, recursive: false);
+        }
+    }
+
     public static IReadOnlyList<string> Prune(string installRoot, VersionState state)
     {
         var versionsRoot = Path.GetFullPath(Path.Combine(installRoot, "versions"));

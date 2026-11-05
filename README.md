@@ -175,7 +175,9 @@ XAML 的权威格式化器是仓库本地 XAML Styler，而不是 Rider 内置 X
 
 应用启动时每 24 小时检查一次 GitHub 最新稳定 Release；“更新与版本”页面及托盘菜单也可手动检查。检查通过 GitHub Releases 的 `latest/download/juju_latest.json` 获取，不调用有较低未认证请求额度的 REST API。用户确认后，程序下载版本 ZIP、校验 SHA-256，保存并退出当前应用，再由独立更新助手安装到 `versions/<版本>`。稳定 Launcher 验证新版本成功启动后才提交版本切换；若启动失败则自动回退到上一版本。配置与工具数据放在版本目录之外，不随应用版本切换。
 
-Release 需要同时提供 `juju_vX.Y.Z_win-x64.zip`、`juju_vX.Y.Z_manifest.json`、指向最新稳定版的 `juju_latest.json` 和首次安装用的 Inno Setup 包。SHA-256 校验基于通过 HTTPS 获取的 GitHub Release manifest；当前未配置 Authenticode 代码签名证书。桌面快捷方式指向带 juju 图标的稳定 Launcher。
+Release 需要同时提供 `juju_vX.Y.Z_win-x64.zip`、`juju_vX.Y.Z_manifest.json`、指向最新稳定版的 `juju_latest.json` 和首次安装用的 Inno Setup 包。SHA-256 校验基于通过 HTTPS 获取的 GitHub Release manifest；当前未配置 Authenticode 代码签名证书。安装后会在开始菜单“所有应用”中添加带 juju 图标的稳定 Launcher 快捷方式。Windows 11 不允许传统安装程序静默固定应用到开始菜单的“已固定”区域，需要用户从“所有应用”手动固定。桌面快捷方式安装时可选、默认关闭，避免 Windows 自动排列时挪动现有图标。
+
+若安装或卸载时 juju 正在运行，安装器会请求应用先执行安全保存和退出；用户拒绝、数据保存失败或应用无法退出时，安装/卸载会取消，不会强行删除正在使用的文件。
 
 已有 Release 在启用自动更新前没有 `juju_latest.json`；应用会显示“GitHub 最新稳定版尚未发布自动更新清单”。下一次通过更新后的 Release workflow 发布后，自动检查即可使用该清单。
 

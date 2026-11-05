@@ -3,7 +3,9 @@
 param(
     [Parameter(Mandatory = $true)]
     [ValidatePattern('^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$')]
-    [string]$Version
+    [string]$Version,
+    [ValidatePattern('^[A-Za-z0-9_-]*$')]
+    [string]$InstallerOutputSuffix = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -66,7 +68,19 @@ try {
         }
 
         # Prevent stale publish files or local data from leaking into the new package.
-        & (Join-Path $PSScriptRoot 'clean-artifacts.ps1') -Confirm:$false
+        # A suffix permits rebuilding while an older installer EXE is still open; preserve
+        # that locked installer while replacing all generated payload and manifest inputs.
+        if ([string]::IsNullOrEmpty($InstallerOutputSuffix)) {
+            & (Join-Path $PSScriptRoot 'clean-artifacts.ps1') -Confirm:$false
+        }
+        else {
+            foreach ($relativeOutput in @('artifacts\win-x64', 'artifacts\bootstrap', 'artifacts\release')) {
+                $outputPath = Join-Path $repoRoot $relativeOutput
+                if (Test-Path -LiteralPath $outputPath) {
+                    Remove-Item -LiteralPath $outputPath -Recurse -Force
+                }
+            }
+        }
 
         Invoke-NativeCommand 'Restore .NET solution' 'dotnet' @('restore', $solution)
         Invoke-NativeCommand 'Install locked editor dependencies' 'npm' @('ci', '--prefix', 'editor')
@@ -95,12 +109,55 @@ try {
             throw 'App publish output unexpectedly contains a data directory; refusing to package it.'
         }
 
+        $manifestPath = Join-Path $repoRoot 'artifacts\installer\juju-payload-manifest.json'
+        $manifestDirectory = Split-Path -Parent $manifestPath
+        if (-not (Test-Path -LiteralPath $manifestDirectory -PathType Container)) {
+            New-Item -ItemType Directory -Path $manifestDirectory | Out-Null
+        }
+        $entries = [System.Collections.Generic.List[object]]::new()
+        $payloadBytes = [long]0
+        $bootstrapRoot = (Get-Item -LiteralPath (Join-Path $repoRoot 'artifacts\bootstrap')).FullName.TrimEnd('\')
+        $appPayloadRoot = (Get-Item -LiteralPath (Join-Path $repoRoot 'artifacts\win-x64')).FullName.TrimEnd('\')
+        foreach ($fileName in @('Juju.Launcher.exe', 'Juju.Updater.exe')) {
+            $file = Get-Item -LiteralPath (Join-Path $bootstrapRoot $fileName)
+            $relative = $file.FullName.Substring($bootstrapRoot.Length).TrimStart([char[]]@('\', '/')).Replace('\', '/')
+            $entries.Add([ordered]@{
+                path = $relative
+                size = [long]$file.Length
+                sha256 = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            })
+            $payloadBytes += [long]$file.Length
+        }
+        foreach ($file in Get-ChildItem -LiteralPath $appPayloadRoot -File -Recurse) {
+            $relative = $file.FullName.Substring($appPayloadRoot.Length).TrimStart([char[]]@('\', '/')).Replace('\', '/')
+            $entries.Add([ordered]@{
+                path = "versions/$Version/$relative"
+                size = [long]$file.Length
+                sha256 = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            })
+            $payloadBytes += [long]$file.Length
+        }
+        $orderedEntries = @($entries | Sort-Object -Property path)
+        $manifest = [ordered]@{ schemaVersion = 1; version = $Version; entries = $orderedEntries }
+        $manifestJson = ConvertTo-Json -InputObject $manifest -Depth 8 -Compress
+        [System.IO.File]::WriteAllText($manifestPath, $manifestJson, [System.Text.UTF8Encoding]::new($false))
+        $manifestSha256 = (Get-FileHash -LiteralPath $manifestPath -Algorithm SHA256).Hash.ToLowerInvariant()
+        Write-Host "Payload manifest: $manifestPath"
+        Write-Host "Uncompressed payload: $payloadBytes bytes"
+
         Write-Host "`n== Compile Inno Setup installer =="
-        & $innoCompiler "/DAppVersion=$Version" $installerScript
+        $installerBaseFilename = "juju_v${Version}_setup_win64${InstallerOutputSuffix}"
+        $compilerArguments = @("/DAppVersion=$Version", "/DPayloadBytes=$payloadBytes",
+            "/DManifestSha256=$manifestSha256")
+        if (-not [string]::IsNullOrEmpty($InstallerOutputSuffix)) {
+            $compilerArguments += "/F$installerBaseFilename"
+        }
+        $compilerArguments += $installerScript
+        & $innoCompiler @compilerArguments
         $exitCode = $LASTEXITCODE
         if ($exitCode -ne 0) { throw "Inno Setup failed with exit code $exitCode." }
 
-        $installer = Join-Path $repoRoot "artifacts\installer\juju_v${Version}_setup_win64.exe"
+        $installer = Join-Path $repoRoot "artifacts\installer\$installerBaseFilename.exe"
         if (-not (Test-Path -LiteralPath $installer -PathType Leaf)) {
             throw "Installer was not created: $installer"
         }

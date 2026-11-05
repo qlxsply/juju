@@ -81,8 +81,9 @@ public sealed class VersionAndManifestTests
         {
             var store = new VersionStateStore(root);
             Assert.Null(await store.ReadAsync());
-            await store.WriteAsync(new VersionState("1.2.3", "1.3.0", "1.2.3", "test"));
-            Assert.Equal(new VersionState("1.2.3", "1.3.0", "1.2.3", "test"), await store.ReadAsync());
+            const string transactionId = "00000000000000000000000000000000";
+            await store.WriteAsync(new VersionState("1.2.3", "1.3.0", "1.2.3", transactionId));
+            Assert.Equal(new VersionState("1.2.3", "1.3.0", "1.2.3", transactionId), await store.ReadAsync());
             Assert.Empty(Directory.EnumerateFiles(Path.Combine(root, "state"), "*.tmp"));
             await Assert.ThrowsAsync<InvalidDataException>(() => store.WriteAsync(new VersionState("bad")));
         }
@@ -134,6 +135,7 @@ public sealed class VersionAndManifestTests
             await File.WriteAllTextAsync(Path.Combine(root, "state", "active.json"), "corrupt");
 
             Assert.Equal("1.0.0", (await store.ReadAsync())!.ActiveVersion);
+            Assert.Contains("1.0.0", await File.ReadAllTextAsync(Path.Combine(root, "state", "active.json")));
         }
         finally
         {
@@ -344,6 +346,178 @@ public sealed class VersionAndManifestTests
     }
 
     [Fact]
+    public async Task Installer_pending_state_allows_same_version_repair_but_rejects_downgrade()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "juju-update-tests", Guid.NewGuid().ToString("N"));
+        try
+        {
+            var store = new VersionStateStore(root);
+            await store.WriteAsync(new VersionState("1.2.3"));
+            var installerManifestHash = new string('a', 64);
+            var pending = await store.BeginInstallerPendingAsync("1.2.3", installerManifestHash);
+            Assert.Equal("1.2.3", pending.ActiveVersion);
+            Assert.Equal("1.2.3", pending.PendingVersion);
+            Assert.False(string.IsNullOrWhiteSpace(pending.TransactionId));
+            await store.RollbackPendingAsync();
+
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                store.BeginInstallerPendingAsync("1.2.2", installerManifestHash));
+        }
+        finally
+        {
+            if ( Directory.Exists(root) )
+                Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task Installer_cleanup_is_durable_and_removes_the_state_backup_only_after_commit()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "juju-update-tests", Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(root, "versions", "1.2.3"));
+            var store = new VersionStateStore(root);
+            await store.InitializeInstallerActiveAsync("1.2.3");
+            Assert.True((await store.ReadAsync())!.InstallerCleanupPending);
+
+            var complete = await store.CompleteInstallerCleanupAsync("1.2.3");
+
+            Assert.False(complete.InstallerCleanupPending);
+            Assert.False(File.Exists(Path.Combine(root, "state", "active.json.bak")));
+            Assert.Equal("1.2.3", (await store.ReadAsync())!.ActiveVersion);
+        }
+        finally
+        {
+            if ( Directory.Exists(root) )
+                Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task Installer_upgrade_commits_then_prunes_old_version_and_backup()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "juju-update-tests", Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(root, "versions", "1.0.0"));
+            Directory.CreateDirectory(Path.Combine(root, "versions", "1.1.0"));
+            var store = new VersionStateStore(root);
+            await store.WriteAsync(new VersionState("1.0.0"));
+            var digest = new string('c', 64);
+
+            await store.BeginInstallerPendingAsync("1.1.0", digest);
+            var committed = await store.CommitInstallerPendingAsync("1.1.0");
+            Assert.Equal("1.1.0", committed.ActiveVersion);
+            Assert.True(committed.InstallerCleanupPending);
+            Assert.Null(committed.PreviousVersion);
+
+            VersionDirectoryManager.PruneForInstaller(root, committed.ActiveVersion);
+            await store.CompleteInstallerCleanupAsync("1.1.0");
+
+            Assert.False(Directory.Exists(Path.Combine(root, "versions", "1.0.0")));
+            Assert.True(Directory.Exists(Path.Combine(root, "versions", "1.1.0")));
+            Assert.False(File.Exists(Path.Combine(root, "state", "active.json.bak")));
+            Assert.False((await store.ReadAsync())!.InstallerCleanupPending);
+        }
+        finally
+        {
+            if ( Directory.Exists(root) )
+                Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task Failed_first_install_can_abort_without_leaving_an_active_version_pointer()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "juju-update-tests", Guid.NewGuid().ToString("N"));
+        try
+        {
+            var store = new VersionStateStore(root);
+            var pending = await store.BeginInitialInstallerPendingAsync("1.0.0", new string('b', 64));
+            Assert.True(pending.InstallerInitialInstallPending);
+            Assert.Equal("1.0.0", pending.PendingVersion);
+
+            await store.AbortInitialInstallerPendingAsync();
+
+            Assert.Null(await store.ReadAsync());
+            Assert.False(File.Exists(Path.Combine(root, "state", "active.json")));
+        }
+        finally
+        {
+            if ( Directory.Exists(root) )
+                Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task Install_root_lock_serializes_operations_for_the_same_root()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "juju-update-tests", Guid.NewGuid().ToString("N"));
+        try
+        {
+            using var first = await InstallRootLock.AcquireAsync(root);
+            await Assert.ThrowsAsync<IOException>(() =>
+                InstallRootLock.AcquireAsync(root, TimeSpan.FromMilliseconds(150)));
+        }
+        finally
+        {
+            if ( Directory.Exists(root) )
+                Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task Installer_payload_manifest_authenticates_entries_and_maps_app_files_to_staging()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "juju-update-tests", Guid.NewGuid().ToString("N"));
+        var stage = Path.Combine(root, "versions", "1.2.3.installer-stage");
+        Directory.CreateDirectory(stage);
+        try
+        {
+            var files = new Dictionary<string, byte[]>
+            {
+                ["Juju.Launcher.exe"] = Encoding.UTF8.GetBytes("launcher"),
+                ["Juju.Updater.exe"] = Encoding.UTF8.GetBytes("updater"),
+                ["versions/1.2.3/Juju.App.exe"] = Encoding.UTF8.GetBytes("app")
+            };
+            File.WriteAllBytes(Path.Combine(root, "Juju.Launcher.exe"), files["Juju.Launcher.exe"]);
+            File.WriteAllBytes(Path.Combine(root, "Juju.Updater.exe"), files["Juju.Updater.exe"]);
+            File.WriteAllBytes(Path.Combine(stage, "Juju.App.exe"), files["versions/1.2.3/Juju.App.exe"]);
+            var manifest = new InstallerPayloadManifest
+            {
+                SchemaVersion = 1,
+                Version = "1.2.3",
+                Entries = files.Select(file => new InstallerPayloadEntry
+                {
+                    Path = file.Key,
+                    Size = file.Value.Length,
+                    Sha256 = Convert.ToHexString(SHA256.HashData(file.Value)).ToLowerInvariant()
+                }).ToArray()
+            };
+            var manifestPath = Path.Combine(root, "payload.json");
+            var bytes = System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(manifest);
+            await File.WriteAllBytesAsync(manifestPath, bytes);
+            var trustedHash = Convert.ToHexString(SHA256.HashData(bytes));
+
+            await InstallerPayloadManifest.VerifyAsync(root, stage, manifestPath, trustedHash, "1.2.3");
+            await Assert.ThrowsAsync<InvalidDataException>(() =>
+                InstallerPayloadManifest.VerifyAsync(root, stage, manifestPath, new string('0', 64), "1.2.3"));
+
+            File.WriteAllText(manifestPath, "{\"schemaVersion\":1,\"version\":\"1.2.3\",\"entries\":[{" +
+                "\"path\":\"versions/1.2.3/../escape.exe\",\"size\":0,\"sha256\":\"" + new string('a', 64) + "\"}]}");
+            var unsafeBytes = await File.ReadAllBytesAsync(manifestPath);
+            await Assert.ThrowsAsync<InvalidDataException>(() => InstallerPayloadManifest.VerifyAsync(root, stage,
+                manifestPath, Convert.ToHexString(SHA256.HashData(unsafeBytes)), "1.2.3"));
+        }
+        finally
+        {
+            if ( Directory.Exists(root) )
+                Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task Missing_latest_manifest_returns_a_friendly_no_update_metadata_result()
     {
         var root = Path.Combine(Path.GetTempPath(), "juju-update-tests", Guid.NewGuid().ToString("N"));
@@ -488,6 +662,36 @@ public sealed class VersionAndManifestTests
             Assert.True(File.Exists(Path.Combine(versions, "1.1.0", "payload")));
             Assert.True(File.Exists(Path.Combine(versions, "1.2.0", "payload")));
             Assert.True(File.Exists(Path.Combine(versions, "staging", "payload")));
+        }
+        finally
+        {
+            if ( Directory.Exists(root) )
+                Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Installer_pruning_keeps_only_active_version_and_preserves_data_root()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "juju-update-tests", Guid.NewGuid().ToString("N"));
+        try
+        {
+            foreach ( var version in new[] { "1.0.0", "1.1.0" } )
+            {
+                var directory = Path.Combine(root, "versions", version);
+                Directory.CreateDirectory(directory);
+                File.WriteAllText(Path.Combine(directory, "payload"), version);
+            }
+            Directory.CreateDirectory(Path.Combine(root, "staging", "old-stage"));
+            Directory.CreateDirectory(Path.Combine(root, "data"));
+            File.WriteAllText(Path.Combine(root, "data", "keep.txt"), "keep");
+
+            VersionDirectoryManager.PruneForInstaller(root, "1.1.0");
+
+            Assert.False(Directory.Exists(Path.Combine(root, "versions", "1.0.0")));
+            Assert.True(File.Exists(Path.Combine(root, "versions", "1.1.0", "payload")));
+            Assert.False(Directory.Exists(Path.Combine(root, "staging")));
+            Assert.Equal("keep", File.ReadAllText(Path.Combine(root, "data", "keep.txt")));
         }
         finally
         {

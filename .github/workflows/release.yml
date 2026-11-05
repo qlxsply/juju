@@ -94,6 +94,35 @@ jobs:
           [IO.File]::WriteAllText($latestManifestPath, $manifest, $encoding)
           if ((Get-Item -LiteralPath $packagePath).Length -gt 1GB) { throw 'Update package exceeds 1 GB.' }
 
+      - name: Create installer payload integrity manifest
+        id: installer-payload
+        shell: pwsh
+        env:
+          APP_VERSION: ${{ steps.tag.outputs.version }}
+        run: |
+          $bootstrapRoot = (Get-Item -LiteralPath 'artifacts\bootstrap').FullName.TrimEnd('\')
+          $appRoot = (Get-Item -LiteralPath 'artifacts\win-x64').FullName.TrimEnd('\')
+          $entries = [System.Collections.Generic.List[object]]::new()
+          [long]$payloadBytes = 0
+          foreach ($fileName in @('Juju.Launcher.exe', 'Juju.Updater.exe')) {
+            $file = Get-Item -LiteralPath (Join-Path $bootstrapRoot $fileName)
+            $relative = $file.FullName.Substring($bootstrapRoot.Length).TrimStart([char[]]@('\', '/')).Replace('\', '/')
+            $entries.Add([ordered]@{ path = $relative; size = [long]$file.Length; sha256 = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant() })
+            $payloadBytes += [long]$file.Length
+          }
+          foreach ($file in Get-ChildItem -LiteralPath $appRoot -File -Recurse) {
+            $relative = $file.FullName.Substring($appRoot.Length).TrimStart([char[]]@('\', '/')).Replace('\', '/')
+            $entries.Add([ordered]@{ path = "versions/$env:APP_VERSION/$relative"; size = [long]$file.Length; sha256 = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant() })
+            $payloadBytes += [long]$file.Length
+          }
+          $manifestPath = Join-Path $PWD 'artifacts\installer\juju-payload-manifest.json'
+          New-Item -ItemType Directory -Force -Path (Split-Path $manifestPath) | Out-Null
+          $manifest = [ordered]@{ schemaVersion = 1; version = $env:APP_VERSION; entries = @($entries | Sort-Object -Property path) } | ConvertTo-Json -Depth 8 -Compress
+          [IO.File]::WriteAllText($manifestPath, $manifest, [Text.UTF8Encoding]::new($false))
+          $manifestHash = (Get-FileHash -LiteralPath $manifestPath -Algorithm SHA256).Hash.ToLowerInvariant()
+          "payloadBytes=$payloadBytes" >> $env:GITHUB_OUTPUT
+          "manifestSha256=$manifestHash" >> $env:GITHUB_OUTPUT
+
       - name: Install Inno Setup
         run: choco install innosetup --yes --no-progress
 
@@ -101,9 +130,11 @@ jobs:
         shell: pwsh
         env:
           APP_VERSION: ${{ steps.tag.outputs.version }}
+          PAYLOAD_BYTES: ${{ steps.installer-payload.outputs.payloadBytes }}
+          MANIFEST_SHA256: ${{ steps.installer-payload.outputs.manifestSha256 }}
         run: |
           $compiler = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'
-          & $compiler "/DAppVersion=$env:APP_VERSION" 'installer\juju.iss'
+          & $compiler "/DAppVersion=$env:APP_VERSION" "/DPayloadBytes=$env:PAYLOAD_BYTES" "/DManifestSha256=$env:MANIFEST_SHA256" 'installer\juju.iss'
           if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed with exit code $LASTEXITCODE" }
 
           $installer = "artifacts\installer\juju_v{0}_setup_win64.exe" -f $env:APP_VERSION

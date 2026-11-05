@@ -31,6 +31,14 @@ public static class ApplicationPaths
 
     private static string ReadDataRoot()
     {
+        var healthRoot = Environment.GetEnvironmentVariable("JUJU_HEALTH_CHECK_DATA_ROOT");
+        if ( !string.IsNullOrWhiteSpace(healthRoot) )
+        {
+            if ( !Path.IsPathFullyQualified(healthRoot) )
+                throw new InvalidDataException("健康检查数据目录必须是绝对路径。");
+            return Path.GetFullPath(healthRoot);
+        }
+
         var pointer = Path.Combine(InstallDirectory, "data-location.json");
         if ( !File.Exists(pointer) )
             return DefaultDataRoot;

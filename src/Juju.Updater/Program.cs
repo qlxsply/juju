@@ -20,12 +20,10 @@ internal static class Program
             throw new ArgumentException("Invalid application process ID.");
 
         int? launcherProcessId = null;
-        using var updateMutex = new Mutex(false, "juju-updater-" + Convert.ToHexString(
-            System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(root)))[..24]);
+        InstallRootLock.Lease? installLock = null;
         try
         {
-            if ( !updateMutex.WaitOne(0) )
-                throw new InvalidOperationException("另一个 juju 更新任务正在运行。");
+            installLock = await InstallRootLock.AcquireAsync(root, TimeSpan.FromSeconds(1));
 
             await WaitForApplicationExitAsync(processId);
             var continueSignal = await File.ReadAllTextAsync(gatePath);
@@ -55,7 +53,9 @@ internal static class Program
             Directory.Move(stage, finalVersion);
 
             var store = new VersionStateStore(root);
-            await store.BeginPendingAsync(version);
+            await store.BeginPendingAsync(version, lockLease: installLock);
+            installLock.Dispose();
+            installLock = null;
             using var launcherProcess = Process.Start(new ProcessStartInfo(launcher)
             {
                 WorkingDirectory = root,
@@ -84,6 +84,7 @@ internal static class Program
         }
         finally
         {
+            installLock?.Dispose();
             ScheduleTemporaryHelperCleanup();
         }
     }

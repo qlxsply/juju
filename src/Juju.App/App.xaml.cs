@@ -52,10 +52,20 @@ public partial class App
     private IToolManager? _tools;
     private IAppLifecycle? _lifecycle;
     private GitHubUpdateService? _updateService;
+    private bool _installerHealthCheck;
 
     public App()
     {
-        DispatcherUnhandledException += (_, eventArgs) => LogStartupFailure(eventArgs.Exception);
+        DispatcherUnhandledException += (_, eventArgs) =>
+        {
+            LogStartupFailure(eventArgs.Exception);
+            if ( _installerHealthCheck )
+            {
+                eventArgs.Handled = true;
+                Environment.ExitCode = 1;
+                Shutdown(1);
+            }
+        };
         AppDomain.CurrentDomain.UnhandledException += (_, eventArgs) =>
         {
             if ( eventArgs.ExceptionObject is Exception exception )
@@ -68,16 +78,28 @@ public partial class App
     protected override async void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+        _installerHealthCheck = e.Args.Any(argument => string.Equals(argument, "--installer-health-check",
+            StringComparison.OrdinalIgnoreCase));
+        if ( _installerHealthCheck && string.IsNullOrWhiteSpace(
+                Environment.GetEnvironmentVariable("JUJU_HEALTH_CHECK_DATA_ROOT")) )
+        {
+            Environment.ExitCode = 1;
+            Shutdown(1);
+            return;
+        }
         // 命名 Mutex 由操作系统跨进程共享，作用相当于 Java 中基于文件锁实现的单实例守卫。
         _instanceName = GetInstanceName(ApplicationPaths.InstallDirectory);
         _mutex = new Mutex(true, _instanceName, out var firstInstance);
         _ownsMutex = firstInstance;
         if ( !firstInstance )
         {
-            await ActivateExistingInstanceAsync(_instanceName);
+            await ActivateExistingInstanceAsync(_instanceName, e.Args);
             Shutdown();
             return;
         }
+
+        if ( !_installerHealthCheck )
+            WriteInstanceMarker(ApplicationPaths.InstallDirectory, _instanceName);
 
         _shutdown = new CancellationTokenSource();
         var writer = new AtomicFileWriter();
@@ -176,14 +198,39 @@ public partial class App
             settings.Current.PendingDataRoot, settings.Current.PendingToolDataDirectories);
         _windows = _services.GetRequiredService<IAppWindowManager>();
         _tools = _services.GetRequiredService<IToolManager>();
-        _lifecycle = _services.GetRequiredService<IAppLifecycle>();
+        if ( !_installerHealthCheck )
+            _lifecycle = _services.GetRequiredService<IAppLifecycle>();
         await _services.GetRequiredService<WindowStateService>().LoadAsync(_shutdown.Token);
         _services.GetRequiredService<ThemeService>().Apply(settings.Current.Theme);
         await _tools.StartAsync(_shutdown.Token);
-        _services.GetRequiredService<DesktopWindowManager>().InitializeLauncher();
-        _ = _services.GetRequiredService<TrayController>();
+        if ( !_installerHealthCheck )
+        {
+            _services.GetRequiredService<DesktopWindowManager>().InitializeLauncher();
+            _ = _services.GetRequiredService<TrayController>();
+        }
         // 后台管道监听与 UI 生命周期并行运行；其取消令牌由退出流程统一触发。
-        _ = ListenForActivationAsync(_instanceName, _shutdown.Token);
+        if ( !_installerHealthCheck )
+            _ = ListenForActivationAsync(_instanceName, _shutdown.Token);
+        if ( Array.Exists(e.Args, argument => string.Equals(argument, "--shutdown",
+                StringComparison.OrdinalIgnoreCase)) )
+        {
+            await ExitAsync();
+            return;
+        }
+        if ( _installerHealthCheck )
+        {
+            await SignalLauncherReadyAsync(e.Args, _shutdown.Token, required: true);
+            await Task.Delay(TimeSpan.FromSeconds(2), _shutdown.Token);
+            await _tools.StopAllAsync(_shutdown.Token);
+            if ( _services is IAsyncDisposable asyncServices )
+                await asyncServices.DisposeAsync();
+            else
+                _services.Dispose();
+            _shutdown.Cancel();
+            Shutdown(0);
+            return;
+        }
+
         await SignalLauncherReadyAsync(e.Args, _shutdown.Token);
         _ = CheckForUpdatesAtStartupAsync(_updateService, typeof(App).Assembly.GetName().Version?.ToString(3) ?? "0.0.0",
             _shutdown.Token);
@@ -294,8 +341,11 @@ public partial class App
                 await pipe.WaitForConnectionAsync(cancellationToken);
                 using var reader = new StreamReader(pipe, Encoding.UTF8, leaveOpen: true);
                 // 管道 I/O 不保证在 WPF Dispatcher 线程上完成；修改窗口必须切回 UI 线程。
-                if ( await reader.ReadLineAsync(cancellationToken) == "ActivateLauncher" )
+                var command = await reader.ReadLineAsync(cancellationToken);
+                if ( command == "ActivateLauncher" )
                     Dispatcher.Invoke(() => _windows?.ShowLauncher());
+                else if ( command == "Shutdown" )
+                    _ = Dispatcher.BeginInvoke(new Action(() => _ = ExitAsync()));
             }
             catch ( OperationCanceledException )
             {
@@ -305,7 +355,7 @@ public partial class App
     }
 
     // 第二个进程不构建 DI 或窗口，仅尝试通知已运行的首实例；连接竞态失败时静默结束。
-    private static async Task ActivateExistingInstanceAsync(string instanceName)
+    private static async Task ActivateExistingInstanceAsync(string instanceName, IReadOnlyList<string> args)
     {
         try
         {
@@ -313,7 +363,10 @@ public partial class App
                 new NamedPipeClientStream(".", instanceName, PipeDirection.Out, PipeOptions.Asynchronous);
             await pipe.ConnectAsync(1000);
             await using var writer = new StreamWriter(pipe, Encoding.UTF8, leaveOpen: true) { AutoFlush = true };
-            await writer.WriteLineAsync("ActivateLauncher");
+            var command = args.Any(argument => string.Equals(argument, "--shutdown", StringComparison.OrdinalIgnoreCase))
+                ? "Shutdown"
+                : "ActivateLauncher";
+            await writer.WriteLineAsync(command);
         }
         catch ( IOException )
         {
@@ -325,6 +378,20 @@ public partial class App
         var canonical = Path.TrimEndingDirectorySeparator(Path.GetFullPath(installRoot)).ToUpperInvariant();
         var hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(canonical)));
         return "juju-single-instance-" + hash[..24];
+    }
+
+    private static void WriteInstanceMarker(string installRoot, string instanceName)
+    {
+        try
+        {
+            var stateDirectory = Path.Combine(installRoot, "state");
+            Directory.CreateDirectory(stateDirectory);
+            File.WriteAllText(Path.Combine(stateDirectory, "instance-name.txt"), instanceName, Encoding.ASCII);
+        }
+        catch ( Exception ex )
+        {
+            LogStartupFailure(ex);
+        }
     }
 
     private static void LogStartupFailure(Exception exception)
@@ -339,7 +406,8 @@ public partial class App
         catch ( Exception ) { }
     }
 
-    private static async Task SignalLauncherReadyAsync(IReadOnlyList<string> args, CancellationToken cancellationToken)
+    private static async Task SignalLauncherReadyAsync(IReadOnlyList<string> args, CancellationToken cancellationToken,
+        bool required = false)
     {
         for ( var index = 0; index + 1 < args.Count; index++ )
         {
@@ -352,13 +420,18 @@ public partial class App
                 await pipe.ConnectAsync(15_000, cancellationToken);
                 await using var writer = new StreamWriter(pipe, Encoding.UTF8, leaveOpen: true) { AutoFlush = true };
                 await writer.WriteLineAsync("READY");
+                return;
             }
             catch ( Exception ex ) when ( ex is IOException or TimeoutException or OperationCanceledException )
             {
+                if ( required )
+                    throw new InvalidOperationException("无法向安装器健康检查管道报告 READY。", ex);
                 // Launcher independently times out and rolls back if this process cannot confirm readiness.
             }
 
             return;
         }
+        if ( required )
+            throw new InvalidOperationException("健康检查缺少 Launcher 管道参数。");
     }
 }
