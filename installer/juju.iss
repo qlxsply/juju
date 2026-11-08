@@ -284,7 +284,7 @@ begin
   end;
   if HasForeignFiles(Directory) then
   begin
-    Result := '目标目录包含非 juju 管理的文件。请使用原 juju 安装目录或选择空目录。';
+    Result := '目标目录包含非应用管理的文件。请使用原应用安装目录或选择空目录。';
     Exit;
   end;
   ManagedPath := PathCombine(Directory, 'versions');
@@ -294,7 +294,7 @@ begin
      IsReparsePoint(PathCombine(ManagedPath, '{#AppVersion}.installer-stage')) or
      IsReparsePoint(PathCombine(ManagedPath, '{#AppVersion}')) then
   begin
-    Result := '安装目录中的 juju 管理目录包含联接点或符号链接。为避免触及目录外的数据，安装已取消。';
+    Result := '安装目录中的应用管理目录包含联接点或符号链接。为避免触及目录外的数据，安装已取消。';
     Exit;
   end;
   if IsReparsePoint(PathCombine(PathCombine(Directory, 'state'), 'active.json')) then
@@ -440,8 +440,7 @@ begin
   if not Silent then
   begin
     Answer := MsgBox(
-      'juju 正在运行。为保护数据，安装或卸载前必须先通过应用自身的安全退出流程关闭它。' + #13#10 + #13#10 +
-      '选择“是”请求 juju 保存数据并关闭；如果保存失败或应用未能退出，本次操作将取消。',
+      '应用正在运行，选择“是”关闭应用。',
       mbConfirmation, MB_YESNO or MB_DEFBUTTON2);
     if Answer <> IDYES then
     begin
@@ -456,7 +455,7 @@ begin
         ewWaitUntilTerminated, ExitCode) then
   begin
     if not Silent then
-      MsgBox('无法请求 juju 安全退出；操作已取消。', mbError, MB_OK);
+      MsgBox('无法请求应用安全退出；操作已取消。', mbError, MB_OK);
     Result := False;
     Exit;
   end;
@@ -472,7 +471,7 @@ begin
   end;
 
   if not Silent then
-    MsgBox('juju 尚未完成安全退出；为避免文件损坏，本次操作已取消。请关闭 juju 后重试。',
+    MsgBox('应用尚未完成安全退出；为避免文件损坏，本次操作已取消。请关闭应用后重试。',
       mbError, MB_OK);
   Result := False;
 end;
@@ -537,8 +536,8 @@ begin
     Result := 'juju 未能安全退出，安装已取消。';
   if Result = '' then
     if not AcquireInstallerLock() then
-      Result := '无法取得 juju 安装锁（Windows 错误码 ' + IntToStr(InstallerLockErrorCode) +
-        '）。请确认 juju 已关闭且安装目录可写后重试。';
+      Result := '无法取得应用安装锁（Windows 错误码 ' + IntToStr(InstallerLockErrorCode) +
+        '）。请确认应用已关闭且安装目录可写后重试。';
 end;
 
 function ScheduleDeleteTree(const Directory: String): Boolean;
@@ -694,8 +693,8 @@ begin
   if not AcquireInstallerLock() then
   begin
     if not UninstallSilent then
-      MsgBox('无法取得 juju 安装锁（Windows 错误码 ' + IntToStr(InstallerLockErrorCode) +
-        '）。请确认 juju 已关闭且安装目录可写后重试。', mbError, MB_OK);
+      MsgBox('无法取得应用装锁（Windows 错误码 ' + IntToStr(InstallerLockErrorCode) +
+        '）。请确认应用已关闭且安装目录可写后重试。', mbError, MB_OK);
     Result := False;
     Exit;
   end;
@@ -709,11 +708,9 @@ begin
 
   LocalDataDirectory := ExpandConstant('{app}\data');
   Answer := MsgBox(
-    '是否保留 Juju 在安装目录中的数据？' + #13#10 + #13#10 +
+    '是否保留应用安装目录中的数据文件？' + #13#10 + #13#10 +
     '是：保留 ' + LocalDataDirectory + #13#10 +
-    '否：删除该目录。WebView2 数据无论如何都会清理。' + #13#10 + #13#10 +
-    '设置中单独指定的应用或工具数据目录不会被删除。' + #13#10 +
-    '外部数据目录的路径指针会移除；重装后如需继续使用该目录，请重新选择。',
+    '否：删除该目录',
     mbConfirmation, MB_YESNOCANCEL or MB_DEFBUTTON1);
 
   if Answer = IDCANCEL then
