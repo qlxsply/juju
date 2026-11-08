@@ -1,4 +1,4 @@
-name: Release Windows installer
+name: Release Windows installers
 
 on:
   push:
@@ -10,19 +10,12 @@ permissions:
 
 jobs:
   release-win64:
-    name: Build and publish win-x64 installer
+    name: Build and publish win-x64 installers
     runs-on: windows-latest
 
     steps:
       - name: Check out source
         uses: actions/checkout@v4
-
-      - name: Start with clean release artifacts
-        shell: pwsh
-        run: |
-          if (Test-Path -LiteralPath 'artifacts') {
-            Remove-Item -LiteralPath 'artifacts' -Recurse -Force
-          }
 
       - name: Validate release tag
         id: tag
@@ -33,112 +26,26 @@ jobs:
           }
           "version=$($Matches.version)" >> $env:GITHUB_OUTPUT
 
-      - name: Set up .NET
+      - name: Set up .NET SDK
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: 10.0.x
+          dotnet-version: 10.0.400
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 22.12.0
           cache: npm
           cache-dependency-path: editor/package-lock.json
-
-      - name: Install editor dependencies
-        run: npm ci
-        working-directory: editor
-
-      - name: Publish self-contained Windows x64 app
-        run: >-
-          dotnet publish src/Juju.App/Juju.App.csproj
-          -c Release -r win-x64 --self-contained true
-          -p:Version=${{ steps.tag.outputs.version }}
-          -o artifacts/win-x64
-
-      - name: Publish stable launcher and updater
-        run: |
-          dotnet publish src/Juju.Launcher/Juju.Launcher.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:Version=1.0.0 -o artifacts/bootstrap
-          if ($LASTEXITCODE -ne 0) { throw "Launcher publish failed with exit code $LASTEXITCODE" }
-          dotnet publish src/Juju.Updater/Juju.Updater.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:Version=1.0.0 -o artifacts/bootstrap
-          if ($LASTEXITCODE -ne 0) { throw "Updater publish failed with exit code $LASTEXITCODE" }
-        shell: pwsh
-
-      - name: Create versioned update package and manifest
-        shell: pwsh
-        env:
-          APP_VERSION: ${{ steps.tag.outputs.version }}
-        run: |
-          $packageName = "juju_v{0}_win-x64.zip" -f $env:APP_VERSION
-          $manifestName = "juju_v{0}_manifest.json" -f $env:APP_VERSION
-          $packagePath = Join-Path $PWD "artifacts\release\$packageName"
-          $manifestPath = Join-Path $PWD "artifacts\release\$manifestName"
-          $latestManifestPath = Join-Path $PWD 'artifacts\release\juju_latest.json'
-          New-Item -ItemType Directory -Force -Path (Split-Path $packagePath) | Out-Null
-          Compress-Archive -Path 'artifacts\win-x64\*' -DestinationPath $packagePath -CompressionLevel Optimal
-          $hash = (Get-FileHash -LiteralPath $packagePath -Algorithm SHA256).Hash.ToLowerInvariant()
-          $packageSize = (Get-Item -LiteralPath $packagePath).Length
-          $manifest = [ordered]@{
-            schemaVersion = 1
-            version = $env:APP_VERSION
-            channel = 'stable'
-            rid = 'win-x64'
-            packageAsset = $packageName
-            packageSizeBytes = $packageSize
-            sha256 = $hash
-            minimumLauncherVersion = '1.0.0'
-            releaseNotesUrl = "https://github.com/qlxsply/juju/releases/tag/juju_v$($env:APP_VERSION)"
-          } | ConvertTo-Json
-          $encoding = [Text.UTF8Encoding]::new($false)
-          [IO.File]::WriteAllText($manifestPath, $manifest, $encoding)
-          [IO.File]::WriteAllText($latestManifestPath, $manifest, $encoding)
-          if ((Get-Item -LiteralPath $packagePath).Length -gt 1GB) { throw 'Update package exceeds 1 GB.' }
-
-      - name: Create installer payload integrity manifest
-        id: installer-payload
-        shell: pwsh
-        env:
-          APP_VERSION: ${{ steps.tag.outputs.version }}
-        run: |
-          $bootstrapRoot = (Get-Item -LiteralPath 'artifacts\bootstrap').FullName.TrimEnd('\')
-          $appRoot = (Get-Item -LiteralPath 'artifacts\win-x64').FullName.TrimEnd('\')
-          $entries = [System.Collections.Generic.List[object]]::new()
-          [long]$payloadBytes = 0
-          foreach ($fileName in @('Juju.Launcher.exe', 'Juju.Updater.exe')) {
-            $file = Get-Item -LiteralPath (Join-Path $bootstrapRoot $fileName)
-            $relative = $file.FullName.Substring($bootstrapRoot.Length).TrimStart([char[]]@('\', '/')).Replace('\', '/')
-            $entries.Add([ordered]@{ path = $relative; size = [long]$file.Length; sha256 = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant() })
-            $payloadBytes += [long]$file.Length
-          }
-          foreach ($file in Get-ChildItem -LiteralPath $appRoot -File -Recurse) {
-            $relative = $file.FullName.Substring($appRoot.Length).TrimStart([char[]]@('\', '/')).Replace('\', '/')
-            $entries.Add([ordered]@{ path = "versions/$env:APP_VERSION/$relative"; size = [long]$file.Length; sha256 = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant() })
-            $payloadBytes += [long]$file.Length
-          }
-          $manifestPath = Join-Path $PWD 'artifacts\installer\juju-payload-manifest.json'
-          New-Item -ItemType Directory -Force -Path (Split-Path $manifestPath) | Out-Null
-          $manifest = [ordered]@{ schemaVersion = 1; version = $env:APP_VERSION; entries = @($entries | Sort-Object -Property path) } | ConvertTo-Json -Depth 8 -Compress
-          [IO.File]::WriteAllText($manifestPath, $manifest, [Text.UTF8Encoding]::new($false))
-          $manifestHash = (Get-FileHash -LiteralPath $manifestPath -Algorithm SHA256).Hash.ToLowerInvariant()
-          "payloadBytes=$payloadBytes" >> $env:GITHUB_OUTPUT
-          "manifestSha256=$manifestHash" >> $env:GITHUB_OUTPUT
 
       - name: Install Inno Setup
         run: choco install innosetup --yes --no-progress
 
-      - name: Build installer
+      - name: Build both installers and update assets
         shell: pwsh
         env:
           APP_VERSION: ${{ steps.tag.outputs.version }}
-          PAYLOAD_BYTES: ${{ steps.installer-payload.outputs.payloadBytes }}
-          MANIFEST_SHA256: ${{ steps.installer-payload.outputs.manifestSha256 }}
-        run: |
-          $compiler = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'
-          & $compiler "/DAppVersion=$env:APP_VERSION" "/DPayloadBytes=$env:PAYLOAD_BYTES" "/DManifestSha256=$env:MANIFEST_SHA256" 'installer\juju.iss'
-          if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed with exit code $LASTEXITCODE" }
-
-          $installer = "artifacts\installer\juju_v{0}_setup_win64.exe" -f $env:APP_VERSION
-          if (-not (Test-Path -LiteralPath $installer)) { throw "Installer was not created: $installer" }
+        run: .\scripts\build-release.ps1 -Version $env:APP_VERSION
 
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
@@ -148,6 +55,10 @@ jobs:
           generate_release_notes: true
           files: |
             artifacts/installer/juju_v${{ steps.tag.outputs.version }}_setup_win64.exe
+            artifacts/installer/juju_v${{ steps.tag.outputs.version }}_setup_win64_light.exe
             artifacts/release/juju_v${{ steps.tag.outputs.version }}_win-x64.zip
+            artifacts/release/juju_v${{ steps.tag.outputs.version }}_win-x64_light.zip
             artifacts/release/juju_v${{ steps.tag.outputs.version }}_manifest.json
+            artifacts/release/juju_v${{ steps.tag.outputs.version }}_manifest_light.json
             artifacts/release/juju_latest.json
+            artifacts/release/juju_latest_light.json
