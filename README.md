@@ -99,7 +99,7 @@ Juju 默认显示主界面启动；开机自启动、启动时最小化到托盘
 
 ## 从源码构建
 
-构建需要 Windows、.NET SDK **10.0.400**、Node.js **22.12+ 或 24+**/npm；生成安装包还需要 Inno Setup 6。GitHub Release workflow 固定使用 Node.js 22；本地发布脚本也允许兼容的 Node.js 24。
+构建需要 Windows、.NET SDK **10.0.400 或更新的 10.0 servicing 版本**、Node.js **22.12+ 或 24+**/npm；生成安装包还需要 Inno Setup 6。发版脚本不接受其他 .NET 主次版本。格式化脚本仍要求 SDK 10.0.400。GitHub Release workflow 固定使用 Node.js 22；本地发布脚本也允许兼容的 Node.js 24。
 
 ```powershell
 git clone https://github.com/qlxsply/juju.git
@@ -155,7 +155,7 @@ XAML 的权威格式化器是仓库本地 XAML Styler，而不是 Rider 内置 X
 
 ### 生成 Windows x64 安装包
 
-正式安装布局由版本目录、稳定 Launcher 和共享数据根目录组成。先确认已安装 Windows x64、.NET SDK **10.0.400**、Node.js **22.12+ 或 24+**/npm 和 Inno Setup 6。脚本默认一次生成自包含完整版与依赖系统运行时的轻量版，以及两套自动更新 ZIP/清单。示例版本 `2.0.4` 请替换为你准备发布的版本；脚本只在本机生成文件，不会上传 GitHub。
+正式安装布局由版本目录、稳定 Launcher 和共享数据根目录组成。先确认已安装 Windows x64、.NET SDK **10.0.400 或更新的 10.0 servicing 版本**、Node.js **22.12+ 或 24+**/npm 和 Inno Setup 6。脚本默认一次生成自包含完整版与依赖系统运行时的轻量版，以及两套自动更新 ZIP/清单。示例版本 `2.0.4` 请替换为你准备发布的版本；脚本只在本机生成文件，不会上传 GitHub。
 
 ```powershell
 .\scripts\build-release.ps1 -Version 2.0.4
@@ -173,7 +173,7 @@ XAML 的权威格式化器是仓库本地 XAML Styler，而不是 Rider 内置 X
 
 #### 在 Rider 中操作
 
-1. 用 Rider 打开仓库根目录的 `Juju.sln`，确认 **Settings → Build, Execution, Deployment → Toolset and Build** 使用 .NET SDK 10.0.400，并且已安装 Node.js 22/npm 与 Inno Setup 6。
+1. 用 Rider 打开仓库根目录的 `Juju.sln`，确认 **Settings → Build, Execution, Deployment → Toolset and Build** 使用 .NET SDK 10.0.400 或更新的 10.0 servicing 版本，并且已安装 Node.js 22/npm 与 Inno Setup 6。
 2. 选择 **View → Tool Windows → Terminal**，使用 PowerShell 并确认当前目录是包含 `Juju.sln` 的仓库根目录。
 3. 运行 `./scripts/clean-artifacts.ps1 -WhatIf` 预览清理范围；确认后可以单独运行 `./scripts/clean-artifacts.ps1`。
 4. 运行 `./scripts/build-release.ps1 -Version 2.0.4`（替换为目标版本）；脚本会自行清理并重建，然后输出 Setup.exe 路径。

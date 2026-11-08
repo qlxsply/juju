@@ -55,8 +55,14 @@ try {
     try {
         $sdkVersion = (& dotnet --version | Out-String).Trim()
         if ($LASTEXITCODE -ne 0) { throw 'Could not determine the .NET SDK version.' }
-        if ($sdkVersion -ne '10.0.400') {
-            throw "This release build requires .NET SDK 10.0.400; found '$sdkVersion'."
+        if ($sdkVersion -notmatch '^(?<major>\d+)\.(?<minor>\d+)\.(?<patch>\d+)$') {
+            throw "Could not parse the installed .NET SDK version '$sdkVersion'."
+        }
+        $sdkMajor = [int]$Matches.major
+        $sdkMinor = [int]$Matches.minor
+        $sdkPatch = [int]$Matches.patch
+        if ($sdkMajor -ne 10 -or $sdkMinor -ne 0 -or $sdkPatch -lt 400) {
+            throw "This release build requires .NET SDK 10.0.400 or a later 10.0 servicing release; found '$sdkVersion'."
         }
         $nodeVersion = (& node --version | Out-String).Trim()
         if ($LASTEXITCODE -ne 0 -or $nodeVersion -notmatch '^v(?<major>\d+)\.(?<minor>\d+)\.') {
