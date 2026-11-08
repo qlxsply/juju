@@ -56,13 +56,14 @@ internal static class Program
                 using var resumedLock = await InstallRootLock.AcquireAsync(root);
                 var resumedState = await store.ReadAsync(lockLease: resumedLock) ??
                                    throw new InvalidDataException("Installation state disappeared after recovery.");
-                StartApplication(ResolveExecutable(root, resumedState.ActiveVersion), root, args, null).Dispose();
+                StartApplication(ResolveExecutable(root, resumedState.ActiveVersion), root, args, null,
+                    resumedState.RuntimeFlavor).Dispose();
                 return 0;
             }
 
             if ( state.PendingVersion is { } candidate )
             {
-                var candidateProcess = await TryStartCandidateAsync(root, candidate, args);
+                var candidateProcess = await TryStartCandidateAsync(root, candidate, args, state.RuntimeFlavor);
                 if ( candidateProcess is not null )
                 {
                     try
@@ -92,13 +93,15 @@ internal static class Program
             var current = await store.ReadAsync(lockLease: installLock) ?? state;
             try
             {
-                StartApplication(ResolveExecutable(root, current.ActiveVersion), root, args, null).Dispose();
+                StartApplication(ResolveExecutable(root, current.ActiveVersion), root, args, null,
+                    current.RuntimeFlavor).Dispose();
             }
             catch ( Exception ex ) when ( current.PreviousVersion is not null )
             {
                 var previous = current.PreviousVersion;
-                StartApplication(ResolveExecutable(root, previous), root, args, null).Dispose();
-                await store.WriteAsync(new VersionState(previous), lockLease: installLock);
+                StartApplication(ResolveExecutable(root, previous), root, args, null, current.RuntimeFlavor).Dispose();
+                await store.WriteAsync(new VersionState(previous, RuntimeFlavor: current.RuntimeFlavor),
+                    lockLease: installLock);
                 ShowError($"当前版本 {current.ActiveVersion} 不可用，已启动回退版本 {previous}。\n\n{ex.Message}");
             }
             return 0;
@@ -115,6 +118,7 @@ internal static class Program
         string root = AppContext.BaseDirectory;
         var phase = "argument validation";
         var version = "unknown";
+        var runtimeFlavor = RuntimeFlavors.SelfContained;
         var committed = false;
         var candidateDeployed = false;
         string? finalVersionDirectory = null;
@@ -128,6 +132,7 @@ internal static class Program
         {
             var options = ParseInstallerActivationArguments(args);
             version = options["version"];
+            runtimeFlavor = options["runtime-flavor"];
             if ( !SemanticVersion.TryParse(version, out var requestedVersion) )
                 throw new InvalidDataException("Installer supplied an unsupported stable version.");
 
@@ -159,7 +164,7 @@ internal static class Program
             if ( current is null )
             {
                 phase = "initial install transaction persistence";
-                current = await store.BeginInitialInstallerPendingAsync(version, options["manifest-sha256"],
+                current = await store.BeginInitialInstallerPendingAsync(version, options["manifest-sha256"], runtimeFlavor,
                     lockLease: installLock);
                 hadActiveVersion = true;
                 initialInstallPending = true;
@@ -174,7 +179,7 @@ internal static class Program
             if ( current is not null )
             {
                 phase = "pending version persistence";
-                current = await store.BeginInstallerPendingAsync(version, options["manifest-sha256"],
+                current = await store.BeginInstallerPendingAsync(version, options["manifest-sha256"], runtimeFlavor,
                     lockLease: installLock);
                 displacedVersionDirectory = Path.Combine(versionsRoot, ".installer-backup-" + current.TransactionId);
             }
@@ -198,7 +203,7 @@ internal static class Program
                 candidateDeployed = true;
 
             phase = "real application health check";
-            await ProbeApplicationAsync(root, finalVersionDirectory);
+            await ProbeApplicationAsync(root, finalVersionDirectory, runtimeFlavor);
 
             phase = "active version commit";
             await store.CommitInstallerPendingAsync(version, lockLease: installLock);
@@ -276,7 +281,7 @@ internal static class Program
 
     private static Dictionary<string, string> ParseInstallerActivationArguments(string[] args)
     {
-        var allowed = new HashSet<string>(["version", "root", "manifest", "manifest-sha256"],
+        var allowed = new HashSet<string>(["version", "root", "manifest", "manifest-sha256", "runtime-flavor"],
             StringComparer.OrdinalIgnoreCase);
         var options = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         for ( var index = 1; index < args.Length; index++ )
@@ -291,6 +296,8 @@ internal static class Program
         foreach ( var required in allowed )
             if ( !options.ContainsKey(required) )
                 throw new ArgumentException($"Missing installer activation argument --{required}.");
+        if ( !RuntimeFlavors.IsValid(options["runtime-flavor"]) )
+            throw new ArgumentException("Invalid installer runtime flavor.");
         return options;
     }
 
@@ -319,7 +326,7 @@ internal static class Program
         InstallRootLock.EnsureNotReparsePoint(root, fullPath);
     }
 
-    private static async Task ProbeApplicationAsync(string root, string versionDirectory)
+    private static async Task ProbeApplicationAsync(string root, string versionDirectory, string runtimeFlavor)
     {
         var executable = Path.Combine(versionDirectory, "Juju.App.exe");
         var pipeName = "juju-installer-health-" + Guid.NewGuid().ToString("N");
@@ -337,6 +344,8 @@ internal static class Program
         startInfo.Environment["JUJU_INSTALL_ROOT"] = root;
         startInfo.Environment["JUJU_HEALTH_CHECK_DATA_ROOT"] = healthDataRoot;
         startInfo.ArgumentList.Add("--installer-health-check");
+        startInfo.ArgumentList.Add("--runtime-flavor");
+        startInfo.ArgumentList.Add(runtimeFlavor);
         startInfo.ArgumentList.Add("--launcher-pipe");
         startInfo.ArgumentList.Add(pipeName);
         using var process = Process.Start(startInfo) ??
@@ -383,7 +392,8 @@ internal static class Program
             $"[{DateTimeOffset.UtcNow:O}] phase={phase}; version={version}; {message}{Environment.NewLine}");
     }
 
-    private static async Task<Process?> TryStartCandidateAsync(string root, string candidate, string[] originalArgs)
+    private static async Task<Process?> TryStartCandidateAsync(string root, string candidate, string[] originalArgs,
+        string runtimeFlavor)
     {
         string executable;
         try
@@ -401,7 +411,7 @@ internal static class Program
         var keepProcess = false;
         try
         {
-            process = StartApplication(executable, root, originalArgs, pipeName);
+            process = StartApplication(executable, root, originalArgs, pipeName, runtimeFlavor);
             var connected = pipe.WaitForConnectionAsync(timeout.Token);
             var exited = process.WaitForExitAsync();
             if ( await Task.WhenAny(connected, exited) != connected )
@@ -463,7 +473,7 @@ internal static class Program
     }
 
     private static Process StartApplication(string executable, string root, string[] originalArgs,
-        string? startupPipe)
+        string? startupPipe, string runtimeFlavor)
     {
         var start = new ProcessStartInfo(executable)
         {
@@ -471,9 +481,16 @@ internal static class Program
             UseShellExecute = false
         };
         start.Environment["JUJU_INSTALL_ROOT"] = root;
+        start.ArgumentList.Add("--runtime-flavor");
+        start.ArgumentList.Add(runtimeFlavor);
         for ( var index = 0; index < originalArgs.Length; index++ )
         {
             if ( string.Equals(originalArgs[index], "--launcher-pipe", StringComparison.OrdinalIgnoreCase) )
+            {
+                index++;
+                continue;
+            }
+            if ( string.Equals(originalArgs[index], "--runtime-flavor", StringComparison.OrdinalIgnoreCase) )
             {
                 index++;
                 continue;

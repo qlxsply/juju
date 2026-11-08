@@ -4,6 +4,8 @@ param(
     [Parameter(Mandatory = $true)]
     [ValidatePattern('^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$')]
     [string]$Version,
+    [ValidateSet('Both', 'SelfContained', 'FrameworkDependent')]
+    [string]$RuntimeMode = 'Both',
     [ValidatePattern('^[A-Za-z0-9_-]*$')]
     [string]$InstallerOutputSuffix = ''
 )
@@ -84,17 +86,28 @@ try {
 
         Invoke-NativeCommand 'Restore .NET solution' 'dotnet' @('restore', $solution)
         Invoke-NativeCommand 'Install locked editor dependencies' 'npm' @('ci', '--prefix', 'editor')
-        Invoke-NativeCommand 'Publish self-contained Windows x64 application' 'dotnet' @(
+        $runtimeModes = if ($RuntimeMode -eq 'Both') { @('SelfContained', 'FrameworkDependent') } else { @($RuntimeMode) }
+        foreach ($modeIndex in 0..($runtimeModes.Count - 1)) {
+        $currentRuntimeMode = $runtimeModes[$modeIndex]
+        if ($modeIndex -gt 0) {
+            foreach ($relativeOutput in @('artifacts\win-x64', 'artifacts\bootstrap')) {
+                $outputPath = Join-Path $repoRoot $relativeOutput
+                if (Test-Path -LiteralPath $outputPath) { Remove-Item -LiteralPath $outputPath -Recurse -Force }
+            }
+        }
+        $selfContained = if ($currentRuntimeMode -eq 'SelfContained') { 'true' } else { 'false' }
+        $runtimeLabel = if ($currentRuntimeMode -eq 'SelfContained') { 'self-contained' } else { 'requires .NET 10 Desktop Runtime' }
+        Invoke-NativeCommand "Publish $runtimeLabel Windows x64 application" 'dotnet' @(
             'publish', 'src/Juju.App/Juju.App.csproj', '-c', 'Release', '-r', 'win-x64',
-            '--self-contained', 'true', "-p:Version=$Version", '-o', 'artifacts/win-x64'
+            '--self-contained', $selfContained, "-p:Version=$Version", '-o', 'artifacts/win-x64'
         )
-        Invoke-NativeCommand 'Publish stable Launcher' 'dotnet' @(
+        Invoke-NativeCommand "Publish stable Launcher ($currentRuntimeMode)" 'dotnet' @(
             'publish', 'src/Juju.Launcher/Juju.Launcher.csproj', '-c', 'Release', '-r', 'win-x64',
-            '--self-contained', 'true', '-p:PublishSingleFile=true', '-p:Version=1.0.0', '-o', 'artifacts/bootstrap'
+            '--self-contained', $selfContained, '-p:PublishSingleFile=true', '-p:Version=1.0.0', '-o', 'artifacts/bootstrap'
         )
-        Invoke-NativeCommand 'Publish standalone Updater' 'dotnet' @(
+        Invoke-NativeCommand "Publish Updater ($currentRuntimeMode)" 'dotnet' @(
             'publish', 'src/Juju.Updater/Juju.Updater.csproj', '-c', 'Release', '-r', 'win-x64',
-            '--self-contained', 'true', '-p:PublishSingleFile=true', '-p:Version=1.0.0', '-o', 'artifacts/bootstrap'
+            '--self-contained', $selfContained, '-p:PublishSingleFile=true', '-p:Version=1.0.0', '-o', 'artifacts/bootstrap'
         )
 
         $appExecutable = Join-Path $repoRoot 'artifacts\win-x64\Juju.App.exe'
@@ -145,13 +158,42 @@ try {
         Write-Host "Payload manifest: $manifestPath"
         Write-Host "Uncompressed payload: $payloadBytes bytes"
 
-        Write-Host "`n== Compile Inno Setup installer =="
-        $installerBaseFilename = "juju_v${Version}_setup_win64${InstallerOutputSuffix}"
-        $compilerArguments = @("/DAppVersion=$Version", "/DPayloadBytes=$payloadBytes",
-            "/DManifestSha256=$manifestSha256")
-        if (-not [string]::IsNullOrEmpty($InstallerOutputSuffix)) {
-            $compilerArguments += "/F$installerBaseFilename"
+        $releaseDirectory = Join-Path $repoRoot 'artifacts\release'
+        if (-not (Test-Path -LiteralPath $releaseDirectory -PathType Container)) {
+            New-Item -ItemType Directory -Path $releaseDirectory | Out-Null
         }
+        $runtimeFlavor = if ($currentRuntimeMode -eq 'SelfContained') { 'self-contained' } else { 'framework-dependent' }
+        $packageSuffix = if ($currentRuntimeMode -eq 'SelfContained') { '' } else { '_light' }
+        $packageName = "juju_v${Version}_win-x64${packageSuffix}.zip"
+        $packagePath = Join-Path $releaseDirectory $packageName
+        Compress-Archive -Path (Join-Path $appPayloadRoot '*') -DestinationPath $packagePath -CompressionLevel Optimal
+        $releaseManifest = [ordered]@{
+            schemaVersion = 1
+            version = $Version
+            channel = 'stable'
+            runtimeFlavor = $runtimeFlavor
+            rid = 'win-x64'
+            packageAsset = $packageName
+            packageSizeBytes = [long](Get-Item -LiteralPath $packagePath).Length
+            sha256 = (Get-FileHash -LiteralPath $packagePath -Algorithm SHA256).Hash.ToLowerInvariant()
+            minimumLauncherVersion = '1.0.0'
+        }
+        $releaseManifestJson = ConvertTo-Json -InputObject $releaseManifest -Depth 8 -Compress
+        $versionManifestName = "juju_v${Version}_manifest${packageSuffix}.json"
+        [System.IO.File]::WriteAllText((Join-Path $releaseDirectory $versionManifestName), $releaseManifestJson,
+            [System.Text.UTF8Encoding]::new($false))
+        $latestManifestName = if ($currentRuntimeMode -eq 'SelfContained') { 'juju_latest.json' } else { 'juju_latest_light.json' }
+        [System.IO.File]::WriteAllText((Join-Path $releaseDirectory $latestManifestName), $releaseManifestJson,
+            [System.Text.UTF8Encoding]::new($false))
+        Write-Host "Update assets: $packageName, $versionManifestName, $latestManifestName"
+
+        Write-Host "`n== Compile Inno Setup installer =="
+        $modeSuffix = if ($currentRuntimeMode -eq 'FrameworkDependent') { '_light' } else { '' }
+        $installerBaseFilename = "juju_v${Version}_setup_win64${modeSuffix}${InstallerOutputSuffix}"
+        $compilerArguments = @("/DAppVersion=$Version", "/DPayloadBytes=$payloadBytes",
+            "/DManifestSha256=$manifestSha256", "/DRuntimeFlavor=$runtimeFlavor",
+            "/DRequireDotNetRuntime=$($currentRuntimeMode -eq 'FrameworkDependent')")
+        $compilerArguments += "/F$installerBaseFilename"
         $compilerArguments += $installerScript
         & $innoCompiler @compilerArguments
         $exitCode = $LASTEXITCODE
@@ -162,6 +204,7 @@ try {
             throw "Installer was not created: $installer"
         }
         Write-Host "`nRelease installer created: $installer"
+        }
         Write-Host 'The GitHub Release workflow additionally creates the version ZIP and SHA-256 manifest.'
     }
     finally {

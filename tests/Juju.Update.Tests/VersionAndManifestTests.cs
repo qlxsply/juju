@@ -54,6 +54,7 @@ public sealed class VersionAndManifestTests
         Assert.Throws<InvalidDataException>(() => (manifest with { PackageAsset = "../evil.zip" }).Validate("1.2.3"));
         Assert.Throws<InvalidDataException>(() => (manifest with { Channel = "beta" }).Validate("1.2.3"));
         Assert.Throws<InvalidDataException>(() => (manifest with { ReleaseNotesUrl = "https://attacker.example/x" }).Validate("1.2.3"));
+        Assert.Throws<InvalidDataException>(() => (manifest with { RuntimeFlavor = "other" }).Validate("1.2.3"));
     }
 
     [Fact]
@@ -337,6 +338,55 @@ public sealed class VersionAndManifestTests
 
             Assert.False(result.IsUpdateAvailable);
             Assert.Null(result.Error);
+        }
+        finally
+        {
+            if ( Directory.Exists(root) )
+                Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task Lightweight_install_uses_only_lightweight_update_feed()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "juju-update-tests", Guid.NewGuid().ToString("N"));
+        string? requestedUri = null;
+        var manifest = $$"""{"schemaVersion":1,"version":"2.0.4","channel":"stable","runtimeFlavor":"framework-dependent","rid":"win-x64","packageAsset":"juju_v2.0.4_win-x64_light.zip","packageSizeBytes":10,"sha256":"{{new string('a', 64)}}","minimumLauncherVersion":"1.0.0"}""";
+        try
+        {
+            using var client = new HttpClient(new StubHandler(request =>
+            {
+                requestedUri = request.RequestUri!.AbsoluteUri;
+                return JsonResponse(manifest);
+            }));
+            using var updates = new GitHubUpdateService(root, client, RuntimeFlavors.FrameworkDependent);
+
+            var result = await updates.CheckAsync("2.0.3", manual: true);
+
+            Assert.True(result.IsUpdateAvailable);
+            Assert.Equal("https://github.com/qlxsply/juju/releases/latest/download/juju_latest_light.json", requestedUri);
+            Assert.EndsWith("juju_v2.0.4_win-x64_light.zip", result.Update!.PackageUrl, StringComparison.Ordinal);
+        }
+        finally
+        {
+            if ( Directory.Exists(root) )
+                Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task Version_state_rejects_upgrades_to_a_different_runtime_flavor()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "juju-update-tests", Guid.NewGuid().ToString("N"));
+        try
+        {
+            var store = new VersionStateStore(root);
+            await store.WriteAsync(new VersionState("1.0.0", RuntimeFlavor: RuntimeFlavors.SelfContained));
+
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                store.BeginPendingAsync("1.1.0", RuntimeFlavors.FrameworkDependent));
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                store.BeginInstallerPendingAsync("1.1.0", new string('a', 64), RuntimeFlavors.FrameworkDependent));
         }
         finally
         {

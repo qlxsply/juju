@@ -4,7 +4,7 @@ namespace Juju.Update;
 
 public sealed record VersionState(string ActiveVersion, string? PendingVersion = null, string? PreviousVersion = null,
     string? TransactionId = null, bool InstallerCleanupPending = false, string? InstallerManifestSha256 = null,
-    bool InstallerInitialInstallPending = false);
+    bool InstallerInitialInstallPending = false, string RuntimeFlavor = RuntimeFlavors.SelfContained);
 
 public sealed class VersionStateStore(string installRoot)
 {
@@ -57,15 +57,18 @@ public sealed class VersionStateStore(string installRoot)
     }
 
     public async Task<VersionState> BeginPendingAsync(string candidateVersion,
+        string runtimeFlavor = RuntimeFlavors.SelfContained,
         CancellationToken cancellationToken = default, InstallRootLock.Lease? lockLease = null)
     {
-        if ( !SemanticVersion.TryParse(candidateVersion, out var candidate) )
+        if ( !SemanticVersion.TryParse(candidateVersion, out var candidate) || !RuntimeFlavors.IsValid(runtimeFlavor) )
             throw new InvalidDataException("Candidate version is invalid.");
         using var ownedLock = await AcquireIfNeededAsync(lockLease, cancellationToken).ConfigureAwait(false);
         var current = await ReadUnderLockAsync(cancellationToken, repairFromBackup: true).ConfigureAwait(false) ??
                       throw new InvalidDataException("No active version is installed.");
         if ( current.PendingVersion is not null )
             throw new InvalidOperationException("A version activation transaction is already pending.");
+        if ( current.RuntimeFlavor != runtimeFlavor )
+            throw new InvalidOperationException("Updates cannot change the installed runtime flavor.");
         if ( !SemanticVersion.TryParse(current.ActiveVersion, out var active) || candidate <= active )
             throw new InvalidOperationException("Candidate version must be newer than the active version.");
         var pending = current with
@@ -80,19 +83,24 @@ public sealed class VersionStateStore(string installRoot)
 
     /// <summary>Installer-only transition; permits same-version repair but never downgrade.</summary>
     public async Task<VersionState> BeginInstallerPendingAsync(string candidateVersion, string manifestSha256,
+        string runtimeFlavor = RuntimeFlavors.SelfContained,
         CancellationToken cancellationToken = default, InstallRootLock.Lease? lockLease = null)
     {
-        if ( !SemanticVersion.TryParse(candidateVersion, out var candidate) || !ReleaseManifest.IsSha256(manifestSha256) )
+        if ( !SemanticVersion.TryParse(candidateVersion, out var candidate) || !ReleaseManifest.IsSha256(manifestSha256) ||
+             !RuntimeFlavors.IsValid(runtimeFlavor) )
             throw new InvalidDataException("Installer version is invalid.");
         using var ownedLock = await AcquireIfNeededAsync(lockLease, cancellationToken).ConfigureAwait(false);
         var current = await ReadUnderLockAsync(cancellationToken, repairFromBackup: true).ConfigureAwait(false) ??
                       throw new InvalidDataException("No active version is installed.");
         if ( current.PendingVersion is not null )
         {
-            if ( current.PendingVersion == candidateVersion && current.InstallerManifestSha256 == manifestSha256 )
+            if ( current.PendingVersion == candidateVersion && current.InstallerManifestSha256 == manifestSha256 &&
+                 current.RuntimeFlavor == runtimeFlavor )
                 return current;
             throw new InvalidOperationException("Another version activation transaction is already pending.");
         }
+        if ( current.RuntimeFlavor != runtimeFlavor )
+            throw new InvalidOperationException("Installer upgrades cannot change the installed runtime flavor.");
         if ( !SemanticVersion.TryParse(current.ActiveVersion, out var active) || candidate < active )
             throw new InvalidOperationException("Installer downgrade is not allowed.");
         var pending = current with
@@ -100,29 +108,32 @@ public sealed class VersionStateStore(string installRoot)
             PendingVersion = candidateVersion,
             PreviousVersion = current.ActiveVersion,
             TransactionId = Guid.NewGuid().ToString("N"),
-            InstallerManifestSha256 = manifestSha256
+            InstallerManifestSha256 = manifestSha256,
+            RuntimeFlavor = runtimeFlavor
         };
         await WriteUnderLockAsync(pending, cancellationToken).ConfigureAwait(false);
         return pending;
     }
 
     public async Task<VersionState> BeginInitialInstallerPendingAsync(string candidateVersion, string manifestSha256,
+        string runtimeFlavor = RuntimeFlavors.SelfContained,
         CancellationToken cancellationToken = default, InstallRootLock.Lease? lockLease = null)
     {
-        if ( !SemanticVersion.TryParse(candidateVersion, out _) || !ReleaseManifest.IsSha256(manifestSha256) )
+        if ( !SemanticVersion.TryParse(candidateVersion, out _) || !ReleaseManifest.IsSha256(manifestSha256) ||
+             !RuntimeFlavors.IsValid(runtimeFlavor) )
             throw new InvalidDataException("Initial installer transaction is invalid.");
         using var ownedLock = await AcquireIfNeededAsync(lockLease, cancellationToken).ConfigureAwait(false);
         var current = await ReadUnderLockAsync(cancellationToken, repairFromBackup: true).ConfigureAwait(false);
         if ( current is not null )
         {
             if ( current.InstallerInitialInstallPending && current.PendingVersion == candidateVersion &&
-                 current.InstallerManifestSha256 == manifestSha256 )
+                 current.InstallerManifestSha256 == manifestSha256 && current.RuntimeFlavor == runtimeFlavor )
                 return current;
             throw new InvalidOperationException("An active or pending installation already exists.");
         }
         var pending = new VersionState(candidateVersion, PendingVersion: candidateVersion,
             TransactionId: Guid.NewGuid().ToString("N"), InstallerManifestSha256: manifestSha256,
-            InstallerInitialInstallPending: true);
+            InstallerInitialInstallPending: true, RuntimeFlavor: runtimeFlavor);
         await WriteUnderLockAsync(pending, cancellationToken).ConfigureAwait(false);
         return pending;
     }
@@ -362,7 +373,8 @@ public sealed class VersionStateStore(string installRoot)
              (state.PreviousVersion is not null && !SemanticVersion.TryParse(state.PreviousVersion, out _)) ||
              (state.PendingVersion is not null &&
               (string.IsNullOrWhiteSpace(state.TransactionId) || !Guid.TryParseExact(state.TransactionId, "N", out _))) ||
-             (state.InstallerManifestSha256 is not null && !ReleaseManifest.IsSha256(state.InstallerManifestSha256)) ||
+              (state.InstallerManifestSha256 is not null && !ReleaseManifest.IsSha256(state.InstallerManifestSha256)) ||
+             !RuntimeFlavors.IsValid(state.RuntimeFlavor) ||
              (state.InstallerInitialInstallPending &&
               (state.PendingVersion is null || state.PendingVersion != state.ActiveVersion ||
                state.InstallerManifestSha256 is null)) )

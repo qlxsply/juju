@@ -31,6 +31,11 @@ internal static class Program
                 throw new InvalidOperationException("应用未确认安全关闭，已取消版本切换。");
             var manifest = ReleaseManifest.Deserialize(await File.ReadAllBytesAsync(manifestPath));
             manifest.Validate(version);
+            var store = new VersionStateStore(root);
+            var installedState = await store.ReadAsync(lockLease: installLock) ??
+                                 throw new InvalidDataException("No active installation is registered.");
+            if ( manifest.RuntimeFlavor != installedState.RuntimeFlavor )
+                throw new InvalidDataException("Update package runtime flavor does not match the installed application.");
             var launcher = Path.Combine(root, "Juju.Launcher.exe");
             if ( !File.Exists(launcher) )
                 throw new FileNotFoundException("稳定启动程序不存在。", launcher);
@@ -52,8 +57,7 @@ internal static class Program
             }
             Directory.Move(stage, finalVersion);
 
-            var store = new VersionStateStore(root);
-            await store.BeginPendingAsync(version, lockLease: installLock);
+            await store.BeginPendingAsync(version, installedState.RuntimeFlavor, lockLease: installLock);
             installLock.Dispose();
             installLock = null;
             using var launcherProcess = Process.Start(new ProcessStartInfo(launcher)

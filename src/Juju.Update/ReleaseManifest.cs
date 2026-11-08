@@ -9,6 +9,7 @@ public sealed record ReleaseManifest
     [JsonPropertyName("schemaVersion")] public int SchemaVersion { get; init; }
     [JsonPropertyName("version")] public string Version { get; init; } = "";
     [JsonPropertyName("channel")] public string Channel { get; init; } = "";
+    [JsonPropertyName("runtimeFlavor")] public string RuntimeFlavor { get; init; } = RuntimeFlavors.SelfContained;
     [JsonPropertyName("rid")] public string Rid { get; init; } = "";
     [JsonPropertyName("packageAsset")] public string PackageAsset { get; init; } = "";
     [JsonPropertyName("packageSizeBytes")] public long PackageSizeBytes { get; init; }
@@ -27,7 +28,7 @@ public sealed record ReleaseManifest
 
     public void Validate(string expectedVersion, string expectedRid = "win-x64")
     {
-        if ( SchemaVersion != 1 || Channel != "stable" || Rid != expectedRid ||
+        if ( SchemaVersion != 1 || Channel != "stable" || !RuntimeFlavors.IsValid(RuntimeFlavor) || Rid != expectedRid ||
              !SemanticVersion.TryParse(Version, out _) || !string.Equals(Version, expectedVersion, StringComparison.Ordinal) ||
              !IsSafeAssetName(PackageAsset) || PackageAsset.Length == 0 || PackageSizeBytes is <= 0 or > 1024L * 1024 * 1024 ||
              !IsSha256(Sha256) ||
@@ -49,6 +50,15 @@ public sealed record ReleaseManifest
 
     public static ReleaseManifest Deserialize(ReadOnlySpan<byte> json) =>
         JsonSerializer.Deserialize<ReleaseManifest>(json) ?? throw new InvalidDataException("Release manifest is empty.");
+}
+
+public static class RuntimeFlavors
+{
+    public const string SelfContained = "self-contained";
+    public const string FrameworkDependent = "framework-dependent";
+
+    public static bool IsValid(string value) =>
+        value is SelfContained or FrameworkDependent;
 }
 
 public interface IPackageSignatureVerifier

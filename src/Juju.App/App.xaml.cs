@@ -53,6 +53,7 @@ public partial class App
     private IAppLifecycle? _lifecycle;
     private GitHubUpdateService? _updateService;
     private bool _installerHealthCheck;
+    private string _runtimeFlavor = RuntimeFlavors.SelfContained;
 
     public App()
     {
@@ -80,6 +81,7 @@ public partial class App
         base.OnStartup(e);
         _installerHealthCheck = e.Args.Any(argument => string.Equals(argument, "--installer-health-check",
             StringComparison.OrdinalIgnoreCase));
+        _runtimeFlavor = GetRuntimeFlavor(e.Args);
         if ( _installerHealthCheck && string.IsNullOrWhiteSpace(
                 Environment.GetEnvironmentVariable("JUJU_HEALTH_CHECK_DATA_ROOT")) )
         {
@@ -103,7 +105,8 @@ public partial class App
 
         _shutdown = new CancellationTokenSource();
         var writer = new AtomicFileWriter();
-        _updateService = new GitHubUpdateService(ApplicationPaths.InstallDirectory);
+        _updateService = new GitHubUpdateService(ApplicationPaths.InstallDirectory,
+            runtimeFlavor: _runtimeFlavor);
         await new DataRootService(writer).EnsureInitializedAsync(ApplicationPaths.DataRoot, _shutdown.Token);
         var settings = new SettingsService(writer);
         await settings.LoadAsync(_shutdown.Token);
@@ -311,6 +314,19 @@ public partial class App
 
         _shutdown.Cancel();
         Shutdown();
+    }
+
+    private static string GetRuntimeFlavor(string[] args)
+    {
+        for ( var index = 0; index + 1 < args.Length; index++ )
+        {
+            if ( !string.Equals(args[index], "--runtime-flavor", StringComparison.OrdinalIgnoreCase) )
+                continue;
+            var value = args[index + 1];
+            if ( RuntimeFlavors.IsValid(value) )
+                return value;
+        }
+        return RuntimeFlavors.SelfContained;
     }
 
     private static void AddArgument(ProcessStartInfo process, string name, string value)

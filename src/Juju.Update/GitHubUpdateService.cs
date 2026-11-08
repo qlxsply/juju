@@ -20,6 +20,7 @@ public sealed record PreparedUpdate(string PackagePath, string ManifestPath, Rel
 public sealed class GitHubUpdateService : IDisposable
 {
     private const string LatestManifestUrl = "https://github.com/qlxsply/juju/releases/latest/download/juju_latest.json";
+    private const string LatestLightManifestUrl = "https://github.com/qlxsply/juju/releases/latest/download/juju_latest_light.json";
     private static readonly TimeSpan StartupCheckCooldown = TimeSpan.FromHours(24);
     private const long MaximumManifestBytes = 256 * 1024;
     private const long MaximumPackageBytes = 1024L * 1024 * 1024;
@@ -29,14 +30,19 @@ public sealed class GitHubUpdateService : IDisposable
     private readonly bool _ownsClient;
     private readonly string _statePath;
     private readonly string _stagingDirectory;
+    private readonly string _runtimeFlavor;
     private readonly SemaphoreSlim _checkGate = new(1, 1);
     private readonly SemaphoreSlim _downloadGate = new(1, 1);
 
     public UpdateCheckResult? LastResult { get; private set; }
     public event Action<UpdateCheckResult>? CheckCompleted;
 
-    public GitHubUpdateService(string installRoot, HttpClient? httpClient = null)
+    public GitHubUpdateService(string installRoot, HttpClient? httpClient = null,
+        string runtimeFlavor = RuntimeFlavors.SelfContained)
     {
+        if ( !RuntimeFlavors.IsValid(runtimeFlavor) )
+            throw new ArgumentException("Unsupported installation runtime flavor.", nameof(runtimeFlavor));
+        _runtimeFlavor = runtimeFlavor;
         _http = httpClient ?? new HttpClient(new HttpClientHandler { AllowAutoRedirect = false });
         _ownsClient = httpClient is null;
         if ( _ownsClient )
@@ -86,7 +92,9 @@ public sealed class GitHubUpdateService : IDisposable
             using var requestTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             requestTimeout.CancelAfter(TimeSpan.FromSeconds(30));
             var requestToken = requestTimeout.Token;
-            var latestUri = new Uri(LatestManifestUrl);
+            var latestUri = new Uri(_runtimeFlavor == RuntimeFlavors.FrameworkDependent
+                ? LatestLightManifestUrl
+                : LatestManifestUrl);
             using var response = await GetTrustedAssetResponseAsync(latestUri, requestToken, cache.ETag);
             if ( response.StatusCode == HttpStatusCode.NotModified && cache.Latest is not null )
                 return Publish(CompareCached(cache.Latest, current, skipped: false));
@@ -96,8 +104,11 @@ public sealed class GitHubUpdateService : IDisposable
             var manifestBytes = await ReadBoundedContentAsync(response.Content, MaximumManifestBytes, requestToken);
             var manifest = ReleaseManifest.Deserialize(manifestBytes);
             manifest.Validate(manifest.Version);
+            if ( manifest.RuntimeFlavor != _runtimeFlavor )
+                throw new InvalidDataException("Latest release belongs to a different runtime installation type.");
             var version = manifest.ParsedVersion;
-            var packageName = $"juju_v{version}_win-x64.zip";
+            var flavorSuffix = _runtimeFlavor == RuntimeFlavors.FrameworkDependent ? "_light" : "";
+            var packageName = $"juju_v{version}_win-x64{flavorSuffix}.zip";
             if ( !string.Equals(manifest.PackageAsset, packageName, StringComparison.Ordinal) )
                 throw new InvalidDataException("Latest manifest does not point to the expected win-x64 update package.");
             var tagName = $"juju_v{version}";

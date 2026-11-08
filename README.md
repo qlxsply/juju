@@ -155,13 +155,21 @@ XAML 的权威格式化器是仓库本地 XAML Styler，而不是 Rider 内置 X
 
 ### 生成 Windows x64 安装包
 
-正式安装布局由版本目录、稳定 Launcher 和共享数据根目录组成。先确认已安装 Windows x64、.NET SDK **10.0.400**、Node.js **22.12+ 或 24+**/npm 和 Inno Setup 6。以下脚本会清空 `artifacts`，重新 restore 并构建 App、Launcher、Updater，再调用 Inno Setup 生成本地安装包。示例版本 `2.0.4` 请替换为你准备发布的版本；脚本只在本机生成文件，不会上传 GitHub。
+正式安装布局由版本目录、稳定 Launcher 和共享数据根目录组成。先确认已安装 Windows x64、.NET SDK **10.0.400**、Node.js **22.12+ 或 24+**/npm 和 Inno Setup 6。脚本默认一次生成自包含完整版与依赖系统运行时的轻量版，以及两套自动更新 ZIP/清单。示例版本 `2.0.4` 请替换为你准备发布的版本；脚本只在本机生成文件，不会上传 GitHub。
 
 ```powershell
 .\scripts\build-release.ps1 -Version 2.0.4
 ```
 
-生成文件：`artifacts/installer/juju_v2.0.4_setup_win64.exe`。`build-release.ps1` 开始时会自动清空整个 `artifacts`；如果只想清理、不构建，可单独运行 `clean-artifacts.ps1`。本地脚本生成首装包；GitHub Release workflow 还会生成应用内更新用的版本 ZIP 和 SHA-256 manifest。
+一次默认生成两种安装包：完整版 `artifacts/installer/juju_v2.0.4_setup_win64.exe`，目标电脑无需预装 .NET；轻量版 `artifacts/installer/juju_v2.0.4_setup_win64_light.exe`，不携带 .NET，并要求目标电脑已安装 .NET 10 x64 Windows Desktop Runtime。安装器会检查运行时，不满足时提示下载地址并阻止继续。
+
+若只需单独构建一种，使用 `-RuntimeMode SelfContained` 或 `-RuntimeMode FrameworkDependent`：
+
+```powershell
+.\scripts\build-release.ps1 -Version 2.0.4 -RuntimeMode FrameworkDependent
+```
+
+应用内更新包和清单也按安装类型分别输出到 `artifacts/release`：完整版使用 `juju_latest.json` / `juju_vX.Y.Z_win-x64.zip`，轻量版使用 `juju_latest_light.json` / `juju_vX.Y.Z_win-x64_light.zip`。两种安装均只会获取并接受自身类型的更新；安装器也会拒绝完整版与轻量版之间直接升级。`build-release.ps1` 开始时会自动清空整个 `artifacts`；如果只想清理、不构建，可单独运行 `clean-artifacts.ps1`。
 
 #### 在 Rider 中操作
 
@@ -173,7 +181,7 @@ XAML 的权威格式化器是仓库本地 XAML Styler，而不是 Rider 内置 X
 
 ### 应用自动更新
 
-应用启动时每 24 小时检查一次 GitHub 最新稳定 Release；“更新与版本”页面及托盘菜单也可手动检查。检查通过 GitHub Releases 的 `latest/download/juju_latest.json` 获取，不调用有较低未认证请求额度的 REST API。用户确认后，程序下载版本 ZIP、校验 SHA-256，保存并退出当前应用，再由独立更新助手安装到 `versions/<版本>`。稳定 Launcher 验证新版本成功启动后才提交版本切换；若启动失败则自动回退到上一版本。配置与工具数据放在版本目录之外，不随应用版本切换。
+应用启动时每 24 小时检查一次 GitHub 最新稳定 Release；“更新与版本”页面及托盘菜单也可手动检查。完整版通过 `latest/download/juju_latest.json` 检查，轻量版通过 `latest/download/juju_latest_light.json` 检查，不调用有较低未认证请求额度的 REST API。用户确认后，程序下载对应类型的版本 ZIP、校验 SHA-256，保存并退出当前应用，再由独立更新助手安装到 `versions/<版本>`。更新清单、更新助手及版本状态均校验安装类型，防止跨类型更新。稳定 Launcher 验证新版本成功启动后才提交版本切换；若启动失败则自动回退到上一版本。配置与工具数据放在版本目录之外，不随应用版本切换。
 
 Release 需要同时提供 `juju_vX.Y.Z_win-x64.zip`、`juju_vX.Y.Z_manifest.json`、指向最新稳定版的 `juju_latest.json` 和首次安装用的 Inno Setup 包。SHA-256 校验基于通过 HTTPS 获取的 GitHub Release manifest；当前未配置 Authenticode 代码签名证书。安装后会在开始菜单“所有应用”中添加带 juju 图标的稳定 Launcher 快捷方式。Windows 11 不允许传统安装程序静默固定应用到开始菜单的“已固定”区域，需要用户从“所有应用”手动固定。桌面快捷方式安装时可选、默认关闭，避免 Windows 自动排列时挪动现有图标。
 

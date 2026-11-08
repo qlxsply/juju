@@ -22,6 +22,12 @@
 #ifndef ManifestSha256
   #define ManifestSha256 ""
 #endif
+#ifndef RequireDotNetRuntime
+  #define RequireDotNetRuntime "False"
+#endif
+#ifndef RuntimeFlavor
+  #define RuntimeFlavor "self-contained"
+#endif
 
 [Setup]
 AppId={{3E2E8E5A-917A-46A0-BF5F-C4F2B3619FC5}
@@ -211,6 +217,20 @@ begin
     Result := ReadJsonStringField(String(Raw), 'pendingVersion');
 end;
 
+function ReadInstalledRuntimeFlavor(const Directory: String): String;
+var
+  Raw: AnsiString;
+  StatePath: String;
+begin
+  Result := 'self-contained';
+  StatePath := PathCombine(PathCombine(Directory, 'state'), 'active.json');
+  if FileExists(StatePath) and LoadStringFromFile(StatePath, Raw) then
+  begin
+    Result := ReadJsonStringField(String(Raw), 'runtimeFlavor');
+    if Result = '' then Result := 'self-contained';
+  end;
+end;
+
 function ParseThreePartVersion(const Version: String; var Major, Minor, Patch: Integer): Boolean;
 var
   FirstDot: Integer;
@@ -275,6 +295,7 @@ var
   Active: String;
   Pending: String;
   ManagedPath: String;
+  InstalledFlavor: String;
 begin
   Result := '';
   if IsUnsafeInstallPath(Directory) then
@@ -304,6 +325,7 @@ begin
   end;
   Active := ReadInstalledVersion(Directory);
   Pending := ReadInstalledPendingVersion(Directory);
+  InstalledFlavor := ReadInstalledRuntimeFlavor(Directory);
   if Active <> '' then
   begin
     Cmp := CompareSimpleVersions('{#AppVersion}', Active, Valid);
@@ -311,6 +333,8 @@ begin
       Result := '安装器无法安全比较版本号（仅支持 major.minor.patch 数字版本）。请通过统一构建流程发布。'
     else if Cmp < 0 then
       Result := '禁止降级安装：当前版本 ' + Active + ' 高于安装包版本 {#AppVersion}。';
+    if (Result = '') and (CompareText(InstalledFlavor, '{#RuntimeFlavor}') <> 0) then
+      Result := '不能在完整版和轻量版之间直接升级。请下载与当前安装类型一致的安装包。';
   end
   else if FileExists(PathCombine(PathCombine(Directory, 'state'), 'active.json')) then
     Result := '已有 active.json 无法解析。为防止覆盖已有版本，安装已取消。';
@@ -359,11 +383,51 @@ begin
       ' MiB 可用空间，当前约 ' + IntToStr(FreeBytes div 1048576) + ' MiB。';
 end;
 
+function HasRequiredDotNetRuntime(): Boolean;
+var
+  RuntimeDirectory: String;
+  FindRec: TFindRec;
+  Major, Minor, Patch: Integer;
+begin
+  Result := False;
+  RuntimeDirectory := ExpandConstant('{commonpf}\dotnet\shared\Microsoft.WindowsDesktop.App');
+  if not DirExists(RuntimeDirectory) then Exit;
+  if not FindFirst(PathCombine(RuntimeDirectory, '10.*'), FindRec) then Exit;
+  try
+    repeat
+      if ((FindRec.Attributes and FileAttributeDirectory) <> 0) and
+         ParseThreePartVersion(FindRec.Name, Major, Minor, Patch) and (Major = 10) then
+      begin
+        Result := True;
+        Exit;
+      end;
+    until not FindNext(FindRec);
+  finally
+    FindClose(FindRec);
+  end;
+end;
+
+function CheckRuntimeRequirement(): String;
+begin
+  Result := '';
+#if RequireDotNetRuntime == "True"
+  if not HasRequiredDotNetRuntime() then
+    Result := '此安装包依赖 .NET 10 Windows Desktop Runtime (x64)。请先安装 .NET 10 Desktop Runtime，然后重新运行安装程序。下载地址：https://dotnet.microsoft.com/download/dotnet/10.0';
+#endif
+end;
+
 function NextButtonClick(CurPageID: Integer): Boolean;
 var
   Problem: String;
 begin
   Result := True;
+  Problem := CheckRuntimeRequirement();
+  if Problem <> '' then
+  begin
+    MsgBox(Problem, mbError, MB_OK);
+    Result := False;
+    Exit;
+  end;
   if CurPageID = wpSelectDir then
   begin
     Problem := CheckInstallPathAndVersion(WizardDirValue);
@@ -433,9 +497,10 @@ begin
   if not IsJujuRunning() then
     Exit;
 
-  Silent := WizardSilent;
   if IsUninstall then
-    Silent := UninstallSilent;
+    Silent := UninstallSilent
+  else
+    Silent := WizardSilent;
 
   if not Silent then
   begin
@@ -526,6 +591,8 @@ end;
 
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 begin
+  Result := CheckRuntimeRequirement();
+  if Result <> '' then Exit;
   Result := CheckInstallPathAndVersion(ExpandConstant('{app}'));
   if Result <> '' then Exit;
   Result := CheckFreeSpace(ExpandConstant('{app}'));
@@ -793,7 +860,7 @@ begin
     ONLY after verified success. Must exit nonzero on ANY incomplete step.
     No normal user-facing app instance must remain running after this probe.
   }
-  CommandLine := '--installer-activate --version "{#AppVersion}" --root "' + Root +
+  CommandLine := '--installer-activate --version "{#AppVersion}" --runtime-flavor "{#RuntimeFlavor}" --root "' + Root +
     '" --manifest "' + PathCombine(PathCombine(Root, 'staging'), 'installer-payload-manifest.json') +
     '" --manifest-sha256 "{#ManifestSha256}"';
   Log('Starting installer activation and health check: ' + CommandLine);
