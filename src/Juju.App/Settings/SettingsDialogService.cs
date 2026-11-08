@@ -46,5 +46,11 @@ public sealed class SettingsDialogService
         }
     }
 
+    public bool ConfirmDataRootRestart(string newRoot) =>
+        System.Windows.MessageBox.Show(Owner(),
+            $"数据根目录已更改为：\n{newRoot}\n\n重启后将直接从新目录读取配置和数据，不会复制当前目录中的文件。\n\n是否立即重启应用？",
+            "应用数据目录已更改", MessageBoxButton.YesNo, MessageBoxImage.Information,
+            MessageBoxResult.No) == MessageBoxResult.Yes;
+
     private SettingsWindow Owner() => _owner ?? throw new InvalidOperationException("设置弹窗尚未连接到设置窗口。");
 }

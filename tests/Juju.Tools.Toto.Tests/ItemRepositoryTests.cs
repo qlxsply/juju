@@ -176,13 +176,23 @@ public sealed class ItemRepositoryTests : IDisposable
         settings.EnsureExists();
         var path = Path.Combine(dataDirectory, "config.json");
         File.WriteAllText(path,
-            "{\"settings\":{\"hotkey\":\"None\",\"unsupported_option\":\"Alt+S\"},\"scheduledPopups\":{},\"archiveProgressMonth\":\"\"}");
+            "{\"settings\":{\"hotkey\":\"None\",\"shortcut_add\":\"Ctrl+Alt+N\",\"removed_option\":\"Alt+S\"}," +
+            "\"scheduledPopups\":{\"2099-12-31.work_start\":\"2099-12-31 08:00:00\"}," +
+            "\"archiveProgressMonth\":\"202610\",\"removedRootOption\":true}");
+
+        settings.EnsureExists();
 
         var values = settings.Load();
-        Assert.False(values.ContainsKey("unsupported_option"));
-        Assert.Equal("Alt+A", values["shortcut_add"]);
-        Assert.Equal("", settings.ArchiveProgressMonth);
-        Assert.Contains("archiveProgressMonth", File.ReadAllText(path));
+        Assert.False(values.ContainsKey("removed_option"));
+        Assert.Equal("Ctrl+Alt+N", values["shortcut_add"]);
+        Assert.Equal("Alt+Q", values["shortcut_history"]);
+        Assert.Equal("202610", settings.ArchiveProgressMonth);
+        Assert.True(settings.WasScheduledPopupShown(new DateOnly(2099, 12, 31), ScheduledPopupKind.WorkStart));
+        var synchronized = File.ReadAllText(path);
+        Assert.DoesNotContain("removed_option", synchronized, StringComparison.Ordinal);
+        Assert.DoesNotContain("removedRootOption", synchronized, StringComparison.Ordinal);
+        Assert.Contains("archiveProgressMonth", synchronized, StringComparison.Ordinal);
+        Assert.Contains("scheduledPopups", synchronized, StringComparison.Ordinal);
     }
 
     [Fact]

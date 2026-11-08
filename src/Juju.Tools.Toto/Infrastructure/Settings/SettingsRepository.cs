@@ -37,14 +37,7 @@ internal sealed class SettingsRepository(TotoPaths paths) : ITotoSettingsReposit
         lock ( gate )
         {
             var configuration = LoadCore();
-            var result = new Dictionary<string, string>(Defaults, StringComparer.OrdinalIgnoreCase);
-            foreach ( var (key, value) in configuration.Settings )
-                if ( Defaults.ContainsKey(key) )
-                    result[key] = value;
-            result["daily_review_start_time"] = NormalizeOptionalTime(result["daily_review_start_time"]);
-            result["daily_review_end_time"] = NormalizeOptionalTime(result["daily_review_end_time"]);
-            result["daily_review_workdays"] = result["daily_review_workdays"] == "1" ? "1" : "0";
-            return result;
+            return NormalizeUserSettings(configuration.Settings);
         }
     }
 
@@ -60,12 +53,22 @@ internal sealed class SettingsRepository(TotoPaths paths) : ITotoSettingsReposit
         }
     }
 
-    /// <summary>确保配置文件存在；首次调用时写入默认设置。</summary>
+    /// <summary>
+    /// 初始化或同步用户可设置项：新增项补默认值、已知项沿用原值、已删除项移除。
+    /// 提醒显示记录与归档进度属于运行状态，随配置文件一起保留。
+    /// </summary>
     public void EnsureExists()
     {
         lock ( gate )
-            if ( !File.Exists(paths.ConfigPath) )
-                SaveCore(Defaults);
+        {
+            var fileExists = File.Exists(paths.ConfigPath);
+            var original = fileExists ? File.ReadAllText(paths.ConfigPath) : null;
+            var configuration = LoadCore();
+            configuration.Settings = NormalizeUserSettings(configuration.Settings);
+            var normalized = JsonSerializer.Serialize(configuration, JsonOptions);
+            if ( !fileExists || !string.Equals(original, normalized, StringComparison.Ordinal) )
+                SaveCore(configuration);
+        }
     }
 
     /// <summary>保存受支持的设置键。</summary>
@@ -170,9 +173,20 @@ internal sealed class SettingsRepository(TotoPaths paths) : ITotoSettingsReposit
 
     private static void SaveGeneral(Configuration configuration, IReadOnlyDictionary<string, string> settings)
     {
-        configuration.Settings.Clear();
-        foreach ( var (key, defaultValue) in Defaults )
-            configuration.Settings[key] = settings.GetValueOrDefault(key, defaultValue);
+        configuration.Settings = NormalizeUserSettings(settings);
+    }
+
+    private static Dictionary<string, string> NormalizeUserSettings(IReadOnlyDictionary<string, string>? settings)
+    {
+        var normalized = new Dictionary<string, string>(Defaults, StringComparer.OrdinalIgnoreCase);
+        if ( settings is not null )
+            foreach ( var (key, value) in settings )
+                if ( Defaults.ContainsKey(key) )
+                    normalized[key] = value;
+        normalized["daily_review_start_time"] = NormalizeOptionalTime(normalized["daily_review_start_time"]);
+        normalized["daily_review_end_time"] = NormalizeOptionalTime(normalized["daily_review_end_time"]);
+        normalized["daily_review_workdays"] = normalized["daily_review_workdays"] == "1" ? "1" : "0";
+        return normalized;
     }
 
     private void SaveCore(Configuration configuration)

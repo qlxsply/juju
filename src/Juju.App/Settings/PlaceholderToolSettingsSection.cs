@@ -20,7 +20,6 @@ public sealed class PlaceholderToolSettingsSection : ISettingsSection
     private readonly ITotoApplicationService _toto;
     private readonly Action<string> _renderKey;
     private readonly Action<string> _renderHotkey;
-    private readonly Action<string> _renderDirectory;
     public string Id => _tool == ToolId.EchoHttp ? "echo-http" : "kairos";
     public string DisplayName => _tool.ToString();
     public string NavigationColor => _tool == ToolId.EchoHttp ? "#ED9848" : "#8066D9";
@@ -48,8 +47,8 @@ public sealed class PlaceholderToolSettingsSection : ISettingsSection
         _renderKey = entryRows["key"];
         _renderHotkey = entryRows["hotkey"];
         var storage = SettingsViewFactory.Group(page, "存储目录");
-        _renderDirectory = SettingsViewFactory.DirectoryRow(storage, "工具数据目录",
-            changes.DisplayToolDirectory(tool.ToString().ToLowerInvariant()), EditDirectory,
+        SettingsViewFactory.DirectoryRow(storage, "数据目录",
+            changes.DisplayToolDirectory(tool.ToString().ToLowerInvariant()), null,
             () => SettingsViewFactory.OpenDirectory(_changes.DisplayToolDirectory(_tool.ToString().ToLowerInvariant())));
         View = page;
     }
@@ -132,28 +131,6 @@ public sealed class PlaceholderToolSettingsSection : ISettingsSection
         }
         _renderHotkey(candidate);
     }
-
-    private void EditDirectory() => _dialogs.EditFolder("选择 " + _tool + " 数据目录",
-        _changes.DisplayToolDirectory(_tool.ToString().ToLowerInvariant()), async path =>
-        {
-            var old = _settings.Current;
-            var name = _tool.ToString().ToLowerInvariant();
-            _changes.StageTool(name, path);
-            try
-            {
-                await _settings.SaveAsync(old with
-                {
-                    PendingToolDataDirectories = new Dictionary<string, string>(_changes.PendingTools,
-                        StringComparer.OrdinalIgnoreCase)
-                });
-                _renderDirectory(_changes.DisplayToolDirectory(name));
-            }
-            catch
-            {
-                _changes.LoadPending(old.PendingDataRoot, old.PendingToolDataDirectories);
-                throw;
-            }
-        });
 
     public Task SaveAsync() => Task.CompletedTask;
 }

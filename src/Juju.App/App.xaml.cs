@@ -113,7 +113,6 @@ public partial class App
         if ( Array.Exists(e.Args, argument => string.Equals(argument, "--show-launcher",
                 StringComparison.OrdinalIgnoreCase)) && settings.Current.StartMinimized )
             await settings.SaveAsync(settings.Current with { StartMinimized = false }, _shutdown.Token);
-        ApplicationPaths.ConfigureToolDirectories(settings.Current.ToolDataDirectories);
         Directory.CreateDirectory(Path.Combine(ApplicationPaths.ToolDataDirectory("json"), "documents"));
         Directory.CreateDirectory(Path.Combine(ApplicationPaths.ToolDataDirectory("json"), ".trash"));
         var roots = new DataRootService(writer);
@@ -145,7 +144,8 @@ public partial class App
             provider.GetRequiredService<ITotoApplicationService>()));
         services.AddSingleton<ISettingsSection>(provider => new StorageSettingsSection(
             provider.GetRequiredService<DataDirectoryChangeService>(),
-            provider.GetRequiredService<SettingsDialogService>(), provider.GetRequiredService<ISettingsService>()));
+            provider.GetRequiredService<SettingsDialogService>(), provider.GetRequiredService<ISettingsService>(),
+            RestartApplicationAsync));
         services.AddSingleton<ISettingsSection, DisplaySettingsSection>();
         services.AddSingleton<ISettingsSection>(_ => new AboutSettingsSection(_updateService, BeginUpdateAsync));
         services.AddSingleton(roots);
@@ -197,8 +197,7 @@ public partial class App
             typeof(App).Assembly.GetName().Version?.ToString(3) ?? "0.0.0"));
         services.AddSingleton<IAppLifecycle, DesktopAppLifecycle>();
         _services = services.BuildServiceProvider();
-        _services.GetRequiredService<DataDirectoryChangeService>().LoadPending(
-            settings.Current.PendingDataRoot, settings.Current.PendingToolDataDirectories);
+        _services.GetRequiredService<DataDirectoryChangeService>().LoadPending(settings.Current.PendingDataRoot);
         _windows = _services.GetRequiredService<IAppWindowManager>();
         _tools = _services.GetRequiredService<IToolManager>();
         if ( !_installerHealthCheck )
@@ -314,6 +313,58 @@ public partial class App
 
         _shutdown.Cancel();
         Shutdown();
+    }
+
+    private async Task RestartApplicationAsync()
+    {
+        if ( _shutdown is null || _lifecycle is null )
+            throw new InvalidOperationException("应用尚未完成启动。");
+
+        var root = ApplicationPaths.InstallDirectory;
+        var launcher = Path.Combine(root, "Juju.Launcher.exe");
+        if ( !File.Exists(launcher) )
+            throw new FileNotFoundException("稳定启动程序不存在，无法安全重启应用。", launcher);
+
+        Process? restart = null;
+        try
+        {
+            var start = new ProcessStartInfo(launcher) { WorkingDirectory = root, UseShellExecute = false };
+            start.ArgumentList.Add("--restart-after-pid");
+            start.ArgumentList.Add(Environment.ProcessId.ToString());
+            start.ArgumentList.Add("--show-launcher");
+            restart = Process.Start(start) ?? throw new InvalidOperationException("无法启动稳定启动程序。");
+
+            if ( !await _lifecycle.ShutdownAsync(_shutdown.Token) )
+            {
+                TryStopRestartProcess(restart);
+                MessageBox.Show("应用未能安全保存数据，重启已取消；目录变更将在下次重启时生效。", "juju",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            _shutdown.Cancel();
+            Shutdown();
+        }
+        catch ( Exception ex )
+        {
+            if ( restart is not null )
+                TryStopRestartProcess(restart);
+            MessageBox.Show("无法立即重启应用；目录变更已保留，将在下次重启时生效。\n\n" + ex.Message,
+                "juju", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        finally { restart?.Dispose(); }
+    }
+
+    private static void TryStopRestartProcess(Process process)
+    {
+        try
+        {
+            if ( !process.HasExited )
+                process.Kill(entireProcessTree: true);
+        }
+        catch ( InvalidOperationException ) { }
+        catch ( System.ComponentModel.Win32Exception ) { }
+        finally { process.Dispose(); }
     }
 
     private static string GetRuntimeFlavor(string[] args)

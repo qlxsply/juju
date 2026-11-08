@@ -37,7 +37,7 @@ public sealed class DesktopAppLifecycle(
             await windows.ShutdownAsync(states, cancellationToken);
             await tools.StopAllAsync(cancellationToken);
             tray.Dispose();
-            // JSON 窗口已写盘、Toto 调度器已停止；此时复制并提交下一次启动的数据目录。
+            // JSON 窗口已写盘、Toto 调度器已停止；此时初始化新根目录并提交安装目录指针，不迁移旧文件。
             await dataChanges.CommitAsync(settings, cancellationToken);
             switch ( services )
             {

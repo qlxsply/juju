@@ -212,7 +212,7 @@ internal static class SettingsViewFactory
         return RenderKeys;
     }
 
-    public static Action<string> DirectoryRow(Border card, string title, string path, Action edit, Action open)
+    public static Action<string> DirectoryRow(Border card, string title, string path, Action? edit, Action open)
     {
         var location = new TextBlock
         {
@@ -240,8 +240,12 @@ internal static class SettingsViewFactory
             VerticalAlignment = VerticalAlignment.Center,
             Margin = new Thickness(12, 0, 0, 0)
         };
-        var editButton = DirectoryAction("修改路径", "M4,16.5 L3,21 L7.5,20 L20.5,7.5 L16.5,3.5 Z M14.5,5.5 L18.5,9.5", edit);
-        actions.Children.Add(editButton);
+        if ( edit is not null )
+        {
+            var editButton = DirectoryAction("修改路径",
+                "M4,16.5 L3,21 L7.5,20 L20.5,7.5 L16.5,3.5 Z M14.5,5.5 L18.5,9.5", edit);
+            actions.Children.Add(editButton);
+        }
         var openButton = DirectoryAction("打开文件夹",
             "M7,2.5 L15,2.5 L19,6.5 L19,17.5 L7,17.5 Z M15,2.5 L15,6.5 L19,6.5 M4,6.5 L4,21.5 L16,21.5",
             open);

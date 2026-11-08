@@ -32,7 +32,6 @@ public sealed class TotoSettingsSection : ISettingsSection
     private readonly SettingsDialogService _dialogs;
     private readonly Action<string> _renderLaunchKey;
     private readonly Action<string> _renderGlobalKey;
-    private readonly Action<string> _renderDirectory;
     private readonly TextBox _minutes;
     private readonly TotoTimePicker _dailyStart = new();
     private readonly TotoTimePicker _dailyEnd = new();
@@ -111,8 +110,8 @@ public sealed class TotoSettingsSection : ISettingsSection
             _renderShortcuts[key] = shortcutRenderers[key];
 
         var storage = SettingsViewFactory.Group(page, "存储目录");
-        _renderDirectory = SettingsViewFactory.DirectoryRow(storage, "Toto 数据目录",
-            dataChanges.DisplayToolDirectory("toto"), EditDirectory,
+        SettingsViewFactory.DirectoryRow(storage, "数据目录",
+            dataChanges.DisplayToolDirectory("toto"), null,
             () => SettingsViewFactory.OpenDirectory(_dataChanges.DisplayToolDirectory("toto")));
 
         var calendar = SettingsViewFactory.Group(page, "节假日");
@@ -487,27 +486,6 @@ public sealed class TotoSettingsSection : ISettingsSection
         ["shortcut_complete"] = "Alt+F",
         ["shortcut_cancel"] = "Alt+C"
     };
-
-    private void EditDirectory() => _dialogs.EditFolder("选择 Toto 数据目录",
-        _dataChanges.DisplayToolDirectory("toto"), async path =>
-        {
-            var old = _application.Current;
-            _dataChanges.StageTool("toto", path);
-            try
-            {
-                await _application.SaveAsync(old with
-                {
-                    PendingToolDataDirectories = new Dictionary<string, string>(_dataChanges.PendingTools,
-                        StringComparer.OrdinalIgnoreCase)
-                });
-                _renderDirectory(_dataChanges.DisplayToolDirectory("toto"));
-            }
-            catch
-            {
-                _dataChanges.LoadPending(old.PendingDataRoot, old.PendingToolDataDirectories);
-                throw;
-            }
-        });
 
     private FrameworkElement ReviewTimeControl(TotoTimePicker picker)
     {

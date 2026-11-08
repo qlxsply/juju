@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using Juju.Core.Storage;
@@ -268,9 +269,28 @@ public sealed class JsonToolSettingsService(string path, IAtomicFileWriter write
             return;
         }
 
-        Current = Normalize(
-            JsonSerializer.Deserialize<JsonToolSettings>(await File.ReadAllTextAsync(_path, cancellationToken),
-                Options) ?? new());
+        var original = await File.ReadAllTextAsync(_path, cancellationToken);
+        var loaded = DeserializeSupportedConfiguration(original);
+        Current = Normalize(loaded);
+        var normalized = JsonSerializer.Serialize(Current, Options);
+        if ( !string.Equals(original, normalized, StringComparison.Ordinal) )
+            await writer.WriteTextAsync(_path, normalized, cancellationToken);
+    }
+
+    private static JsonToolSettings DeserializeSupportedConfiguration(string json)
+    {
+        var root = JsonNode.Parse(json) as JsonObject ??
+                   throw new InvalidDataException("JSON 工具配置文件必须是 JSON 对象。");
+        if ( root["shortcuts"] is JsonObject shortcuts )
+        {
+            foreach ( var key in shortcuts.Select(property => property.Key).ToArray() )
+                if ( !Enum.TryParse<JsonToolCommand>(key, ignoreCase: true, out var command) ||
+                     !Enum.IsDefined(command) )
+                    shortcuts.Remove(key);
+        }
+
+        return root.Deserialize<JsonToolSettings>(Options) ??
+               throw new InvalidDataException("JSON 工具配置文件为空或无效。");
     }
 
     /// <summary>先建立规范化当前快照，再委托原子写入器保存完整 JSON。</summary>

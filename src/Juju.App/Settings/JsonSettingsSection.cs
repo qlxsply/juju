@@ -23,7 +23,6 @@ public sealed class JsonSettingsSection : ISettingsSection
     private readonly ITotoApplicationService _toto;
     private readonly Action<string> _renderLaunchKey;
     private readonly Action<string> _renderGlobalShortcut;
-    private readonly Action<string> _renderDirectory;
     private readonly System.Windows.Controls.TextBox _autosave = new();
     private readonly System.Windows.Controls.TextBox _indent = new();
     private readonly System.Windows.Controls.CheckBox _keep;
@@ -73,8 +72,8 @@ public sealed class JsonSettingsSection : ISettingsSection
         _indent = SettingsViewFactory.Input(settings.Current.IndentSize.ToString(), 95);
         SettingsViewFactory.Row(options, "缩进空格数", "格式化时的缩进宽度", _indent);
         var storage = SettingsViewFactory.Group(panel, "存储目录");
-        _renderDirectory = SettingsViewFactory.DirectoryRow(storage, "数据目录",
-            dataChanges.DisplayToolDirectory("json"), EditDirectory,
+        SettingsViewFactory.DirectoryRow(storage, "数据目录",
+            dataChanges.DisplayToolDirectory("json"), null,
             () => SettingsViewFactory.OpenDirectory(_dataChanges.DisplayToolDirectory("json")));
 
         _rows = JsonToolShortcuts.Definitions
@@ -196,27 +195,6 @@ public sealed class JsonSettingsSection : ISettingsSection
         }
         catch ( InvalidOperationException ex ) { return ex.Message; }
     }
-
-    private void EditDirectory() => _dialogs.EditFolder("选择 JSON 数据目录", _dataChanges.DisplayToolDirectory("json"),
-        async path =>
-        {
-            var old = _applicationSettings.Current;
-            _dataChanges.StageTool("json", path);
-            try
-            {
-                await _applicationSettings.SaveAsync(old with
-                {
-                    PendingToolDataDirectories = new Dictionary<string, string>(_dataChanges.PendingTools,
-                        StringComparer.OrdinalIgnoreCase)
-                });
-                _renderDirectory(_dataChanges.DisplayToolDirectory("json"));
-            }
-            catch
-            {
-                _dataChanges.LoadPending(old.PendingDataRoot, old.PendingToolDataDirectories);
-                throw;
-            }
-        });
 
     public async Task SaveImmediateAsync(FrameworkElement source)
     {

@@ -15,6 +15,17 @@ internal static class Program
     [STAThread]
     private static async Task<int> Main(string[] args)
     {
+        if ( args.Length >= 2 && string.Equals(args[0], "--restart-after-pid", StringComparison.OrdinalIgnoreCase) )
+        {
+            if ( !int.TryParse(args[1], out var processId) || processId <= 0 )
+            {
+                ShowError("无法安全重启 juju：应用进程标识无效。");
+                return 1;
+            }
+            await WaitForProcessExitAsync(processId);
+            args = args[2..];
+        }
+
         if ( args.Length > 0 && string.Equals(args[0], "--installer-activate", StringComparison.OrdinalIgnoreCase) )
             return await RunInstallerActivationAsync(args);
 
@@ -110,6 +121,19 @@ internal static class Program
         {
             ShowError("juju 无法启动。\n\n" + ex.Message);
             return 1;
+        }
+    }
+
+    private static async Task WaitForProcessExitAsync(int processId)
+    {
+        try
+        {
+            using var process = Process.GetProcessById(processId);
+            await process.WaitForExitAsync();
+        }
+        catch ( ArgumentException )
+        {
+            // The app exited before the stable launcher started waiting.
         }
     }
 

@@ -234,6 +234,50 @@ public sealed class JsonDocumentServiceTests : IAsyncLifetime
         Assert.False(AppSettings.CreateDefault().StartMinimized);
 
     [Fact]
+    public async Task Host_configuration_syncs_defaults_preserves_known_values_and_removes_obsolete_fields()
+    {
+        var path = Path.Combine(_root, "host-config-sync.json");
+        var writer = new AtomicFileWriter();
+        await File.WriteAllTextAsync(path,
+            """{"startAtLogin":true,"removedOption":"stale","toolKeys":{"Json":"Z","retired":"R"},"toolGlobalShortcuts":{"EchoHttp":"None","retired":"Alt+Q"}}""");
+        var settings = new SettingsService(writer, path);
+
+        await settings.LoadAsync();
+
+        Assert.True(settings.Current.StartAtLogin);
+        Assert.Equal("Z", settings.Current.ToolKeys[nameof(ToolId.Json)]);
+        Assert.Equal(ToolLaunchKeys.Toto.ToString(), settings.Current.ToolKeys[nameof(ToolId.Toto)]);
+        Assert.DoesNotContain("retired", settings.Current.ToolKeys.Keys);
+        Assert.Equal("None", settings.Current.ToolGlobalShortcuts[nameof(ToolId.EchoHttp)]);
+        Assert.DoesNotContain("retired", settings.Current.ToolGlobalShortcuts.Keys);
+        using var synced = JsonDocument.Parse(await File.ReadAllTextAsync(path));
+        Assert.False(synced.RootElement.TryGetProperty("removedOption", out _));
+        Assert.Equal(ToolLaunchKeys.Toto.ToString(),
+            synced.RootElement.GetProperty("toolKeys").GetProperty(nameof(ToolId.Toto)).GetString());
+    }
+
+    [Fact]
+    public async Task Json_configuration_syncs_default_shortcuts_and_removes_obsolete_fields()
+    {
+        var path = Path.Combine(_root, "json-config-sync.json");
+        var writer = new AtomicFileWriter();
+        await File.WriteAllTextAsync(path,
+            """{"autosaveDelayMilliseconds":1300,"indentSize":4,"removedOption":"stale","shortcuts":{"Format":"Ctrl+Alt+K","DeletedCommand":"Alt+Z"}}""");
+        var settings = new JsonToolSettingsService(path, writer);
+
+        await settings.LoadAsync();
+
+        Assert.Equal(1300, settings.Current.AutosaveDelayMilliseconds);
+        Assert.Equal(4, settings.Current.IndentSize);
+        Assert.Equal("Ctrl+Alt+K", settings.Current.Shortcuts[JsonToolCommand.Format]);
+        Assert.Equal(JsonToolShortcuts.Commands.Count, settings.Current.Shortcuts.Count);
+        using var synced = JsonDocument.Parse(await File.ReadAllTextAsync(path));
+        Assert.False(synced.RootElement.TryGetProperty("removedOption", out _));
+        Assert.Equal(JsonToolShortcuts.Commands.Count, synced.RootElement.GetProperty("shortcuts").EnumerateObject().Count());
+        Assert.True(synced.RootElement.GetProperty("shortcuts").TryGetProperty(nameof(JsonToolCommand.Save), out _));
+    }
+
+    [Fact]
     public async Task Directory_copy_keeps_source_and_does_not_overwrite_existing_target()
     {
         var old = Path.Combine(_root, "legacy");
@@ -252,11 +296,10 @@ public sealed class JsonDocumentServiceTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Changing_root_and_tool_directory_commits_verified_data_and_configuration_on_shutdown()
+    public async Task Changing_root_updates_pointer_without_migrating_old_data()
     {
         var writer = new AtomicFileWriter();
         var targetRoot = _root + "-next-root";
-        var targetTool = _root + "-next-tool";
         var pointer = Path.Combine(_root, "data-location.json");
         var settings = new LocalSettings(_root, writer);
         try
@@ -264,30 +307,56 @@ public sealed class JsonDocumentServiceTests : IAsyncLifetime
             await settings.SaveAsync(new AppSettings());
             await File.WriteAllTextAsync(Path.Combine(JsonRoot, "documents", "saved.json"), "{\"value\":1}");
             var changes = new DataDirectoryChangeService(new DataRootService(writer), writer, _root, pointer);
-            changes.StageRoot(targetRoot);
-            changes.StageTool("json", targetTool);
+            Assert.True(changes.StageRoot(targetRoot));
             Assert.False(File.Exists(pointer));
 
             await changes.CommitAsync(settings, CancellationToken.None);
 
-            Assert.Equal("{\"value\":1}", await File.ReadAllTextAsync(Path.Combine(targetTool, "documents", "saved.json")));
-            Assert.Equal(targetTool, settings.Current.ToolDataDirectories["json"]);
-            Assert.Equal(targetTool, JsonSerializer.Deserialize<AppSettings>(
-                await File.ReadAllTextAsync(Path.Combine(targetRoot, "config.json")))!.ToolDataDirectories["json"]);
+            Assert.Equal(Path.Combine(targetRoot, "tools", "json"), changes.DisplayToolDirectory("json"));
             Assert.True(File.Exists(Path.Combine(JsonRoot, "documents", "saved.json")));
+            Assert.False(File.Exists(Path.Combine(targetRoot, "tools", "json", "documents", "saved.json")));
+            Assert.False(File.Exists(Path.Combine(targetRoot, "config.json")));
             Assert.True(File.Exists(pointer));
+            Assert.Null(settings.Current.PendingDataRoot);
         }
         finally
         {
             if ( Directory.Exists(targetRoot) )
                 Directory.Delete(targetRoot, true);
-            if ( Directory.Exists(targetTool) )
-                Directory.Delete(targetTool, true);
         }
     }
 
     [Fact]
-    public async Task Persisted_directory_request_is_restored_and_committed_after_restart()
+    public async Task New_data_root_initializes_missing_host_and_json_configuration_with_defaults()
+    {
+        var root = Path.Combine(_root, "fresh-root");
+        var writer = new AtomicFileWriter();
+        try
+        {
+            await new DataRootService(writer).EnsureInitializedAsync(root);
+
+            var applicationSettings = new SettingsService(writer, Path.Combine(root, "config.json"));
+            await applicationSettings.LoadAsync();
+            var jsonSettingsPath = Path.Combine(root, "tools", "json", "settings.json");
+            var jsonSettings = new JsonToolSettingsService(jsonSettingsPath, writer);
+            await jsonSettings.LoadAsync();
+
+            Assert.True(File.Exists(Path.Combine(root, "juju.json")));
+            Assert.True(File.Exists(Path.Combine(root, "config.json")));
+            Assert.True(File.Exists(jsonSettingsPath));
+            Assert.False(applicationSettings.Current.StartAtLogin);
+            Assert.Equal(800, jsonSettings.Current.AutosaveDelayMilliseconds);
+            Assert.Equal(2, jsonSettings.Current.IndentSize);
+        }
+        finally
+        {
+            if ( Directory.Exists(root) )
+                Directory.Delete(root, true);
+        }
+    }
+
+    [Fact]
+    public async Task Persisted_root_request_is_committed_without_copying_the_old_root()
     {
         var writer = new AtomicFileWriter();
         await new DataRootService(writer).EnsureInitializedAsync(_root);
@@ -298,7 +367,7 @@ public sealed class JsonDocumentServiceTests : IAsyncLifetime
         var target = _root + "-after-restart";
         var pointer = Path.Combine(_root, "data-location.json");
         var changes = new DataDirectoryChangeService(new DataRootService(writer), writer, _root, pointer);
-        changes.LoadPending(settings.Current.PendingDataRoot, settings.Current.PendingToolDataDirectories);
+        changes.LoadPending(settings.Current.PendingDataRoot);
 
         await changes.CommitAsync(settings, CancellationToken.None);
 
@@ -306,25 +375,25 @@ public sealed class JsonDocumentServiceTests : IAsyncLifetime
         Assert.Equal(target, JsonSerializer.Deserialize<ApplicationPaths.DataRootPointer>(
             await File.ReadAllTextAsync(pointer))!.DataRoot);
         Assert.Null(settings.Current.PendingDataRoot);
-        Assert.True(File.Exists(Path.Combine(target, "config.json")));
+        Assert.False(File.Exists(Path.Combine(target, "config.json")));
+        Assert.True(File.Exists(Path.Combine(target, "juju.json")));
         Assert.True(Directory.Exists(_root));
         if ( Directory.Exists(target) )
             Directory.Delete(target, true);
     }
 
     [Fact]
-    public void Tool_directory_validation_keeps_pending_changes_isolated_and_rejects_collisions()
+    public void Tool_directories_are_fixed_under_the_active_data_root()
     {
         var writer = new AtomicFileWriter();
         var changes = new DataDirectoryChangeService(new DataRootService(writer), writer, _root,
             Path.Combine(_root, "pointer.json"));
-        var shared = _root + "-shared";
-        var separate = _root + "-separate";
-        changes.StageTool("json", shared);
-        changes.ValidateTool("toto", separate);
+        var root = _root + "-next-root";
+        Assert.Equal(Path.Combine(_root, "tools", "json"), changes.DisplayToolDirectory("json"));
         Assert.Equal(Path.Combine(_root, "tools", "toto"), changes.DisplayToolDirectory("toto"));
-        Assert.Throws<InvalidOperationException>(() => changes.StageTool("toto", shared));
-        Assert.Throws<InvalidOperationException>(() => changes.StageRoot(shared));
+        Assert.True(changes.StageRoot(root));
+        Assert.Equal(Path.Combine(_root, "tools", "json"), changes.DisplayToolDirectory("json"));
+        Assert.Throws<InvalidOperationException>(() => changes.StageRoot(Path.Combine(_root, "nested")));
     }
 
     private sealed class LocalSettings(string root, IAtomicFileWriter writer) : ISettingsService

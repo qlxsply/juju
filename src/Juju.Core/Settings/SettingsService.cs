@@ -18,12 +18,12 @@ public interface ISettingsService
 }
 
 /// <summary>以 camelCase、缩进 JSON 序列化应用设置的文件实现。</summary>
-public sealed class SettingsService(IAtomicFileWriter writer) : ISettingsService
+public sealed class SettingsService(IAtomicFileWriter writer, string? configurationFile = null) : ISettingsService
 {
     private static readonly JsonSerializerOptions Options = new()
     { PropertyNamingPolicy = JsonNamingPolicy.CamelCase, WriteIndented = true };
 
-    private readonly string _path = ApplicationPaths.ConfigurationFile;
+    private readonly string _path = configurationFile ?? ApplicationPaths.ConfigurationFile;
     public AppSettings Current { get; private set; } = AppSettings.CreateDefault();
 
     /// <summary>异步读取配置；不存在时写入默认值，取消令牌贯穿读取和首次保存。</summary>
@@ -36,27 +36,33 @@ public sealed class SettingsService(IAtomicFileWriter writer) : ISettingsService
         }
 
         var json = await File.ReadAllTextAsync(_path, cancellationToken);
-        var loaded = JsonSerializer.Deserialize<AppSettings>(json, Options);
-        if ( loaded is not null )
-            Current = loaded with
-            {
-                ToolKeys = ToolLaunchKeys.Normalize(loaded.ToolKeys),
-                LeaderShortcut = GlobalHotkeyPolicy.Normalize(loaded.LeaderShortcut),
-                ToolGlobalShortcuts = NormalizeExtraShortcuts(loaded.ToolGlobalShortcuts)
-            };
+        var loaded = JsonSerializer.Deserialize<AppSettings>(json, Options) ??
+                     throw new InvalidDataException("应用配置文件为空或无效。");
+        Current = Normalize(loaded);
+        await WriteCanonicalConfigurationIfChangedAsync(json, cancellationToken);
     }
 
     /// <summary>先更新当前快照，再委托原子写入器避免磁盘上出现部分 JSON。</summary>
     public async Task SaveAsync(AppSettings settings, CancellationToken cancellationToken = default)
     {
-        var normalized = settings with
-        {
-            ToolKeys = ToolLaunchKeys.Normalize(settings.ToolKeys),
-            LeaderShortcut = GlobalHotkeyPolicy.Normalize(settings.LeaderShortcut),
-            ToolGlobalShortcuts = NormalizeExtraShortcuts(settings.ToolGlobalShortcuts)
-        };
+        var normalized = Normalize(settings);
         await writer.WriteTextAsync(_path, JsonSerializer.Serialize(normalized, Options), cancellationToken);
         Current = normalized;
+    }
+
+    private static AppSettings Normalize(AppSettings settings) => settings with
+    {
+        ToolKeys = ToolLaunchKeys.Normalize(settings.ToolKeys),
+        LeaderShortcut = GlobalHotkeyPolicy.Normalize(settings.LeaderShortcut),
+        ToolGlobalShortcuts = NormalizeExtraShortcuts(settings.ToolGlobalShortcuts)
+    };
+
+    private async Task WriteCanonicalConfigurationIfChangedAsync(string original,
+        CancellationToken cancellationToken)
+    {
+        var normalized = JsonSerializer.Serialize(Current, Options);
+        if ( !string.Equals(original, normalized, StringComparison.Ordinal) )
+            await writer.WriteTextAsync(_path, normalized, cancellationToken);
     }
 
     private static Dictionary<string, string> NormalizeExtraShortcuts(IReadOnlyDictionary<string, string>? values) =>

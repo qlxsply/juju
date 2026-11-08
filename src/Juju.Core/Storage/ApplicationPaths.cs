@@ -5,7 +5,6 @@ public static class ApplicationPaths
 {
     /// <summary>稳定安装根目录，由 Launcher 传入；开发时回退到当前程序目录。</summary>
     public static string InstallDirectory { get; } = ResolveInstallDirectory();
-    private static IReadOnlyDictionary<string, string> _toolDirectories = new Dictionary<string, string>();
     private static readonly string StartupDataRoot = ReadDataRoot();
 
     /// <summary>安装目录中的引导指针只记录数据根目录，不保存任何应用设置。</summary>
@@ -19,15 +18,8 @@ public static class ApplicationPaths
 
     public static string DefaultDataRoot => Path.Combine(InstallDirectory, "data");
 
-    /// <summary>指定工具在数据根目录下的专属目录。</summary>
-    public static string ToolDataDirectory(string toolName) =>
-        _toolDirectories.TryGetValue(toolName, out var path) ? path : Path.Combine(DataRoot, "tools", toolName);
-
-    /// <summary>加载 config.json 后调用一次；修改目录需重启才改变当前服务持有的路径。</summary>
-    public static void ConfigureToolDirectories(IReadOnlyDictionary<string, string>? directories) =>
-        _toolDirectories = (directories ?? new Dictionary<string, string>())
-            .Where(item => !string.IsNullOrWhiteSpace(item.Value))
-            .ToDictionary(item => item.Key, item => Path.GetFullPath(item.Value), StringComparer.OrdinalIgnoreCase);
+    /// <summary>指定工具的固定数据目录，始终位于当前数据根目录下。</summary>
+    public static string ToolDataDirectory(string toolName) => Path.Combine(DataRoot, "tools", toolName);
 
     private static string ReadDataRoot()
     {
