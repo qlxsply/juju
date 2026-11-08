@@ -65,9 +65,16 @@ internal static class Program
             await launcherProcess.WaitForExitAsync().WaitAsync(TimeSpan.FromMinutes(2));
             if ( launcherProcess.ExitCode == 0 )
             {
-                var current = await store.ReadAsync();
-                if ( current is not null )
-                    VersionDirectoryManager.Prune(root, current);
+                using var cleanupLock = await InstallRootLock.AcquireAsync(root);
+                var current = await store.ReadAsync(lockLease: cleanupLock);
+                if ( current is not null && current.PendingVersion is null )
+                {
+                    // The candidate has passed the launcher's startup check. Finalize the
+                    // update before pruning so active.json no longer points at the old build.
+                    var finalized = current with { PreviousVersion = null };
+                    await store.WriteAsync(finalized, lockLease: cleanupLock);
+                    VersionDirectoryManager.PruneForInstaller(root, finalized.ActiveVersion);
+                }
                 TryDelete(package);
                 TryDelete(manifestPath);
                 TryDelete(gatePath);
