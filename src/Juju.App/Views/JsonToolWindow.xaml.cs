@@ -59,6 +59,7 @@ public partial class JsonToolWindow : Window
     private readonly Dictionary<JsonToolCommand, Func<Task>> _commands;
     private readonly CancellationTokenSource _lifetime = new();
     private WebView2? _editor;
+    private HwndSource? _windowSource;
     private JsonDocumentSnapshot? _current;
     private IReadOnlyList<DocumentListItem> _items = [];
     private string _editorContent = string.Empty;
@@ -92,16 +93,9 @@ public partial class JsonToolWindow : Window
 
     private bool _inDiffMode => _mode != JsonViewMode.Edit;
 
-    private TextBlock SaveStateStatus => GetToolStatus("StatusLeftText");
-    private TextBlock ValidationStatus => GetToolStatus("StatusCenterText");
-    private TextBlock CursorStatus => GetToolStatus("StatusRightText");
-
-    private TextBlock GetToolStatus(string name)
-    {
-        ApplyTemplate();
-        return (TextBlock) (Template.FindName(name, this) ??
-            throw new InvalidOperationException($"工具窗口模板缺少状态栏元素 {name}。"));
-    }
+    private TextBlock SaveStateStatus => StatusLeftText;
+    private TextBlock ValidationStatus => StatusCenterText;
+    private TextBlock CursorStatus => StatusRightText;
 
     // 依赖由 DesktopWindowManager 组装。文档服务负责持久化，窗口仅维护当前 UI 会话状态。
     public JsonToolWindow(JsonDocumentService documents, IJsonToolSettingsService settings)
@@ -127,7 +121,15 @@ public partial class JsonToolWindow : Window
         };
         InitializeComponent();
         UpdateMenuGestures(settings.Current);
-        SourceInitialized += (_, _) => WindowAppearance.UseSystemCorners(new WindowInteropHelper(this).Handle);
+        SourceInitialized += OnSourceInitialized;
+        Closed += (_, _) =>
+        {
+            if ( _windowSource is not null )
+            {
+                _windowSource.RemoveHook(WindowMessageHook);
+                _windowSource = null;
+            }
+        };
         // WPF 事件委托是 void；这些 async lambda 是事件边界，内部 await 保持 UI 响应。
         Loaded += async (_, _) => await EnsureEditorAsync();
         IsVisibleChanged += async (_, _) =>
@@ -146,6 +148,24 @@ public partial class JsonToolWindow : Window
         _documents.ExternalChanged += OnExternalDocumentChanged;
         _settings.Changed += OnSettingsChanged;
         RenderMode();
+    }
+
+    private void OnSourceInitialized(object? sender, EventArgs e)
+    {
+        var handle = new WindowInteropHelper(this).Handle;
+        WindowAppearance.UseSystemCorners(handle);
+        _windowSource = HwndSource.FromHwnd(handle);
+        _windowSource?.AddHook(WindowMessageHook);
+    }
+
+    private IntPtr WindowMessageHook(IntPtr hwnd, int message, IntPtr wParam, IntPtr lParam, ref bool handled)
+    {
+        if ( message == 0x0024 ) // WM_GETMINMAXINFO
+        {
+            WindowAppearance.ApplyWorkAreaMaximizedBounds(hwnd, lParam);
+            handled = true;
+        }
+        return IntPtr.Zero;
     }
 
     // 在窗口管理器注册 Core 所有的快照实现前保持可选，视图不自行创建跨层基础设施。
