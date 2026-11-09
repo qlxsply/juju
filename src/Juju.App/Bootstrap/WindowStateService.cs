@@ -35,7 +35,7 @@ public sealed class WindowStateService(IAtomicFileWriter writer, IWorkAreaProvid
     }
 
     // 恢复前验证保存的矩形仍与任一工作区相交，避免显示器移除后窗口出现在屏幕外。
-    public void Restore(Window window, string key)
+    public void Restore(Window window, string key, bool restoreMaximized = true)
     {
         if ( !_placements.TryGetValue(key, out var state) )
             return;
@@ -51,7 +51,7 @@ public sealed class WindowStateService(IAtomicFileWriter writer, IWorkAreaProvid
         // 普通窗口仍恢复宽高；若它指定 Min/Max 则遵守约束（Launcher 只调用 RestorePosition）。
         window.Width = Math.Clamp(state.Width, window.MinWidth, window.MaxWidth);
         window.Height = Math.Clamp(state.Height, window.MinHeight, window.MaxHeight);
-        window.WindowState = state.Maximized ? WindowState.Maximized : WindowState.Normal;
+        window.WindowState = restoreMaximized && state.Maximized ? WindowState.Maximized : WindowState.Normal;
     }
 
     // WPF 窗口真正关闭前先保留其几何信息；适用于 JSON 设置为“不复用窗口”的情况。

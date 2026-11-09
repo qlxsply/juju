@@ -11,17 +11,18 @@
     MinHeight="420"
     MaxWidth="1200"
     views:ToolWindowChrome.IsEnabled="True"
+    views:ToolWindowChrome.ShowMaximizeButton="False"
     views:ToolWindowChrome.ToolIcon="{StaticResource TotoToolIcon}"
     views:ToolWindowChrome.StatusLeft="进行中：0 项"
     views:ToolWindowChrome.StatusRight="Alt+A 新增 · Alt+Q 历史 · Alt+E 编辑 · Alt+F 完成"
     Icon="pack://application:,,,/Juju.App;component/Assets/toto.ico"
     Style="{StaticResource ToolWindowWindowStyle}"
-    ResizeMode="CanResize"
+    ResizeMode="NoResize"
     WindowStartupLocation="CenterScreen">
     <shell:WindowChrome.WindowChrome>
         <shell:WindowChrome
             CaptionHeight="48"
-            ResizeBorderThickness="6"
+            ResizeBorderThickness="0"
             GlassFrameThickness="0"
             UseAeroCaptionButtons="False" />
     </shell:WindowChrome.WindowChrome>

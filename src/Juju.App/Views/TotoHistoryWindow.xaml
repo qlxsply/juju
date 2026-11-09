@@ -16,12 +16,12 @@
     views:ToolWindowChrome.ShowMaximizeButton="False"
     Icon="pack://application:,,,/Juju.App;component/Assets/toto.ico"
     Style="{StaticResource ToolWindowWindowStyle}"
-    ResizeMode="CanResize"
+    ResizeMode="NoResize"
     WindowStartupLocation="CenterOwner">
     <shell:WindowChrome.WindowChrome>
         <shell:WindowChrome
             CaptionHeight="48"
-            ResizeBorderThickness="6"
+            ResizeBorderThickness="0"
             GlassFrameThickness="0"
             UseAeroCaptionButtons="False" />
     </shell:WindowChrome.WindowChrome>

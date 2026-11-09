@@ -29,7 +29,7 @@ public sealed class TotoWindowFactory : ITotoWindowFactory
             _main = new TotoMainWindow(_toto, ShowHistory);
             var window = _main;
             if ( _windowState.HasPlacement("toto") )
-                _windowState.Restore(window, "toto");
+                _windowState.Restore(window, "toto", restoreMaximized: false);
             window.Closed += (_, _) => { if ( ReferenceEquals(_main, window) ) _main = null; };
             window.IsVisibleChanged += (_, _) =>
             {
