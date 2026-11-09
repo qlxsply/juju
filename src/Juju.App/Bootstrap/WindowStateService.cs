@@ -34,6 +34,22 @@ public sealed class WindowStateService(IAtomicFileWriter writer, IWorkAreaProvid
         window.Top = Math.Clamp(state.Top, area.Top, Math.Max(area.Top, area.Bottom - window.ActualHeight));
     }
 
+    /// <summary>把关联窗口放在所有者右下方，并限制在所有者所在显示器的工作区内。</summary>
+    public void PositionOffsetFromOwner(Window window, Window owner, double offsetX = 48, double offsetY = 48)
+    {
+        var ownerBounds = new Rect(owner.Left, owner.Top,
+            Math.Max(1, owner.ActualWidth), Math.Max(1, owner.ActualHeight));
+        var area = FindIntersectingWorkArea(ownerBounds);
+        if ( area.Width <= 0 || area.Height <= 0 )
+            return;
+
+        var width = double.IsNaN(window.Width) ? window.ActualWidth : window.Width;
+        var height = double.IsNaN(window.Height) ? window.ActualHeight : window.Height;
+        window.WindowStartupLocation = WindowStartupLocation.Manual;
+        window.Left = Math.Clamp(ownerBounds.Left + offsetX, area.Left, Math.Max(area.Left, area.Right - width));
+        window.Top = Math.Clamp(ownerBounds.Top + offsetY, area.Top, Math.Max(area.Top, area.Bottom - height));
+    }
+
     // 恢复前验证保存的矩形仍与任一工作区相交，避免显示器移除后窗口出现在屏幕外。
     public void Restore(Window window, string key, bool restoreMaximized = true)
     {

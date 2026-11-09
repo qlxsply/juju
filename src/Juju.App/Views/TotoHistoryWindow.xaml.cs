@@ -24,7 +24,12 @@ public partial class TotoHistoryWindow : Window
         _toto = toto;
         InitializeComponent();
         DataContext = this;
-        SourceInitialized += (_, _) => WindowAppearance.UseSystemCorners(new System.Windows.Interop.WindowInteropHelper(this).Handle);
+        SourceInitialized += (_, _) =>
+        {
+            var handle = new System.Windows.Interop.WindowInteropHelper(this).Handle;
+            WindowAppearance.UseSystemCorners(handle);
+            WindowAppearance.DisableWindowTransitions(handle);
+        };
         StatusFilter.ItemsSource = new[] { "全部状态", "已完成", "已取消" };
         StatusFilter.SelectedIndex = 0;
         PeriodPreset.ItemsSource = new[] { "不限", "本周", "上一周", "本月", "上一月", "本年", "上一年", "自定义" };

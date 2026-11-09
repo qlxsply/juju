@@ -46,7 +46,11 @@ public sealed class TotoWindowFactory : ITotoWindowFactory
     public void ShowHistory()
     {
         if ( _main is { IsVisible: true } owner )
-            new TotoHistoryWindow(_toto) { Owner = owner }.ShowDialog();
+        {
+            var history = new TotoHistoryWindow(_toto) { Owner = owner };
+            _windowState.PositionOffsetFromOwner(history, owner);
+            history.ShowDialog();
+        }
     }
 
     public void RefreshMain() => _main?.RefreshItems();

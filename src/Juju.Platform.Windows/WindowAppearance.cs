@@ -6,6 +6,7 @@ namespace Juju.Platform.Windows;
 public static class WindowAppearance
 {
     private const int WindowCornerPreference = 33; // DWMWA_WINDOW_CORNER_PREFERENCE
+    private const int WindowTransitionsForcedDisabled = 3; // DWMWA_TRANSITIONS_FORCEDISABLED
     private const int Round = 2; // DWMWCP_ROUND；窗口管理器也可能因系统策略忽略此请求。
     private const uint MonitorDefaultToNearest = 2;
 
@@ -15,6 +16,15 @@ public static class WindowAppearance
             return;
         var preference = Round;
         _ = DwmSetWindowAttribute(window, WindowCornerPreference, ref preference, sizeof(int));
+    }
+
+    /// <summary>禁用单个窗口的 DWM 打开/关闭过渡动画。</summary>
+    public static void DisableWindowTransitions(IntPtr window)
+    {
+        if ( !OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000) || window == IntPtr.Zero )
+            return;
+        var disabled = 1;
+        _ = DwmSetWindowAttribute(window, WindowTransitionsForcedDisabled, ref disabled, sizeof(int));
     }
 
     /// <summary>把自定义无边框窗口的最大化边界限制在所在显示器的工作区（任务栏之外）。</summary>

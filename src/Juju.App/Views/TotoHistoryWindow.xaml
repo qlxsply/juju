@@ -17,7 +17,7 @@
     Icon="pack://application:,,,/Juju.App;component/Assets/toto.ico"
     Style="{StaticResource ToolWindowWindowStyle}"
     ResizeMode="NoResize"
-    WindowStartupLocation="CenterOwner">
+    WindowStartupLocation="Manual">
     <shell:WindowChrome.WindowChrome>
         <shell:WindowChrome
             CaptionHeight="48"
