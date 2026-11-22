@@ -211,7 +211,7 @@ public sealed class JsonDocumentServiceTests : IAsyncLifetime
     public void Tool_entry_keys_have_distinct_defaults_and_reject_cross_tool_duplicates()
     {
         var keys = ToolLaunchKeys.Normalize(null);
-        Assert.Equal(4, keys.Values.Distinct().Count());
+        Assert.Equal(5, keys.Values.Distinct().Count());
         keys[nameof(ToolId.Toto)] = keys[nameof(ToolId.Json)];
         Assert.Throws<InvalidOperationException>(() => ToolLaunchKeys.Normalize(keys));
         keys[nameof(ToolId.Toto)] = "S";

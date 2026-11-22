@@ -7,6 +7,7 @@ public static class ToolLaunchKeys
     public const char Toto = 'T';
     public const char EchoHttp = 'E';
     public const char Kairos = 'K';
+    public const char MySqlSchema = 'M';
     // 编译器检查各常量分支的可达性。把两个默认键改成同一个字符会导致编译失败。
     private static int DefaultKeyIndex(char key) => key switch
     {
@@ -14,6 +15,7 @@ public static class ToolLaunchKeys
         Toto => 2,
         EchoHttp => 3,
         Kairos => 4,
+        MySqlSchema => 5,
         _ => 0
     };
 
@@ -22,7 +24,8 @@ public static class ToolLaunchKeys
         [ToolId.Json.ToString()] = Json.ToString(),
         [ToolId.Toto.ToString()] = Toto.ToString(),
         [ToolId.EchoHttp.ToString()] = EchoHttp.ToString(),
-        [ToolId.Kairos.ToString()] = Kairos.ToString()
+        [ToolId.Kairos.ToString()] = Kairos.ToString(),
+        [ToolId.MySqlSchema.ToString()] = MySqlSchema.ToString()
     };
 
     /// <summary>补齐旧配置并验证工具入口单键不重复。</summary>

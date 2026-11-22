@@ -1,0 +1,32 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "tool-window",
+  "description": "Permissions for independently closable tool windows",
+  "windows": [
+    "demo-tool",
+    "toto",
+    "toto-history",
+    "toto-reminder",
+    "tool-design-system",
+    "tool-json",
+    "tool-echo",
+    "tool-kairos"
+  ],
+  "permissions": [
+    "core:default",
+    "core:window:allow-close",
+    "core:window:allow-hide",
+    "core:window:allow-show",
+    "core:window:allow-unminimize",
+    "core:window:allow-set-focus",
+    "core:window:allow-set-icon",
+    "core:window:allow-set-position",
+    "core:window:allow-maximize",
+    "core:window:allow-start-dragging",
+    "core:event:allow-listen",
+    "core:event:allow-unlisten",
+    "core:webview:allow-create-webview-window",
+    "dialog:allow-open",
+    "window-state:default"
+  ]
+}

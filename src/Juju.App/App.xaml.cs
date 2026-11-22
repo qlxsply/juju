@@ -13,6 +13,7 @@ using Juju.App.Settings;
 using Juju.App.Tools.Catalog;
 using Juju.App.Tools.Contracts;
 using Juju.App.Tools.Json;
+using Juju.App.Tools.MySqlSchema;
 using Juju.App.Tools.Placeholders;
 using Juju.App.Tools.Routing;
 using Juju.App.Tools.Toto;
@@ -31,6 +32,11 @@ using Juju.Tools.Json.Documents;
 using Juju.Tools.Json.Metadata;
 using Juju.Tools.Json.Settings;
 using Juju.Tools.Json.Storage;
+using Juju.Tools.MySqlSchema.Application;
+using Juju.Tools.MySqlSchema.Infrastructure.Backups;
+using Juju.Tools.MySqlSchema.Infrastructure.Connections;
+using Juju.Tools.MySqlSchema.Infrastructure.Database;
+using Juju.Tools.MySqlSchema.Infrastructure.Security;
 using Juju.Tools.Toto.Application;
 using Juju.Update;
 using Microsoft.Extensions.DependencyInjection;
@@ -108,6 +114,12 @@ public partial class App
         _updateService = new GitHubUpdateService(ApplicationPaths.InstallDirectory,
             runtimeFlavor: _runtimeFlavor);
         await new DataRootService(writer).EnsureInitializedAsync(ApplicationPaths.DataRoot, _shutdown.Token);
+        var mySqlSchemaDirectory = ApplicationPaths.ToolDataDirectory("mysqlschema");
+        Directory.CreateDirectory(mySqlSchemaDirectory);
+        var mySqlConnections = new ConnectionProfileRepository(mySqlSchemaDirectory, writer,
+            new WindowsCredentialProtector());
+        var mySqlBackups = new BackupCatalogRepository(mySqlSchemaDirectory, writer);
+        var mySqlSchemaWorkspace = new MySqlSchemaWorkspace(mySqlConnections, new MySqlSchemaReader(), mySqlBackups);
         var settings = new SettingsService(writer);
         await settings.LoadAsync(_shutdown.Token);
         if ( Array.Exists(e.Args, argument => string.Equals(argument, "--show-launcher",
@@ -131,6 +143,9 @@ public partial class App
         services.AddSingleton<ISettingsService>(settings);
         services.AddSingleton(_updateService);
         services.AddSingleton<IJsonToolSettingsService>(jsonSettings);
+        services.AddSingleton(mySqlConnections);
+        services.AddSingleton(mySqlBackups);
+        services.AddSingleton(mySqlSchemaWorkspace);
         services.AddSingleton<ISettingsSection, SystemSettingsSection>();
         services.AddSingleton<ISettingsSection>(provider => new ShortcutSettingsSection(
             provider.GetRequiredService<ISettingsService>(), provider.GetRequiredService<SettingsDialogService>(),
@@ -177,6 +192,7 @@ public partial class App
         services.AddSingleton<ITotoWindowFactory>(provider => provider.GetRequiredService<TotoWindowFactory>());
         services.AddJsonToolModule();
         services.AddTotoToolModule();
+        services.AddMySqlSchemaToolModule();
         services.AddPlaceholderToolModule(ToolId.EchoHttp, "EchoHttp", "HTTP 工具 · 正在开发中",
             "⇄", "#DF9952", 24, ToolLaunchKeys.EchoHttp);
         services.AddPlaceholderToolModule(ToolId.Kairos, "Kairos", "时间工具 · 正在开发中",

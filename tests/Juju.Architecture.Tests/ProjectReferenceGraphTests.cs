@@ -12,8 +12,10 @@ public sealed class ProjectReferenceGraphTests
             ["Juju.Update"] = [],
             ["Juju.Tools.Json"] = ["Juju.Core"],
             ["Juju.Tools.Toto"] = ["Juju.Core"],
+            ["Juju.Tools.MySqlSchema"] = ["Juju.Core"],
             ["Juju.Platform.Windows"] = ["Juju.Core"],
-            ["Juju.App"] = ["Juju.Core", "Juju.Platform.Windows", "Juju.Tools.Json", "Juju.Tools.Toto", "Juju.Update"],
+            ["Juju.App"] = ["Juju.Core", "Juju.Platform.Windows", "Juju.Tools.Json", "Juju.Tools.Toto",
+                "Juju.Tools.MySqlSchema", "Juju.Update"],
             ["Juju.Launcher"] = ["Juju.Update"],
             ["Juju.Updater"] = ["Juju.Update"]
         };

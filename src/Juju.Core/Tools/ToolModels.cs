@@ -6,7 +6,8 @@ public enum ToolId
     Json,
     Toto,
     EchoHttp,
-    Kairos
+    Kairos,
+    MySqlSchema
 }
 
 /// <summary>工具后台运行能力。</summary>

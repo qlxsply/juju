@@ -57,6 +57,19 @@
         </DrawingImage.Drawing>
     </DrawingImage>
 
+    <DrawingImage x:Key="MySqlSchemaToolIcon">
+        <DrawingImage.Drawing>
+            <DrawingGroup>
+                <GeometryDrawing Brush="Transparent" Geometry="M0,0 H24 V24 H0 Z" />
+                <GeometryDrawing Geometry="M4,5.5 C4,3.8 7.6,2.5 12,2.5 C16.4,2.5 20,3.8 20,5.5 V18.5 C20,20.2 16.4,21.5 12,21.5 C7.6,21.5 4,20.2 4,18.5 Z M4,5.5 C4,7.2 7.6,8.5 12,8.5 C16.4,8.5 20,7.2 20,5.5 M4,12 C4,13.7 7.6,15 12,15 C16.4,15 20,13.7 20,12">
+                    <GeometryDrawing.Pen>
+                        <Pen Brush="#5275D8" Thickness="1.5" LineJoin="Round" />
+                    </GeometryDrawing.Pen>
+                </GeometryDrawing>
+            </DrawingGroup>
+        </DrawingImage.Drawing>
+    </DrawingImage>
+
     <!--  每个工具只使用自己的品牌图标资源，入口卡片与各窗口标题栏共用同一文件。  -->
     <BitmapImage
         x:Key="JsonToolIcon"

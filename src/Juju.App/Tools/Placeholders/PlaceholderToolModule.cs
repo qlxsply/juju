@@ -8,7 +8,7 @@ public sealed class PlaceholderToolModule(ToolId id, string name, string descrip
     string glyphColor, double glyphFontSize, char defaultKey, ISettingsSection settings) : IToolModule
 {
     public ToolDescriptor Descriptor { get; } = new(id, BackgroundCapability.Unsupported, StorageCapability.File);
-    public LauncherToolMetadata Launcher { get; } = new(id, id == ToolId.EchoHttp ? 2 : 3,
+    public LauncherToolMetadata Launcher { get; } = new(id, id == ToolId.EchoHttp ? 3 : 4,
         name, description, $"打开 {name}", null, glyph, glyphColor, glyphFontSize,
         defaultKey.ToString(), false);
 

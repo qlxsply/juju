@@ -25,6 +25,11 @@ public interface IJsonWindowFactory
     event Action? Hidden;
 }
 
+public interface IMySqlSchemaWindowFactory
+{
+    void Show();
+}
+
 public interface ITotoWindowFactory
 {
     Window? MainWindow { get; }

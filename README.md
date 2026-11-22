@@ -58,6 +58,16 @@
 - Toto 主窗口内默认快捷键：新增 `Alt+A`、历史 `Alt+Q`、刷新 `Alt+R`、详情 `Alt+D`、编辑 `Alt+E`、完成 `Alt+F`、取消 `Alt+C`。可在 **设置 → 工具设置 → Toto 日程提醒** 中修改。
 - 更多数据和提醒说明见 [Toto README](src/Juju.Tools.Toto/README.md)。
 
+### MySQL Schema
+
+用于管理 MySQL 连接、离线保存数据库结构快照，并比较快照与实时数据库对象。
+
+- 连接密码使用 Windows DPAPI 按当前 Windows 用户保护；导出连接配置默认不包含密码。
+- 结构快照按环境、版本、连接、数据库和表/视图分层保存；同一路径下同名对象不可覆盖，删除后可重新备份。
+- 比较结果按结构属性展示差异，并可查看两侧的原始 DDL。
+- 可生成有限范围的迁移 SQL 草案供审阅；脚本不会自动执行，未支持的变更会明确警告。
+- 启动器默认快捷键为 `M`。工具仅连接用户配置的 MySQL 实例，不包含数据库服务。
+
 ### 开发中的工具
 
 启动器也列出 **EchoHttp** 和 **Kairos**，目前是占位入口，选择后会提示开发中。
@@ -67,7 +77,7 @@
 1. 打开 [GitHub Releases](https://github.com/qlxsply/juju/releases)，下载名称类似 `juju_v2.0.0_setup_win64.exe` 的 Windows x64 安装包。
 2. 运行安装包。应用按当前用户安装，并创建开始菜单快捷方式；桌面快捷方式默认勾选。
 3. 启动后使用 Juju 主界面的全局快捷键（默认 `Ctrl+Alt+Space`）显示或隐藏工具入口。也可以点击桌面或开始菜单中的 **juju** 快捷方式。
-4. 在启动器中点击工具卡片打开工具，或按对应单键快速启动：JSON 默认 `J`、Toto 默认 `T`。这些单键可在应用设置中修改。
+4. 在启动器中点击工具卡片打开工具，或按对应单键快速启动：JSON 默认 `J`、Toto 默认 `T`、MySQL Schema 默认 `M`。这些单键可在应用设置中修改。
 
 Juju 默认显示主界面启动；开机自启动、启动时最小化到托盘、点击空白区域自动隐藏等行为可在主界面的齿轮菜单中设置。即使主界面隐藏，应用仍可驻留系统托盘；通过托盘菜单退出可结束应用进程。
 
@@ -95,6 +105,9 @@ Juju 默认显示主界面启动；开机自启动、启动时最小化到托盘
 <数据根目录>/tools/toto/toto_end_yyyyMM.csv 按月归档的历史事项
 <数据根目录>/tools/toto/yyyy.json           对应年份的节假日与调休数据
 <数据根目录>/tools/toto/logs/               Toto 日志
+<数据根目录>/tools/mysqlschema/connections.json    MySQL 连接配置（密码受 DPAPI 保护）
+<数据根目录>/tools/mysqlschema/backup-catalog.json  快照树索引
+<数据根目录>/tools/mysqlschema/backups/             MySQL 结构快照 JSON
 ```
 
 ## 从源码构建
@@ -208,6 +221,7 @@ src/Juju.Core/            宿主设置、数据根目录、工具抽象与共享
 src/Juju.Platform.Windows/ Windows 托盘、快捷键、开机启动等平台服务
 src/Juju.Tools.Json/      JSON 文档、元数据、设置与文件监控
 src/Juju.Tools.Toto/      Toto 领域模型、CSV/JSON 存储和提醒调度
+src/Juju.Tools.MySqlSchema/ MySQL 连接、结构读取、快照与比较
 editor/                   Monaco 编辑器前端与 C#/WebView2 消息协议
 installer/                Inno Setup 安装包定义
 tests/                    JSON 与 Toto 自动化测试
