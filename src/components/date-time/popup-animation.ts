@@ -1,5 +1,4 @@
 import { createPopper, type Instance, type Placement } from "@popperjs/core";
-import { animate, spring, type JSAnimation } from "animejs";
 import type { AirDatepickerPositionCallback } from "air-datepicker";
 import type { PickerPlacement } from "./types";
 
@@ -17,7 +16,7 @@ const placementMap: Record<PickerPlacement, Placement> = {
 
 export function createPopupPositionController(placement: PickerPlacement): PopupPositionController {
     let popper: Instance | null = null;
-    let animation: JSAnimation | null = null;
+    let animation: Animation | null = null;
     let pendingDone: (() => void) | null = null;
     let generation = 0;
     let alive = true;
@@ -60,11 +59,14 @@ export function createPopupPositionController(placement: PickerPlacement): Popup
             finishHide(token);
             return;
         }
-        animation = animate(currentElement, {
-            opacity: { to: 0, duration: 300, ease: "out(3)" },
-            rotateX: { to: "-90deg", duration: 300, ease: "out(3)" },
-        });
-        void animation.then(() => finishHide(token));
+        animation = currentElement.animate(
+            [
+                { transform: "perspective(850px) rotateX(0deg)", opacity: 1 },
+                { transform: "perspective(850px) rotateX(-88deg)", opacity: 0 },
+            ],
+            { duration: 320, easing: "cubic-bezier(.55,0,.8,.35)", fill: "forwards" },
+        );
+        void animation.finished.then(() => finishHide(token)).catch(() => undefined);
     };
 
     const position: AirDatepickerPositionCallback = ({
@@ -98,32 +100,32 @@ export function createPopupPositionController(placement: PickerPlacement): Popup
                 placement: placementMap[placement],
                 modifiers: [
                     { name: "offset", options: { offset: [0, 10] } },
-                    { name: "flip", options: { padding: 8 } },
+                    { name: "flip", enabled: false },
                     { name: "preventOverflow", options: { padding: 8, altBoundary: true } },
                     { name: "arrow", options: { element: $pointer, padding: 6 } },
-                    { name: "computeStyles", options: { gpuAcceleration: false } },
+                    { name: "computeStyles", options: { gpuAcceleration: false, adaptive: false } },
                 ],
-                onFirstUpdate: (state) => {
+                onFirstUpdate: () => {
                     if (!currentElement || !alive) return;
-                    currentElement.style.transformOrigin = state.placement?.startsWith("top")
-                        ? "center bottom"
-                        : "center top";
+                    currentElement.style.transformOrigin = "center top";
+                    currentElement.style.transform = "perspective(850px) rotateX(0deg)";
+                    currentElement.style.opacity = "1";
                     if (isViewChange || reducedMotion.matches) {
-                        currentElement.style.opacity = "1";
-                        currentElement.style.rotate = "x 0deg";
                         return;
                     }
                     clearAnimation();
-                    animation = animate(currentElement, {
-                        opacity: { from: 0, to: 1, ease: spring({ mass: 1.3, stiffness: 80, damping: 5, velocity: 0 }) },
-                        rotateX: { from: "-90deg", to: "0deg", ease: spring({ mass: 1.3, stiffness: 80, damping: 5, velocity: 0 }) },
-                    });
+                    animation = currentElement.animate(
+                        [
+                            { transform: "perspective(850px) rotateX(-88deg)", opacity: 0.1 },
+                            { transform: "perspective(850px) rotateX(0deg)", opacity: 1 },
+                        ],
+                        { duration: 520, easing: "cubic-bezier(.2,.72,.18,1)", fill: "forwards" },
+                    );
+                    void animation.finished.catch(() => undefined);
                 },
             });
         } else {
             void popper.update();
-            const state = popper.state;
-            $datepicker.style.transformOrigin = state.placement?.startsWith("top") ? "center bottom" : "center top";
         }
 
         return () => hide(done);
@@ -134,7 +136,7 @@ export function createPopupPositionController(placement: PickerPlacement): Popup
         generation += 1;
         clearAnimation();
         currentElement.style.opacity = "1";
-        currentElement.style.rotate = "x 0deg";
+        currentElement.style.transform = "perspective(850px) rotateX(0deg)";
         if (pendingDone) finishHide(generation);
     };
     reducedMotion.addEventListener("change", onMotionPreferenceChange);

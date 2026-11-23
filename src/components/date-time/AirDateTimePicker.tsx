@@ -9,7 +9,6 @@ import {
     fieldsToValue,
     instantToCarrier,
     normalizeValue,
-    timeToCarrier,
     validateTimeContext,
     valueToCarrier,
     wallFieldsToCarrier,
@@ -89,18 +88,6 @@ function toNowCarrier(props: AirPickerProps): Date {
     return instantToCarrier(contextInstant(props).toString(), props.timeZone);
 }
 
-function timeLimits(props: AirPickerProps) {
-    if (props.mode !== "time") return {};
-    const min = props.min ? timeToCarrier(props.min, props) : undefined;
-    const max = props.max ? timeToCarrier(props.max, props) : undefined;
-    return {
-        minHours: min?.getHours(),
-        minMinutes: min?.getMinutes(),
-        maxHours: max?.getHours(),
-        maxMinutes: max?.getMinutes(),
-    };
-}
-
 function makePickerOptions(
     props: AirPickerProps,
     formats: ReturnType<typeof resolvePickerFormat>,
@@ -125,7 +112,10 @@ function makePickerOptions(
         dateTimeSeparator: formats.dateTimeSeparator,
         minDate: bounds.min ? toCarrier(bounds.min, props) : false,
         maxDate: bounds.max ? toCarrier(bounds.max, props) : false,
-        ...timeLimits(props),
+        minHours: 0,
+        maxHours: 23,
+        minMinutes: 0,
+        maxMinutes: 59,
         minutesStep: props.minuteStep ?? 1,
         showEvent: "focus",
         keyboardNav: true,

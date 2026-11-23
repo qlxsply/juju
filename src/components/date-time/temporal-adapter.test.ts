@@ -27,6 +27,14 @@ describe("explicit date-time zones", () => {
         expect(normalizeValue("20:30", "time", context)).toBe("20:30");
     });
 
+    it("rejects out-of-range time components, including leap-second notation", () => {
+        const context = { now: "2026-11-23T12:30:00Z", timeZone: "UTC", locale: "zh-CN" };
+        expect(normalizeValue("23:59", "time", context)).toBe("23:59");
+        for (const value of ["24:00", "12:60", "12:59:60", "12:59:99"]) {
+            expect(() => normalizeValue(value, "time", context)).toThrow();
+        }
+    });
+
     it("rejects nonexistent DST wall times instead of moving them forward", () => {
         const gap: WallFields = { year: 2026, month: 3, day: 8, hour: 2, minute: 30, second: 0 };
         expect(() => wallDateTimeToInstant(gap, "America/New_York", "earlier"))

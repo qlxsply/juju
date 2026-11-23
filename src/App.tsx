@@ -1,4 +1,5 @@
-import { lazy, Suspense, useCallback, useEffect, useState, type CSSProperties } from "react";
+import { lazy, Suspense, useCallback, useEffect, useState, type CSSProperties, type ReactNode } from "react";
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { emitTo, listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { LogicalSize } from "@tauri-apps/api/dpi";
@@ -41,10 +42,9 @@ import {
     JuTextarea,
     JuToast,
     JuToolbar,
-    JuTooltip,
 } from "./components/ju";
 import { useThemeStore } from "./design-system/theme-store";
-import { designTokens, tokenCategories } from "./design-system/tokens";
+import { colorTokenDetails, designTokens, layoutTokenDetails, tokenCategories } from "./design-system/tokens";
 import { parsePickerInput } from "./components/date-time/direct-input";
 import { resolvePickerFormat } from "./components/date-time/picker-format";
 import { TimeContextProvider } from "./components/date-time/time-context-provider";
@@ -434,6 +434,7 @@ function TotoDailyReviewDialog({
 
 function DesignSystemShowcase() {
     const [showToast, setShowToast] = useState(false);
+    const [menuAction, setMenuAction] = useState("");
     const [category, setCategory] = useState("general");
     const [searchText, setSearchText] = useState("");
     const [newsletter, setNewsletter] = useState(true);
@@ -477,19 +478,35 @@ function DesignSystemShowcase() {
             <Palette className="design-system-tool-icon sr-only" size={20} aria-hidden="true" />
 
             <div className="showcase-body">
-                <main className="showcase-content">
-                    <section className="showcase-section" id="design-tokens">
-                        <div className="token-heading-row">
-                            <SectionHeading
-                                title="Design Tokens"
-                                description="颜色、字体、尺寸、形状、状态和动效由令牌统一定义，组件与页面均引用同一套规范。"
-                            />
-                        </div>
-                        <div aria-label="工作环境设置" className="token-environment-settings">
-                            <div className="token-environment-heading">
-                                <strong>工作环境</strong>
-                                <span>下方组件示例共用这些设置；本地时间会按语言解析，并结合时区转换为绝对时间。</span>
+                <aside className="showcase-sidebar" aria-label="工作台目录">
+                    <nav aria-label="设计系统导航">
+                        <a className="showcase-nav-link" href="#environment">演示环境</a>
+                        <details open>
+                            <summary>Design Tokens</summary>
+                            <div className="showcase-nav-children">
+                                <a className="showcase-nav-link" href="#design-tokens">全部令牌</a>
+                                {tokenCategories.map((tokenCategory) => (
+                                    <a className="showcase-nav-link" href={`#token-${tokenCategory}`} key={tokenCategory}>
+                                        {tokenCategory}
+                                    </a>
+                                ))}
                             </div>
+                        </details>
+                        <details open>
+                            <summary>组件示例</summary>
+                            <div className="showcase-nav-children">
+                                <a className="showcase-nav-link" href="#buttons">按钮与状态</a>
+                                <a className="showcase-nav-link" href="#forms">表单组件</a>
+                                <a className="showcase-nav-link" href="#data">数据组件</a>
+                                <a className="showcase-nav-link" href="#feedback">弹窗与反馈</a>
+                            </div>
+                        </details>
+                    </nav>
+                </aside>
+                <main className="showcase-content">
+                    <section className="showcase-section" id="environment">
+                        <SectionHeading title="演示环境" description="组件示例共用这些设置；本地时间会按语言解析，并结合时区转换为绝对时间。" />
+                        <div aria-label="演示环境设置" className="token-environment-settings">
                             <div className="token-environment-controls">
                                 <JuSelect
                                     label="主题模式"
@@ -559,48 +576,69 @@ function DesignSystemShowcase() {
                             </div>
                             <p className="date-time-demo-output">传入组件的 now（绝对时间，UTC）：{demoNow}</p>
                         </div>
+                    </section>
+                    <section className="showcase-section" id="design-tokens">
+                        <div className="token-heading-row">
+                            <SectionHeading
+                                title="Design Tokens"
+                                description="颜色、字体、尺寸、形状、状态和动效由令牌统一定义，组件与页面均引用同一套规范。"
+                            />
+                        </div>
                         <div className="token-category-list">
                             {tokenCategories.map((tokenCategory) => (
-                                <section className="token-category" key={tokenCategory}>
+                                <section className="token-category" id={`token-${tokenCategory}`} key={tokenCategory}>
                                     <h3>{tokenCategory}</h3>
-                                    <div className="token-grid">
+                                    <div className="color-token-grid">
                                         {designTokens.filter((token) => token.category === tokenCategory).map((token) => (
-                                            <TokenSwatch key={token.variable} {...token} />
+                                            tokenCategory === "颜色"
+                                                ? <ColorToken key={token.variable} {...token} />
+                                                : layoutTokenDetails[token.variable]
+                                                ? <LayoutToken key={token.variable} {...token} />
+                                                : <TokenSwatch key={token.variable} {...token} />
                                         ))}
                                     </div>
                                 </section>
                             ))}
                         </div>
-                        <p className="muted-copy theme-hint">
-                            当前主题：{mode === "system" ? "跟随系统" : mode === "light" ? "浅色" : "深色"}
-                        </p>
                     </section>
 
                     <section className="showcase-section" id="buttons">
                         <SectionHeading title="按钮与状态" description="主要、次要、危险和禁用状态。" />
-                        <div className="component-card">
-                            <div className="demo-row">
-                                <JuButton>主要操作</JuButton>
-                                <JuButton variant="secondary">次要操作</JuButton>
-                                <JuButton variant="outline">描边操作</JuButton>
-                                <JuButton variant="ghost">轻量操作</JuButton>
-                                <JuButton variant="destructive">危险操作</JuButton>
-                                <JuButton size="large">大尺寸</JuButton>
-                                <JuButton disabled>不可用</JuButton>
-                                <JuButton><Plus size={16} />带图标操作</JuButton>
-                                <JuButton variant="outline"><Save size={16} />保存</JuButton>
-                                <JuTooltip content="更多操作">
-                                    <JuIconButton label="更多操作" size="compact"><Ellipsis size={16} aria-hidden="true" /></JuIconButton>
-                                </JuTooltip>
-                                <JuButton loading>正在处理</JuButton>
-                            </div>
-                            <div className="demo-row">
-                                <JuBadge variant="success">成功</JuBadge>
-                                <JuBadge variant="warning">提醒</JuBadge>
-                                <JuBadge variant="destructive">错误</JuBadge>
-                                <JuBadge>中性</JuBadge>
-                                <JuLoading label="组件加载状态" />
-                            </div>
+                        <div className="showcase-example-list">
+                            <ShowcaseExample title="主要操作" description="用于页面中最重要的操作。" code="JuButton · primary"><JuButton>主要操作</JuButton></ShowcaseExample>
+                            <ShowcaseExample title="次要操作" description="用于与主要操作并列的次要操作。" code="JuButton · secondary"><JuButton variant="secondary">次要操作</JuButton></ShowcaseExample>
+                            <ShowcaseExample title="描边操作" description="用于需要保留边界但降低视觉权重的操作。" code="JuButton · outline"><JuButton variant="outline">描边操作</JuButton></ShowcaseExample>
+                            <ShowcaseExample title="轻量操作" description="用于工具栏或其他低强调操作。" code="JuButton · ghost"><JuButton variant="ghost">轻量操作</JuButton></ShowcaseExample>
+                            <ShowcaseExample title="危险操作" description="用于删除等不可逆或高风险操作。" code="JuButton · destructive"><JuButton variant="destructive">危险操作</JuButton></ShowcaseExample>
+                            <ShowcaseExample title="大尺寸" description="用于需要更大点击区域的主要操作。" code="JuButton · large"><JuButton size="large">大尺寸</JuButton></ShowcaseExample>
+                            <ShowcaseExample title="禁用状态" description="操作暂不可用时禁用按钮。" code="JuButton · disabled"><JuButton disabled>不可用</JuButton></ShowcaseExample>
+                            <ShowcaseExample title="带图标操作" description="通过图标辅助表达按钮用途。" code="JuButton · icon"><JuButton><Plus size={16} aria-hidden="true" />带图标操作</JuButton></ShowcaseExample>
+                            <ShowcaseExample title="保存操作" description="描边按钮搭配保存图标的示例。" code="JuButton · outline"><JuButton variant="outline"><Save size={16} aria-hidden="true" />保存</JuButton></ShowcaseExample>
+                            <ShowcaseExample title="更多操作" description="将次要操作收纳到菜单中；选择菜单项可查看示例反馈。" code="JuIconButton · menu">
+                                <div className="showcase-menu-example">
+                                    <DropdownMenu.Root>
+                                        <DropdownMenu.Trigger asChild>
+                                            <JuIconButton label="更多操作" size="compact"><Ellipsis size={16} aria-hidden="true" /></JuIconButton>
+                                        </DropdownMenu.Trigger>
+                                        <DropdownMenu.Portal>
+                                            <DropdownMenu.Content className="showcase-action-menu" sideOffset={4} align="start">
+                                                {["编辑", "复制", "删除"].map((action) => (
+                                                    <DropdownMenu.Item className="showcase-action-menu-item" key={action} onSelect={() => setMenuAction(action)}>
+                                                        {action}
+                                                    </DropdownMenu.Item>
+                                                ))}
+                                            </DropdownMenu.Content>
+                                        </DropdownMenu.Portal>
+                                    </DropdownMenu.Root>
+                                    <span className="showcase-menu-result" role="status">{menuAction ? `示例操作：${menuAction}` : ""}</span>
+                                </div>
+                            </ShowcaseExample>
+                            <ShowcaseExample title="加载状态" description="提交或处理期间展示进度，并阻止重复操作。" code="JuButton · loading"><JuButton loading>正在处理</JuButton></ShowcaseExample>
+                            <ShowcaseExample title="成功状态" description="标记成功完成或正常的状态。" code="JuBadge · success"><JuBadge variant="success">成功</JuBadge></ShowcaseExample>
+                            <ShowcaseExample title="提醒状态" description="标记需要注意的状态。" code="JuBadge · warning"><JuBadge variant="warning">提醒</JuBadge></ShowcaseExample>
+                            <ShowcaseExample title="错误状态" description="标记错误或危险状态。" code="JuBadge · destructive"><JuBadge variant="destructive">错误</JuBadge></ShowcaseExample>
+                            <ShowcaseExample title="中性状态" description="标记不带成功或错误含义的一般状态。" code="JuBadge"><JuBadge>中性</JuBadge></ShowcaseExample>
+                            <ShowcaseExample title="加载指示" description="在内容加载时提示用户等待。" code="JuLoading"><JuLoading label="组件加载状态" /></ShowcaseExample>
                         </div>
                     </section>
 
@@ -1792,6 +1830,18 @@ function SectionHeading({
     );
 }
 
+function ShowcaseExample({ title, description, code, children }: { title: string; description: string; code: string; children: ReactNode }) {
+    return (
+        <article className="showcase-example">
+            <div className="color-token-content">
+                <div className="token-detail-heading"><h4>{title}</h4><code>{code}</code></div>
+                <p>{description}</p>
+            </div>
+            <div className="showcase-example-preview">{children}</div>
+        </article>
+    );
+}
+
 function TokenSwatch({ name, variable, sample }: { name: string; variable: string; sample: string }) {
     return (
         <div className="token-card">
@@ -1802,6 +1852,133 @@ function TokenSwatch({ name, variable, sample }: { name: string; variable: strin
             />
             <span className="token-name">{name}</span>
             <code>{variable}</code>
+        </div>
+    );
+}
+
+function ColorToken({ name, variable }: { name: string; variable: string }) {
+    const [color, setColor] = useState("");
+    const detail = colorTokenDetails[variable];
+
+    useEffect(() => {
+        const updateColor = () => {
+            if (!getComputedStyle(document.documentElement).getPropertyValue(variable).trim()) return;
+            const probe = document.createElement("span");
+            probe.style.color = `var(${variable})`;
+            document.documentElement.appendChild(probe);
+            const resolvedColor = getComputedStyle(probe).color;
+            probe.remove();
+            const components = resolvedColor.match(/[\d.]+/g)?.map(Number);
+            if (!components || components.length < 3) return;
+            const toHex = (value: number) => Math.round(value).toString(16).padStart(2, "0").toUpperCase();
+            const alpha = components[3] === undefined || components[3] >= 1 ? "" : toHex(components[3] * 255);
+            setColor(`#${components.slice(0, 3).map(toHex).join("")}${alpha}`);
+        };
+        const frame = requestAnimationFrame(updateColor);
+        const observer = new MutationObserver(updateColor);
+        observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+        window.addEventListener("load", updateColor);
+        return () => {
+            cancelAnimationFrame(frame);
+            observer.disconnect();
+            window.removeEventListener("load", updateColor);
+        };
+    }, [variable]);
+
+    return (
+        <article className="color-token" data-token={variable} style={{
+            "--design-token": `var(${variable})`,
+            "--example-foreground": variable === "--destructive" ? "var(--destructive-foreground)" : "var(--primary-foreground)",
+        } as CSSProperties}>
+            <span className="color-token-swatch" aria-hidden="true" />
+            <div className="color-token-content">
+                <div className="token-detail-heading"><h4>{name}</h4><code>{variable}</code><code>{color || "读取颜色中…"}</code></div>
+                <p>{detail.usage}</p>
+            </div>
+            <div className={`color-token-example is-${detail.example}`} aria-label={`${name}使用示例`}>
+                {detail.example === "tool" && <Palette size={16} aria-hidden="true" />}
+                {detail.label}
+            </div>
+        </article>
+    );
+}
+
+function LayoutToken({ name, variable, sample }: { name: string; variable: string; sample: string }) {
+    const [value, setValue] = useState("");
+    const detail = layoutTokenDetails[variable];
+
+    useEffect(() => {
+        const updateValue = () => setValue(getComputedStyle(document.documentElement).getPropertyValue(variable).trim());
+        const frame = requestAnimationFrame(updateValue);
+        window.addEventListener("load", updateValue);
+        return () => {
+            cancelAnimationFrame(frame);
+            window.removeEventListener("load", updateValue);
+        };
+    }, [variable]);
+
+    return (
+        <article className="color-token layout-token" data-token={variable} style={{ "--design-token": `var(${variable})` } as CSSProperties}>
+            <span aria-hidden="true" className={`token-preview is-${sample}`} />
+            <div className="color-token-content">
+                <div className="token-detail-heading"><h4>{name}</h4><code>{variable}</code><code>{value}</code></div>
+                <p>{detail.usage}</p>
+            </div>
+            {detail.example === "motion" ? <MotionTokenExample variable={variable} label={name} /> : detail.example === "layer" ? <LayerTokenExample variable={variable} label={name} /> : (
+            <div className={`layout-token-example is-${detail.example}`} aria-label={`${name}使用示例`}>
+                {["icon", "icon-button", "gap"].includes(detail.example) && <Plus aria-hidden="true" />}
+                {detail.example === "spacing" ? (
+                    <><span aria-hidden="true" /><span aria-hidden="true" /></>
+                ) : detail.example === "line-height" ? (
+                    <><span>设计系统示例文字</span><span>第二行文字用于对比</span><span>第三行文字用于对比</span></>
+                ) : detail.example !== "icon-button" && detail.label}
+            </div>
+            )}
+        </article>
+    );
+}
+
+function MotionTokenExample({ variable, label }: { variable: string; label: string }) {
+    const [active, setActive] = useState(false);
+    const isEasing = variable === "--ease-standard";
+    return (
+        <div
+            className="motion-token-example"
+            data-active={active}
+            style={{
+                "--example-duration": isEasing ? "var(--duration-normal)" : `var(${variable})`,
+                "--example-easing": isEasing ? `var(${variable})` : "var(--ease-standard)",
+            } as CSSProperties}
+        >
+            <button type="button" className="motion-token-trigger" aria-label={`${label}使用示例`} aria-pressed={active} onClick={() => setActive((current) => !current)}>
+                {active ? "反向播放" : "播放示例"}
+            </button>
+            <div className="motion-token-lane"><span>原速</span><span className="motion-token-track"><span className="motion-token-thumb" /></span></div>
+            <div className="motion-token-lane"><span>慢放（时长×5）</span><span className="motion-token-track is-slow"><span className="motion-token-thumb" /></span></div>
+            {isEasing && <div className="motion-token-lane"><span>线性对照（时长×5）</span><span className="motion-token-track is-slow is-linear"><span className="motion-token-thumb" /></span></div>}
+        </div>
+    );
+}
+
+const layerExamples = [
+    { variable: "--z-toast", label: "通知" },
+    { variable: "--z-dialog", label: "对话框" },
+    { variable: "--z-popover", label: "浮层" },
+    { variable: "--z-dropdown", label: "菜单" },
+];
+
+function LayerTokenExample({ variable, label }: { variable: string; label: string }) {
+    return (
+        <div className="layer-token-example" role="img" aria-label={`${label}使用示例：菜单、浮层、对话框和通知由低到高重叠`}>
+            {layerExamples.map((layer, index) => (
+                <span
+                    key={layer.variable}
+                    className={`layer-token-item layer-token-item-${index}${layer.variable === variable ? " is-current" : ""}`}
+                    style={{ zIndex: `var(${layer.variable})` }}
+                >
+                    {layer.label}
+                </span>
+            ))}
         </div>
     );
 }

@@ -160,6 +160,12 @@ export function normalizeValue(value: string, mode: PickerMode, context: PickerT
         return `${pad(date.year, 4)}-${pad(date.month)}-${pad(date.day)}`;
     }
     if (mode === "time") {
+        const seconds = /^(\d{2}):(\d{2}):(\d{2})(?:[.,]\d+)?$/.exec(value)?.[3];
+        // Temporal accepts ISO leap-second notation, but this control has no
+        // leap-second semantics and must not silently normalize :60 to :59.
+        if (seconds !== undefined && Number(seconds) > 59) {
+            throw new DateTimeValueError("invalid-value", `无效的时间：${value}`);
+        }
         const time = Temporal.PlainTime.from(value, { overflow: "reject" });
         return `${pad(time.hour)}:${pad(time.minute)}`;
     }

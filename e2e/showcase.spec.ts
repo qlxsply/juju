@@ -21,9 +21,113 @@ test("reference launcher and settings control the workbench theme", async ({
     await expect(
         showcase.getByRole("heading", { name: "Design Tokens" }),
     ).toBeVisible();
-    await expect(showcase.locator(".token-card")).toHaveCount(79);
+    await expect(showcase.locator(".token-card")).toHaveCount(0);
+    await expect(showcase.locator(".color-token:not(.layout-token)")).toHaveCount(27);
     await showcase.close();
     await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+});
+
+test("button and status examples document each variant and provide a working actions menu", async ({ page }) => {
+    await page.goto("/");
+    const [design] = await Promise.all([
+        page.waitForEvent("popup"),
+        page.getByRole("button", { name: /设计系统工作台/ }).click(),
+    ]);
+    const section = design.locator("#buttons");
+    const examples = section.locator(".showcase-example");
+    await expect(examples).toHaveCount(16);
+    for (const example of await examples.all()) {
+        await expect(example.locator("h4")).not.toBeEmpty();
+        await expect(example.locator("code")).not.toBeEmpty();
+        await expect(example.locator("p")).not.toBeEmpty();
+        await expect(example.locator(".showcase-example-preview")).toBeVisible();
+        await expect(example).toHaveCSS("border-top-width", "0px");
+    }
+    await expect(section.getByRole("button", { name: "不可用" })).toBeDisabled();
+    await expect(section.getByRole("button", { name: "正在处理" })).toHaveAttribute("aria-busy", "true");
+    const more = section.getByRole("button", { name: "更多操作" });
+    await more.click();
+    for (const name of ["编辑", "复制", "删除"]) {
+        await expect(design.getByRole("menuitem", { name })).toBeVisible();
+    }
+    await design.getByRole("menuitem", { name: "复制" }).click();
+    await expect(section.getByRole("status").filter({ hasText: "示例操作：复制" })).toBeVisible();
+    await expect(design.getByRole("menu")).toHaveCount(0);
+    await more.focus();
+    await more.press("Enter");
+    await expect(design.getByRole("menu")).toBeVisible();
+    await design.keyboard.press("Escape");
+    await expect(design.getByRole("menu")).toHaveCount(0);
+    await expect(more).toBeFocused();
+    await design.close();
+});
+
+test("date and time pickers use bounded sliders and native navigation visuals", async ({ page }) => {
+    await page.goto("/");
+    const [design] = await Promise.all([
+        page.waitForEvent("popup"),
+        page.getByRole("button", { name: /设计系统工作台/ }).click(),
+    ]);
+    const pickerFor = async (name: string) => {
+        const input = design.getByRole("textbox", { name, exact: true });
+        const id = await input.getAttribute("id");
+        await input.click();
+        const picker = design.locator(`.air-datepicker.juju-air-picker-${id!.replace(/[^a-zA-Z0-9_-]/g, "")}`);
+        await expect(picker).toHaveClass(/-juju-visible-/);
+        return { input, picker };
+    };
+
+    const { input: dateInput, picker: date } = await pickerFor("计划日期");
+    await expect(date.locator(".air-datepicker--pointer")).toBeVisible();
+    await expect(date.locator(".air-datepicker-nav--action svg").first()).toHaveCSS("width", "32px");
+    const dayColor = await date.locator(".air-datepicker-body--day-name").first().evaluate((element) => getComputedStyle(element).color);
+    const mutedColor = await date.locator(".air-datepicker-nav--action path").first().evaluate((element) => getComputedStyle(element).stroke);
+    expect(dayColor).not.toBe(mutedColor);
+    await expect(date).toHaveCSS("transform-origin", /^[\d.]+px 0px/);
+    const openAnimation = await date.evaluate((element) => element.getAnimations().map((animation) => ({
+        duration: animation.effect?.getTiming().duration,
+        easing: animation.effect?.getTiming().easing,
+        frames: (animation.effect as KeyframeEffect).getKeyframes().map((frame) => frame.transform),
+    })));
+    expect(openAnimation.some((animation) => animation.duration === 520 && animation.frames.some((frame) => frame?.includes("rotateX(-88deg)")))).toBe(true);
+    await dateInput.press("Escape");
+    await design.getByRole("textbox", { name: "名称", exact: true }).focus();
+    await dateInput.focus();
+    await expect(date).toHaveClass(/-juju-visible-/);
+    await date.evaluate(async (element) => { await Promise.allSettled(element.getAnimations().map((animation) => animation.finished)); });
+    await expect(date).toBeVisible();
+
+    const { input: timeInput, picker: time } = await pickerFor("计划时间");
+    const hours = time.locator('input[name="hours"]');
+    const minutes = time.locator('input[name="minutes"]');
+    await expect(hours).toHaveAttribute("min", "0");
+    await expect(hours).toHaveAttribute("max", "23");
+    await expect(minutes).toHaveAttribute("min", "0");
+    await expect(minutes).toHaveAttribute("max", "59");
+    await timeInput.fill("12:60");
+    await timeInput.press("Tab");
+    await expect(timeInput).toHaveAttribute("aria-invalid", "true");
+    await timeInput.fill("23:59");
+    await timeInput.press("Tab");
+    await expect(timeInput).not.toHaveAttribute("aria-invalid", "true");
+    await expect(timeInput).toHaveValue("23:59");
+
+    const { input: boundedInput, picker: bounded } = await pickerFor("时间范围与步长");
+    await expect(bounded.locator('input[name="hours"]')).toHaveAttribute("min", "8");
+    await expect(bounded.locator('input[name="hours"]')).toHaveAttribute("max", "18");
+    await expect(bounded.locator('input[name="minutes"]')).toHaveAttribute("step", "5");
+    await expect(bounded.locator('input[name="minutes"]')).toHaveAttribute("max", "59");
+    await boundedInput.fill("18:00");
+    await boundedInput.press("Tab");
+    await expect(boundedInput).toHaveValue("18:00");
+    await boundedInput.click();
+    await expect(bounded.locator('input[name="minutes"]')).toHaveAttribute("max", "0");
+
+    const { picker: datetime } = await pickerFor("日期和时间");
+    await expect(datetime.locator(".air-datepicker--pointer")).toBeVisible();
+    await expect(datetime.locator('input[name="hours"]')).toHaveAttribute("max", "23");
+    await expect(datetime.locator('input[name="minutes"]')).toHaveAttribute("max", "59");
+    await design.close();
 });
 
 test("design workbench showcases public components and keeps theme controls stable", async ({ page }) => {
@@ -33,30 +137,144 @@ test("design workbench showcases public components and keeps theme controls stab
         page.getByRole("button", { name: /设计系统工作台/ }).click(),
     ]);
     await expect(design.locator(".showcase-header")).toHaveCount(0);
-    await expect(design.locator(".showcase-sidebar")).toHaveCount(0);
-    await expect(design.locator(".showcase-section")).toHaveCount(5);
-    for (const heading of ["Design Tokens", "按钮与状态", "表单组件", "数据组件", "弹窗与反馈"]) {
+    const navigation = design.getByRole("navigation", { name: "设计系统导航" });
+    await expect(navigation).toBeVisible();
+    await expect(design.locator(".sidebar-heading")).toHaveCount(0);
+    await expect(navigation.getByRole("link", { name: "演示环境" })).toBeVisible();
+    await expect(design.locator(".showcase-section")).toHaveCount(6);
+    for (const heading of ["演示环境", "Design Tokens", "按钮与状态", "表单组件", "数据组件", "弹窗与反馈"]) {
         await expect(design.getByRole("heading", { name: heading })).toBeVisible();
     }
+    const headingStyles = await design.locator("#environment h2, #design-tokens h2").evaluateAll((headings) =>
+        headings.map((heading) => {
+            const style = getComputedStyle(heading);
+            return [style.fontFamily, style.fontSize, style.fontWeight, style.lineHeight];
+        }),
+    );
+    expect(headingStyles[0]).toEqual(headingStyles[1]);
+    await expect(design.locator("#environment + #design-tokens")).toHaveCount(1);
+    await navigation.getByRole("link", { name: "颜色", exact: true }).click();
+    await expect(design).toHaveURL(/#token-/);
+    await expect(design.locator("#token-颜色")).toBeInViewport();
+    await navigation.getByText("组件示例", { exact: true }).click();
+    await expect(navigation.getByRole("link", { name: "表单组件" })).toBeHidden();
+    await navigation.getByText("组件示例", { exact: true }).click();
+    await navigation.getByRole("link", { name: "表单组件" }).click();
+    await expect(design.locator("#forms")).toBeInViewport();
     await expect(design.getByRole("button", { name: "返回 Juju" })).toHaveCount(0);
     await expect(design.locator(".token-environment-settings")).toBeVisible();
-    await expect(design.locator(".token-card")).toHaveCount(79);
-    const swatchColors = await design.locator(".token-preview.is-color").evaluateAll((swatches) =>
+    await expect(design.locator(".token-environment-settings")).toHaveCSS("border-top-width", "0px");
+    await expect(design.locator(".token-environment-settings")).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+    await expect(design.locator(".token-card")).toHaveCount(0);
+    await expect(design.locator(".theme-hint")).toHaveCount(0);
+    const colorTokens = design.locator(".color-token:not(.layout-token)");
+    await expect(colorTokens).toHaveCount(27);
+    const swatchColors = await design.locator(".color-token-swatch").evaluateAll((swatches) =>
         swatches.map((swatch) => getComputedStyle(swatch).backgroundColor),
     );
     expect(swatchColors).toHaveLength(27);
     expect(swatchColors.every((color) => color !== "rgba(0, 0, 0, 0)")).toBe(true);
-    const firstToken = design.locator(".token-card").first();
-    const [previewBox, nameBox, codeBox] = await Promise.all([
-        firstToken.locator(".token-preview").boundingBox(),
-        firstToken.locator(".token-name").boundingBox(),
-        firstToken.locator("code").boundingBox(),
+    const colorTokenList = await colorTokens.all();
+    for (const [index, token] of colorTokenList.entries()) {
+        await expect(token.locator("h4")).not.toBeEmpty();
+        await expect(token.locator("code").first()).toHaveText(/^--/);
+        const values = swatchColors[index].match(/[\d.]+/g)!.map(Number);
+        const toHex = (value: number) => Math.round(value).toString(16).padStart(2, "0").toUpperCase();
+        const expectedHex = `#${values.slice(0, 3).map(toHex).join("")}${values[3] === undefined || values[3] >= 1 ? "" : toHex(values[3] * 255)}`;
+        await expect(token.locator("code").last()).toHaveText(expectedHex);
+        await expect(token.locator("p")).not.toBeEmpty();
+        await expect(token.locator(".color-token-example")).not.toBeEmpty();
+        await expect(token).toHaveCSS("border-top-width", "0px");
+    }
+    const firstColorBox = await colorTokens.nth(0).boundingBox();
+    const secondColorBox = await colorTokens.nth(1).boundingBox();
+    expect(firstColorBox).not.toBeNull();
+    expect(secondColorBox).not.toBeNull();
+    expect(secondColorBox!.y).toBeGreaterThanOrEqual(firstColorBox!.y + firstColorBox!.height);
+    await expect(design.locator('[data-token="--foreground"] .color-token-example')).toHaveClass(/is-text/);
+    await expect(design.locator('[data-token="--background"] .color-token-example')).toHaveClass(/is-background/);
+    await expect(design.locator('[data-token="--overlay"] code').last()).toHaveText("#0F172A61");
+    const headerBoxes = await Promise.all([
+        colorTokens.first().locator("h4").boundingBox(),
+        colorTokens.first().locator("code").first().boundingBox(),
+        colorTokens.first().locator("code").last().boundingBox(),
     ]);
-    expect(previewBox).not.toBeNull();
-    expect(nameBox).not.toBeNull();
-    expect(codeBox).not.toBeNull();
-    expect(previewBox!.x + previewBox!.width).toBeLessThan(nameBox!.x);
-    expect(nameBox!.y).toBeLessThan(codeBox!.y);
+    expect(headerBoxes.every((box) => box && Math.abs(box.y - headerBoxes[0]!.y) < 5)).toBe(true);
+    for (const [category, count] of [["圆角", 6], ["边框", 6], ["尺寸", 12], ["间距", 6], ["字体", 12], ["阴影", 3]] as const) {
+        const tokens = design.locator(`[id="token-${category}"] .layout-token`);
+        await expect(tokens).toHaveCount(count);
+        for (const token of await tokens.all()) {
+            await expect(token.locator("p")).not.toBeEmpty();
+            await expect(token.locator(".layout-token-example")).toBeVisible();
+            await expect(token).toHaveCSS("border-top-width", "0px");
+        }
+        const first = await tokens.nth(0).boundingBox();
+        const second = await tokens.nth(1).boundingBox();
+        expect(second!.y).toBeGreaterThanOrEqual(first!.y + first!.height);
+    }
+    await expect(design.locator('[data-token="--radius-lg"] .layout-token-example')).toHaveCSS("border-radius", "10px");
+    await expect(design.locator('[data-token="--border-style-dashed"] .layout-token-example')).toHaveCSS("border-top-style", "dashed");
+    await expect(design.locator('[data-token="--button-height-lg"] .layout-token-example')).toHaveCSS("height", "40px");
+    await expect(design.locator('[data-token="--space-8"] .layout-token-example')).toHaveCSS("column-gap", "32px");
+    await expect(design.locator('[data-token="--font-size-xl"] .layout-token-example')).toHaveCSS("font-size", "18px");
+    await expect(design.locator('[data-token="--font-weight-semibold"] .layout-token-example')).toHaveCSS("font-weight", "600");
+    for (const [variable, height] of [["--line-height-tight", "15px"], ["--line-height-normal", "18px"], ["--line-height-relaxed", "19.2px"]] as const) {
+        const example = design.locator(`[data-token="${variable}"] .layout-token-example`);
+        await expect(example).toHaveCSS("line-height", height);
+        await expect(example.locator("span")).toHaveCount(3);
+    }
+    for (const variable of ["--shadow-popover", "--shadow-dialog", "--shadow-menu"]) {
+        const example = design.locator(`[data-token="${variable}"] .layout-token-example`);
+        const [shadow, token] = await example.evaluate((element, name) => [
+            getComputedStyle(element).boxShadow,
+            getComputedStyle(document.documentElement).getPropertyValue(name).trim(),
+        ], variable);
+        expect(shadow).not.toBe("none");
+        expect(token).not.toBe("");
+    }
+    for (const [variable, duration, slowDuration] of [["--duration-fast", "0.1s", "0.5s"], ["--duration-normal", "0.16s", "0.8s"], ["--ease-standard", "0.16s", "0.8s"]] as const) {
+        const token = design.locator(`[data-token="${variable}"]`);
+        const example = token.locator(".motion-token-example");
+        const button = example.getByRole("button", { name: /使用示例/ });
+        const thumb = example.locator(".motion-token-track:not(.is-slow) .motion-token-thumb");
+        const slowThumb = example.locator(".motion-token-track.is-slow:not(.is-linear) .motion-token-thumb");
+        await expect(thumb).toHaveCSS("transition-duration", duration);
+        await expect(slowThumb).toHaveCSS("transition-duration", slowDuration);
+        await expect(thumb).toHaveCSS("transition-timing-function", "cubic-bezier(0.2, 0, 0, 1)");
+        await expect(example.getByText("慢放（时长×5）")).toBeVisible();
+        if (variable === "--ease-standard") {
+            await expect(example.locator(".is-linear .motion-token-thumb")).toHaveCSS("transition-timing-function", "linear");
+        }
+        await button.click();
+        await expect(button).toHaveAttribute("aria-pressed", "true");
+        await expect.poll(async () => {
+            const [track, dot] = await Promise.all([slowThumb.locator("..").boundingBox(), slowThumb.boundingBox()]);
+            return Math.abs(track!.x + track!.width - dot!.x - dot!.width - 2);
+        }).toBeLessThan(1);
+        await button.click();
+        await expect(button).toHaveAttribute("aria-pressed", "false");
+    }
+    for (const [variable, zIndex] of [["--z-dropdown", "20"], ["--z-popover", "30"], ["--z-dialog", "40"], ["--z-toast", "50"]] as const) {
+        const example = design.locator(`[data-token="${variable}"] .layer-token-example`);
+        await example.scrollIntoViewIfNeeded();
+        await expect(example.locator(".layer-token-item")).toHaveCount(4);
+        await expect(example.locator(".is-current")).toHaveCSS("z-index", zIndex);
+        const stacked = await example.locator(".layer-token-item").evaluateAll((items) =>
+            items.map((item) => ({ z: Number(getComputedStyle(item).zIndex), box: item.getBoundingClientRect().toJSON() })),
+        );
+        expect(stacked.map((item) => item.z)).toEqual([50, 40, 30, 20]);
+        expect(stacked[0].box.left).toBeLessThan(stacked[1].box.right);
+        expect(stacked[0].box.top).toBeLessThan(stacked[1].box.bottom);
+        const topLayer = await example.evaluate((element) => {
+            const items = element.querySelectorAll(".layer-token-item");
+            const top = items[0].getBoundingClientRect();
+            const below = items[1].getBoundingClientRect();
+            const x = (Math.max(top.left, below.left) + Math.min(top.right, below.right)) / 2;
+            const y = (Math.max(top.top, below.top) + Math.min(top.bottom, below.bottom)) / 2;
+            return document.elementFromPoint(x, y)?.textContent;
+        });
+        expect(topLayer).toBe("通知");
+    }
     const infoHint = design.getByText("名称仅用于本地显示");
     await expect(infoHint).toBeHidden();
     await design.getByRole("textbox", { name: "名称", exact: true }).focus();
@@ -151,6 +369,8 @@ test("design workbench showcases public components and keeps theme controls stab
     expect(await design.evaluate(() => window.scrollY)).toBe(scrollBeforeOpen);
     await design.getByRole("option", { name: "深色" }).click();
     expect(await design.evaluate(() => window.scrollY)).toBe(scrollBeforeOpen);
+    await expect(design.locator('[data-token="--primary"] code').last()).toHaveText("#8AA9FF");
+    await expect(design.locator('[data-token="--overlay"] code').last()).toHaveText("#0000009E");
     const categoryPicker = design.getByRole("combobox", { name: "工具分类" });
     await categoryPicker.scrollIntoViewIfNeeded();
     const categoryScrollBefore = await design.evaluate(() => window.scrollY);
