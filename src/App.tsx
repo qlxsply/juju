@@ -9,7 +9,7 @@ import {
     Palette,
     Settings as SettingsIcon,
 } from "lucide-react";
-import jujuIcon from "../src-tauri/icons/icon.png";
+import jujuIcon from "../src-tauri/icons/icon.ico";
 import {
     JuBadge,
     JuButton,
@@ -454,12 +454,7 @@ function DesignSystemShowcase() {
                             </div>
                         </div>
                         <div className="token-grid">
-                            <TokenSwatch name="Primary" token="--primary" />
-                            <TokenSwatch name="Background" token="--background" />
-                            <TokenSwatch name="Surface" token="--surface" />
-                            <TokenSwatch name="Border" token="--border" />
-                            <TokenSwatch name="Success" token="--success" />
-                            <TokenSwatch name="Destructive" token="--destructive" />
+                            {colorTokens.map(({ name, token }) => <TokenSwatch key={token} name={name} token={token} />)}
                         </div>
                         <p className="muted-copy theme-hint">
                             当前主题：{mode === "system" ? "跟随系统" : mode === "light" ? "浅色" : "深色"}
@@ -1645,3 +1640,30 @@ function TokenSwatch({ name, token }: { name: string; token: string }) {
         </div>
     );
 }
+
+const colorTokens = [
+    { name: "主色", token: "--primary" },
+    { name: "主色悬停", token: "--primary-hover" },
+    { name: "主色文字", token: "--primary-foreground" },
+    { name: "背景", token: "--background" },
+    { name: "表面", token: "--surface" },
+    { name: "表面悬停", token: "--surface-hover" },
+    { name: "正文", token: "--foreground" },
+    { name: "次要文字", token: "--muted-foreground" },
+    { name: "边框", token: "--border" },
+    { name: "选中背景", token: "--selection" },
+    { name: "焦点环", token: "--focus-ring" },
+    { name: "成功", token: "--success" },
+    { name: "警告", token: "--warning" },
+    { name: "危险", token: "--destructive" },
+    { name: "危险文字", token: "--destructive-foreground" },
+    { name: "禁用背景", token: "--disabled-background" },
+    { name: "禁用文字", token: "--disabled-foreground" },
+    { name: "遮罩", token: "--overlay" },
+    { name: "工具：JSON", token: "--tool-json" },
+    { name: "工具：Toto", token: "--tool-toto" },
+    { name: "工具：EchoHttp", token: "--tool-echo" },
+    { name: "工具：Kairos", token: "--tool-kairos" },
+    { name: "工具：MySQL", token: "--tool-mysql" },
+    { name: "工具：设计系统", token: "--tool-design" },
+];

@@ -1,7 +1,7 @@
 # Juju 桌面重写开发计划
 
 **状态：** 实施计划  
-**适用工程：** `desktop/`  
+**适用工程：** 仓库根目录
 **产品范围：** Windows 桌面应用；Tauri 2 + React + TypeScript + Vite + Rust  
 **相关文档：** [`../rewrite-functional-specification.md`](../rewrite-functional-specification.md)、[`../new-ui.md`](../new-ui.md)
 
@@ -21,12 +21,12 @@
 
 ### 1.2 产品与数据约束
 
-- 新工程位于 `desktop/`，旧 .NET/WPF 工程和 `editor/` 保持原位；本计划不要求搬移或删除旧工程。
+- 新工程源码位于仓库根目录；旧 .NET/WPF 应用代码已移除。`editor/` 是此前独立的编辑器工程。
 - Juju 主进程负责托盘、应用级服务和通用任务调度。工具窗口关闭时销毁对应 WebView；关闭最后一个工具窗口不能退出主进程。显式选择托盘“退出”才进入关停流程。
 - Toto 提醒不依赖 Toto 窗口存活；调度器不依赖 React 页面或前端计时器。工具向宿主调度器登记任务，工具自身负责业务判断和执行。
 - 用户数据采用可直接阅读、编辑的明文文件，不使用 DPAPI 加密。保存需支持原子替换；JSON 文档需检测外部修改和未保存编辑冲突。数据根目录、文件路径和既有格式以功能规格为准。
 - 现行 JSON、Toto CSV/配置、MySQL Schema 连接及快照格式和用户可见行为作为迁移基线。MySQL 密码按用户决定以明文保存在连接配置文件中，不写入日志或快照。
-- 每个阶段验收后都执行 Windows Release 构建，并交付单文件 `desktop/artifacts/Juju.exe`。只生成可执行文件，不生成 MSI/NSIS 安装文件。
+- 每个阶段验收后都执行 Windows Release 构建，并交付单文件 `artifacts/Juju.exe`。只生成可执行文件，不生成 MSI/NSIS 安装文件。
 - 本计划不包含自动发布、更新检查、更新下载或自动升级。Release EXE 是每个阶段的本地可运行交付物。
 
 ### 1.3 每阶段共同验收门槛
@@ -57,9 +57,9 @@ pnpm package:exe
 
 **实施内容：**
 
-- 建立 `desktop/` pnpm 工程、React/TypeScript/Vite 入口、Tauri 2 Rust crate 和 Windows capability 配置。
+- 建立 pnpm 工程、React/TypeScript/Vite 入口、Tauri 2 Rust crate 和 Windows capability 配置。
 - 建立可运行的主窗口、基本错误呈现、日志入口和开发/构建脚本；锁定依赖版本。
-- 建立测试、格式、静态检查配置，以及 `desktop/README.md` 的开发指引。
+- 建立测试、格式、静态检查配置，以及 `README.md` 的开发指引。
 - 不生成自动更新或自动发布配置，不添加尚未使用的业务依赖；阶段完成时产出 `artifacts/Juju.exe`。
 
 **验收：** 在 Windows 开发环境执行 `pnpm install --frozen-lockfile`、共同验收命令；主窗口可启动、关闭并再次启动；前端构建及 Rust 编译通过。
@@ -198,13 +198,13 @@ Windows 桌面启动及手动验收：
 
 ## 5. 当前执行记录
 
-**当前 Windows Release 产物：** `desktop/artifacts/Juju.exe`。使用 `pnpm package:exe` 生成并实际启动验证；本次未生成安装文件。
+**当前 Windows Release 产物：** `artifacts/Juju.exe`。使用 `pnpm package:exe` 生成并实际启动验证；本次未生成安装文件。
 
 **当前主界面/设置界面基线：** 按用户提供的 `juju.html` 重做 Launcher 和设置中心；截图外围蓝色是预览背景，不属于窗口，应用窗口本身不绘制该蓝框。Ju 控件用于按钮、输入框、开关、下拉框及弹窗；原型中的 Q/W/E/K 工具入口、WPF 的 MySQL Schema M 入口、设置分组和设置交互均保留，设计系统工作台作为额外工具入口显示。
 
 ### 阶段 0：可启动的桌面工程骨架 — 已完成
 
-- 建立 `desktop/` React/TypeScript/Vite + Tauri 2 工程、Rust crate、Windows capability、错误边界和开发说明。
+- 建立 React/TypeScript/Vite + Tauri 2 工程、Rust crate、Windows capability、错误边界和开发说明。
 - 已实机启动 Windows 桌面窗口，并确认进程响应。
 - 验证：冻结安装、类型检查、lint、格式检查、Vitest、前端构建、Rust 检查与格式检查通过。
 

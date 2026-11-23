@@ -29,7 +29,7 @@ import {
     JuTemporalInput,
 } from "../ju";
 import type { AppSettings } from "../../services/desktop";
-import jujuIcon from "../../../src-tauri/icons/icon.png";
+import jujuIcon from "../../../src-tauri/icons/icon.ico";
 import packageJson from "../../../package.json";
 import {
     chooseDataRoot,
@@ -65,10 +65,10 @@ const appNavigation: { id: PageId; label: string; icon: LucideIcon }[] = [
 ];
 
 const toolNavigation: { id: "json" | "toto" | "echo" | "kairos"; label: string; color: string; icon?: LucideIcon }[] = [
-    { id: "json" as const, label: "JSON 格式化", color: "#4c86dc", icon: FileJson },
-    { id: "toto" as const, label: "Toto 日程提醒", color: "#399f98", icon: Clock3 },
-    { id: "echo" as const, label: "EchoHttp", color: "#f59b47", icon: Puzzle },
-    { id: "kairos" as const, label: "Kairos", color: "#795ef2", icon: Puzzle },
+    { id: "json" as const, label: "JSON 格式化", color: "var(--tool-json)", icon: FileJson },
+    { id: "toto" as const, label: "Toto 日程提醒", color: "var(--tool-toto)", icon: Clock3 },
+    { id: "echo" as const, label: "EchoHttp", color: "var(--tool-echo)", icon: Puzzle },
+    { id: "kairos" as const, label: "Kairos", color: "var(--tool-kairos)", icon: Puzzle },
 ];
 
 const jsonShortcutContexts = [

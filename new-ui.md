@@ -834,7 +834,7 @@ Zustand 仅用于需要共享的前端 UI 状态。
 
 # 10. 项目目录规范
 
-以下 `src/`、`src-tauri/`、`tests/`、`package.json` 等路径均相对于仓库内的 `desktop/` 新工程目录，不是仓库根目录；旧 .NET 工程仍使用根目录的 `src/`、`tests/`。
+以下 `src/`、`src-tauri/`、`tests/`、`package.json` 等路径相对于仓库根目录。原计划中的 `desktop/` 子目录已移除。
 
 ```text
 juju/

@@ -40,6 +40,7 @@ test("design workbench showcases public components and keeps theme controls stab
     }
     await expect(design.getByRole("button", { name: "返回 Juju" })).toHaveCount(0);
     await expect(design.locator(".token-theme-control")).toBeVisible();
+    await expect(design.locator(".token-card")).toHaveCount(24);
     const infoHint = design.getByText("名称仅用于本地显示");
     await expect(infoHint).toBeHidden();
     await design.getByRole("textbox", { name: "名称", exact: true }).focus();
@@ -53,6 +54,10 @@ test("design workbench showcases public components and keeps theme controls stab
         await input.press("Backspace");
         for (const segment of await group.locator(".ju-temporal-segment").all()) await expect(segment).toHaveValue("");
     }
+    const temporalHeights = await design.locator(".ju-temporal-control").evaluateAll((controls) =>
+        controls.map((control) => Math.round(control.getBoundingClientRect().height)),
+    );
+    expect(new Set(temporalHeights).size).toBe(1);
     const date = design.getByRole("group", { name: "计划日期", exact: true });
     await date.getByLabel("计划日期 年").fill("2026");
     await expect(date.getByLabel("计划日期 月")).toBeFocused();

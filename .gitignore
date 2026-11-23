@@ -5,7 +5,7 @@ ehthumbs.db
 $RECYCLE.BIN/
 *.lnk
 
-# .NET / WinForms / Visual Studio
+# Build outputs
 [Bb]in/
 [Oo]bj/
 [Dd]ebug/
@@ -16,31 +16,19 @@ x86/
 [Aa][Rr][Mm]64/
 .vs/
 *.user
-*.rsuser
 *.suo
 *.userosscache
-*.sln.docstates
 *.cache
-*.nupkg
-*.snupkg
-*.nuget.props
-*.nuget.targets
 TestResults/
 [Tt]est[Rr]esult*/
 [Bb]uild[Ll]og.*
 artifacts/
 publish/
-
-# NuGet local package folders
-packages/
-*.nuget.g.props
-*.nuget.g.targets
-project.assets.json
-project.nuget.cache
+playwright-report/
+test-results/
 
 # JetBrains Rider / IntelliJ
 .idea/
-*.sln.iml
 *.iml
 *.iws
 out/
@@ -83,7 +71,6 @@ coverage/
 
 # Rust / Tauri
 target/
-src-tauri/target/
 src-tauri/gen/
 src-tauri/icons/*
 !src-tauri/icons/icon.ico

@@ -1,9 +1,0 @@
-node_modules/
-dist/
-coverage/
-playwright-report/
-test-results/
-src-tauri/target/
-src-tauri/gen/
-src-tauri/icons/*
-!src-tauri/icons/icon.ico
