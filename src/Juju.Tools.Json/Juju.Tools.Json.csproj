@@ -1,3 +1,0 @@
-<Project Sdk="Microsoft.NET.Sdk">
-  <ItemGroup><ProjectReference Include="..\Juju.Core\Juju.Core.csproj" /></ItemGroup>
-</Project>
