@@ -26,11 +26,12 @@ import {
     JuInput,
     JuSelect,
     JuSwitch,
-    JuTemporalInput,
+    JuTimePicker,
 } from "../ju";
 import type { AppSettings } from "../../services/desktop";
 import jujuIcon from "../../../src-tauri/icons/icon.ico";
 import packageJson from "../../../package.json";
+import { useTimeContext } from "../date-time/time-context";
 import {
     chooseDataRoot,
     loadTotoDefaultRemindMinutes,
@@ -98,6 +99,7 @@ export function SettingsPage({
     onMessage: (message: string) => void;
 }) {
     const settings = initialSettings;
+    const timeContext = useTimeContext();
     const [page, setPage] = useState<PageId>(() => {
         const requested = new URLSearchParams(window.location.search).get("section");
         const valid: PageId[] = ["general", "shortcuts", "storage", "display", "updates", "json", "toto", "echo", "kairos"];
@@ -519,33 +521,33 @@ export function SettingsPage({
                 </SettingsSection>
                 <SettingsSection title="每日事项盘点">
                     <SettingRow kind="time" label="开始盘点">
-                        <JuTemporalInput
+                        <JuTimePicker
                             label="开始盘点"
+                            {...timeContext}
                             labelHidden
-                            type="time"
                             value={dailyStartDraft}
                             onBlur={(time) =>
                                 updateToto(
                                     "daily_review_start_time",
-                                    time,
+                                    time ?? "",
                                 )
                             }
-                            onChange={setDailyStartDraft}
+                            onChange={(time) => setDailyStartDraft(time ?? "")}
                         />
                     </SettingRow>
                     <SettingRow kind="time" label="结束盘点">
-                        <JuTemporalInput
+                        <JuTimePicker
                             label="结束盘点"
+                            {...timeContext}
                             labelHidden
-                            type="time"
                             value={dailyEndDraft}
                             onBlur={(time) =>
                                 updateToto(
                                     "daily_review_end_time",
-                                    time,
+                                    time ?? "",
                                 )
                             }
-                            onChange={setDailyEndDraft}
+                            onChange={(time) => setDailyEndDraft(time ?? "")}
                         />
                     </SettingRow>
                     <SettingRow kind="toggle" label="仅工作日提醒">

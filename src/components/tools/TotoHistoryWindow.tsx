@@ -2,33 +2,40 @@ import { useCallback, useEffect, useMemo, useState, type KeyboardEvent } from "r
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { isTauri } from "@tauri-apps/api/core";
 import { CalendarClock } from "lucide-react";
+import { Temporal } from "@js-temporal/polyfill";
 import { JuButton, JuDataTable, JuDatePicker, JuDialog, JuInput, JuSelect } from "../ju";
 import type { JuColumn } from "../ju";
 import type { TotoHistoryItem } from "../../services/desktop";
 import { closeCurrentToolWindow, loadTotoHistory } from "../../services/desktop";
 import { useWindowDrag } from "../../hooks/useWindowDrag";
+import { useTimeContext } from "../date-time/time-context";
 
 const pageSizes = [10, 20, 50, 100, 200, 500];
 
 export function TotoHistoryWindow() {
     const startWindowDrag = useWindowDrag();
-    const today = localDateInput();
+    const timeContext = useTimeContext();
+    const currentInstant = typeof timeContext.now === "number"
+        ? Temporal.Instant.fromEpochMilliseconds(timeContext.now)
+        : Temporal.Instant.from(timeContext.now);
+    const today = currentInstant.toZonedDateTimeISO(timeContext.timeZone).toPlainDate();
+    const todayValue = today.toString();
     const [items, setItems] = useState<TotoHistoryItem[]>([]);
     const [searchDraft, setSearchDraft] = useState("");
     const [search, setSearch] = useState("");
     const [statusDraft, setStatusDraft] = useState("all");
     const [status, setStatus] = useState("all");
     const [period, setPeriod] = useState("本月");
-    const [from, setFrom] = useState(() => `${today.slice(0, 7)}-01`);
-    const [to, setTo] = useState(today);
-    const [appliedFrom, setAppliedFrom] = useState(() => `${today.slice(0, 7)}-01`);
-    const [appliedTo, setAppliedTo] = useState(today);
+    const [from, setFrom] = useState(() => today.with({ day: 1 }).toString());
+    const [to, setTo] = useState(todayValue);
+    const [appliedFrom, setAppliedFrom] = useState(() => today.with({ day: 1 }).toString());
+    const [appliedTo, setAppliedTo] = useState(todayValue);
     const [page, setPage] = useState(1);
     const [pageSize, setPageSize] = useState(10);
     const [selected, setSelected] = useState<TotoHistoryItem | null>(null);
     const [detailItem, setDetailItem] = useState<TotoHistoryItem | null>(null);
     const [error, setError] = useState("");
-    const resetBounds = useMemo(() => getPeriodBounds("本月", new Date()), []);
+    const resetBounds = useMemo(() => getPeriodBounds("本月", today), [today]);
 
     const refresh = useCallback(async () => {
         try {
@@ -107,7 +114,7 @@ export function TotoHistoryWindow() {
             setTo("");
             return;
         }
-        const bounds = getPeriodBounds(value, new Date());
+        const bounds = getPeriodBounds(value, today);
         if (bounds) {
             setFrom(bounds[0]);
             setTo(bounds[1]);
@@ -123,7 +130,7 @@ export function TotoHistoryWindow() {
         }
         const presets = ["本周", "上一周", "本月", "上一月", "本年", "上一年"];
         const matching = presets.find((preset) => {
-            const bounds = getPeriodBounds(preset, new Date());
+            const bounds = getPeriodBounds(preset, today);
             return bounds?.[0] === nextFrom && bounds[1] === nextTo;
         });
         setPeriod(matching ?? "自定义");
@@ -157,9 +164,9 @@ export function TotoHistoryWindow() {
                 <JuInput label="搜索事项内容或备注" labelHidden value={searchDraft} placeholder="搜索事项内容或备注" onChange={(event) => setSearchDraft(event.currentTarget.value)} onKeyDown={(event) => { if (event.key === "Enter") runQuery(); }} />
                 <JuSelect ariaLabel="历史事项状态" value={statusDraft} onValueChange={setStatusDraft} options={[{ value: "all", label: "全部状态" }, { value: "已完成", label: "已完成" }, { value: "已取消", label: "已取消" }]} />
                 <JuSelect ariaLabel="历史时间范围预设" value={period} onValueChange={selectPeriod} options={["不限", "本周", "上一周", "本月", "上一月", "本年", "上一年", "自定义"].map((label) => ({ value: label, label }))} />
-                <JuDatePicker label="结束时间起" labelHidden value={from} onChange={(value) => updateDateRange(value, to)} />
+                <JuDatePicker label="结束时间起" labelHidden {...timeContext} value={from} onChange={(value) => updateDateRange(value ?? "", to)} />
                 <span>至</span>
-                <JuDatePicker label="结束时间止" labelHidden value={to} onChange={(value) => updateDateRange(from, value)} />
+                <JuDatePicker label="结束时间止" labelHidden {...timeContext} value={to} onChange={(value) => updateDateRange(from, value ?? "")} />
                 <JuButton onClick={runQuery}>查询</JuButton>
                 <JuButton variant="outline" onClick={reset}>重置</JuButton>
             </div>
@@ -193,29 +200,19 @@ export function TotoHistoryWindow() {
     );
 }
 
-function getPeriodBounds(period: string, now: Date): [string, string] | null {
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const monday = new Date(today);
-    monday.setDate(today.getDate() - ((today.getDay() + 6) % 7));
-    const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
-    const yearStart = new Date(today.getFullYear(), 0, 1);
-    const bounds: Record<string, [Date, Date]> = {
-        本周: [monday, addDays(monday, 6)],
-        上一周: [addDays(monday, -7), addDays(monday, -1)],
-        本月: [monthStart, addDays(new Date(today.getFullYear(), today.getMonth() + 1, 1), -1)],
-        上一月: [new Date(today.getFullYear(), today.getMonth() - 1, 1), addDays(monthStart, -1)],
-        本年: [yearStart, new Date(today.getFullYear(), 11, 31)],
-        上一年: [new Date(today.getFullYear() - 1, 0, 1), new Date(today.getFullYear() - 1, 11, 31)],
+function getPeriodBounds(period: string, today: Temporal.PlainDate): [string, string] | null {
+    const monday = today.subtract({ days: today.dayOfWeek - 1 });
+    const monthStart = today.with({ day: 1 });
+    const yearStart = today.with({ month: 1, day: 1 });
+    const previousMonthStart = monthStart.subtract({ months: 1 });
+    const previousYearStart = Temporal.PlainDate.from({ year: today.year - 1, month: 1, day: 1 });
+    const bounds: Record<string, [Temporal.PlainDate, Temporal.PlainDate]> = {
+        本周: [monday, monday.add({ days: 6 })],
+        上一周: [monday.subtract({ days: 7 }), monday.subtract({ days: 1 })],
+        本月: [monthStart, monthStart.add({ months: 1 }).subtract({ days: 1 })],
+        上一月: [previousMonthStart, monthStart.subtract({ days: 1 })],
+        本年: [yearStart, today.with({ month: 12, day: 31 })],
+        上一年: [previousYearStart, previousYearStart.with({ month: 12, day: 31 })],
     };
-    return bounds[period] ? [localDateInput(bounds[period][0]), localDateInput(bounds[period][1])] : null;
-}
-
-function addDays(date: Date, days: number): Date {
-    const result = new Date(date);
-    result.setDate(result.getDate() + days);
-    return result;
-}
-
-function localDateInput(date = new Date()): string {
-    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+    return bounds[period]?.map((date) => date.toString()) as [string, string] | undefined ?? null;
 }

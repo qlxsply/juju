@@ -21,7 +21,7 @@ test("reference launcher and settings control the workbench theme", async ({
     await expect(
         showcase.getByRole("heading", { name: "Design Tokens" }),
     ).toBeVisible();
-    await expect(showcase.locator(".token-card")).toHaveCount(6);
+    await expect(showcase.locator(".token-card")).toHaveCount(79);
     await showcase.close();
     await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
 });
@@ -39,31 +39,100 @@ test("design workbench showcases public components and keeps theme controls stab
         await expect(design.getByRole("heading", { name: heading })).toBeVisible();
     }
     await expect(design.getByRole("button", { name: "返回 Juju" })).toHaveCount(0);
-    await expect(design.locator(".token-theme-control")).toBeVisible();
-    await expect(design.locator(".token-card")).toHaveCount(24);
+    await expect(design.locator(".token-environment-settings")).toBeVisible();
+    await expect(design.locator(".token-card")).toHaveCount(79);
+    const swatchColors = await design.locator(".token-preview.is-color").evaluateAll((swatches) =>
+        swatches.map((swatch) => getComputedStyle(swatch).backgroundColor),
+    );
+    expect(swatchColors).toHaveLength(27);
+    expect(swatchColors.every((color) => color !== "rgba(0, 0, 0, 0)")).toBe(true);
+    const firstToken = design.locator(".token-card").first();
+    const [previewBox, nameBox, codeBox] = await Promise.all([
+        firstToken.locator(".token-preview").boundingBox(),
+        firstToken.locator(".token-name").boundingBox(),
+        firstToken.locator("code").boundingBox(),
+    ]);
+    expect(previewBox).not.toBeNull();
+    expect(nameBox).not.toBeNull();
+    expect(codeBox).not.toBeNull();
+    expect(previewBox!.x + previewBox!.width).toBeLessThan(nameBox!.x);
+    expect(nameBox!.y).toBeLessThan(codeBox!.y);
     const infoHint = design.getByText("名称仅用于本地显示");
     await expect(infoHint).toBeHidden();
     await design.getByRole("textbox", { name: "名称", exact: true }).focus();
     await expect(infoHint).toBeVisible();
     await expect(design.getByText("接近长度上限")).toBeVisible();
     await expect(design.getByText("请检查该字段")).toBeVisible();
-    for (const label of ["计划日期", "计划时间", "日期和时间"]) {
-        const group = design.getByRole("group", { name: label, exact: true });
-        const input = group.locator(".ju-temporal-segment").first();
-        await expect(input).not.toHaveValue("");
-        await input.press("Backspace");
-        for (const segment of await group.locator(".ju-temporal-segment").all()) await expect(segment).toHaveValue("");
-    }
-    const temporalHeights = await design.locator(".ju-temporal-control").evaluateAll((controls) =>
+    const dateField = design.getByRole("textbox", { name: "计划日期", exact: true });
+    const dateInputId = await dateField.getAttribute("id");
+    const datePicker = design.locator(`.air-datepicker.juju-air-picker-${dateInputId!.replace(/[^a-zA-Z0-9_-]/g, "")}`);
+    const dateFieldBox = await dateField.boundingBox();
+    expect(dateFieldBox).not.toBeNull();
+    await dateField.click({ position: { x: dateFieldBox!.width - 8, y: dateFieldBox!.height / 2 } });
+    let picker = datePicker;
+    await expect(picker).toBeVisible();
+    await expect(picker).toHaveCSS("width", "246px");
+    const monthActions = picker.locator(".air-datepicker-nav--action");
+    await expect(monthActions).toHaveCount(2);
+    const monthTitle = picker.locator(".air-datepicker-nav--title");
+    const monthBeforeNavigation = await monthTitle.innerText();
+    await monthActions.last().click();
+    await expect(monthTitle).not.toHaveText(monthBeforeNavigation);
+    await monthActions.first().click();
+    await expect(monthTitle).toHaveText(monthBeforeNavigation);
+    await picker.locator(".air-datepicker-nav--title").click();
+    await picker.locator(".air-datepicker-nav--title").click();
+    await picker.locator(".air-datepicker-cell.-year-").filter({ hasText: /^2027$/ }).click();
+    const afterYearView = await picker.locator(".air-datepicker-body--cells:visible").getAttribute("class");
+    if (afterYearView?.includes("-years-")) await picker.locator(".air-datepicker-nav--title").click();
+    await picker.getByText("二月", { exact: true }).click();
+    await picker.locator(".air-datepicker-cell.-day-:not(.-other-month-)").filter({ hasText: /^4$/ }).click();
+    await expect(dateField).toHaveValue("2027-02-04");
+    await expect(picker).toBeVisible();
+    await expect(picker.locator(".air-datepicker-buttons")).toHaveCount(0);
+
+    const timeField = design.getByRole("textbox", { name: "计划时间", exact: true });
+    const timeInputId = await timeField.getAttribute("id");
+    const timePickerElement = design.locator(`.air-datepicker.juju-air-picker-${timeInputId!.replace(/[^a-zA-Z0-9_-]/g, "")}`);
+    const timeFieldBox = await timeField.boundingBox();
+    expect(timeFieldBox).not.toBeNull();
+    await timeField.fill("09:45");
+    await timeField.press("Tab");
+    await expect(timeField).toHaveValue("09:45");
+    await timeField.click();
+    picker = timePickerElement;
+    await expect(picker).toBeVisible();
+    await expect(picker.locator(".air-datepicker-time--row")).toHaveCount(2);
+    await expect(picker.locator(".air-datepicker-body--cells.-days-")).toBeHidden();
+    await picker.locator(".air-datepicker-time--row input").last().focus();
+    await picker.locator(".air-datepicker-time--row input").last().press("ArrowRight");
+    await expect(picker).toBeVisible();
+    await design.getByRole("textbox", { name: "备注", exact: true }).click();
+    await expect(picker).not.toHaveClass(/-juju-visible-/);
+
+    const dateTimeField = design.getByRole("textbox", { name: "日期和时间", exact: true });
+    const dateTimeInputId = await dateTimeField.getAttribute("id");
+    const dateTimePicker = design.locator(`.air-datepicker.juju-air-picker-${dateTimeInputId!.replace(/[^a-zA-Z0-9_-]/g, "")}`);
+    await dateTimeField.fill("2026-11-23 09:45");
+    await dateTimeField.press("Tab");
+    await expect(dateTimeField).toHaveValue("2026-11-23 09:45");
+    await expect(design.getByText(/Instant: 2026-11-23T01:45:00Z/)).toBeVisible();
+    await dateTimeField.click();
+    picker = dateTimePicker;
+    await expect(picker).toHaveClass(/-juju-visible-/);
+    await picker.locator(".air-datepicker-cell.-day-").filter({ hasText: /^24$/ }).click();
+    await expect(picker).toHaveClass(/-juju-visible-/);
+    await expect(dateTimeField).toHaveValue("2026-11-24 09:45");
+    await expect(design.getByText(/Instant: 2026-11-24T01:45:00Z/)).toBeVisible();
+    await dateTimeField.press("Escape");
+    await design.getByRole("combobox", { name: "业务时区" }).click();
+    await design.getByRole("option", { name: "America/New_York" }).click();
+    await expect(dateTimeField).toHaveValue("2026-11-23 20:45");
+    await expect(design.getByText(/Instant: 2026-11-24T01:45:00Z/)).toBeVisible();
+    const temporalHeights = await design.locator(".ju-air-picker-input").evaluateAll((controls) =>
         controls.map((control) => Math.round(control.getBoundingClientRect().height)),
     );
     expect(new Set(temporalHeights).size).toBe(1);
-    const date = design.getByRole("group", { name: "计划日期", exact: true });
-    await date.getByLabel("计划日期 年").fill("2026");
-    await expect(date.getByLabel("计划日期 月")).toBeFocused();
-    await design.keyboard.type("24");
-    await expect(date.getByLabel("计划日期 月")).toHaveValue("02");
-    await expect(date.getByLabel("计划日期 日")).toHaveValue("04");
     expect(await page.evaluate(() => getComputedStyle(document.documentElement).scrollbarGutter)).toBe("auto");
     await expect(design.getByText("Juju UI Foundation")).toHaveCount(0);
 
@@ -91,6 +160,46 @@ test("design workbench showcases public components and keeps theme controls stab
     await design.getByRole("option", { name: "数据工具" }).click();
     expect(await design.evaluate(() => window.scrollY)).toBe(categoryScrollBefore);
     await design.close();
+});
+
+test("date-time controls use explicit business zone and locale, not the browser zone", async ({ browser }) => {
+    const context = await browser.newContext({ timezoneId: "Pacific/Honolulu" });
+    try {
+        const page = await context.newPage();
+        await page.goto("/");
+        const [design] = await Promise.all([
+            page.waitForEvent("popup"),
+            page.getByRole("button", { name: /设计系统工作台/ }).click(),
+        ]);
+        const dateField = design.getByRole("textbox", { name: "计划日期", exact: true });
+        const timeField = design.getByRole("textbox", { name: "计划时间", exact: true });
+        const dateTimeField = design.getByRole("textbox", { name: "日期和时间", exact: true });
+        const environmentTime = design.getByRole("textbox", { name: "示例时间（本地）", exact: true });
+        const environmentNow = design.locator(".token-environment-settings .date-time-demo-output");
+        await expect(environmentTime).toHaveValue(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/);
+        await expect(environmentNow).toContainText(/传入组件的 now（绝对时间，UTC）：\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z/);
+        await environmentTime.fill("2026-11-23 09:30");
+        await expect(environmentNow).toContainText("2026-11-23T01:30:00Z");
+        await expect(dateField).toHaveValue("2026-11-21");
+        await expect(timeField).toHaveValue("09:30");
+        await expect(dateTimeField).toHaveValue("2026-11-21 09:30");
+
+        await design.getByRole("combobox", { name: "业务时区" }).click();
+        await design.getByRole("option", { name: "UTC" }).click();
+        await expect(environmentNow).toContainText("2026-11-23T09:30:00Z");
+        await expect(dateTimeField).toHaveValue("2026-11-21 01:30");
+        await expect(design.getByText(/Instant: 2026-11-21T01:30:00Z/)).toBeVisible();
+        await expect(dateField).toHaveValue("2026-11-21");
+        await expect(timeField).toHaveValue("09:30");
+
+        await design.getByRole("combobox", { name: "日历语言" }).click();
+        await design.getByRole("option", { name: "English (US)" }).click();
+        await expect(environmentTime).toHaveValue("11/23/2026 09:30 AM");
+        await expect(dateTimeField).toHaveValue("11/21/2026 01:30 AM");
+        await design.close();
+    } finally {
+        await context.close();
+    }
 });
 
 test("launcher settings persist as plain application preferences", async ({
@@ -148,13 +257,17 @@ test("settings use labeled horizontal paths and working JSON window controls", a
     await page.getByRole("button", { name: "Toto 日程提醒" }).click();
     await expect(page.getByRole("heading", { name: "节假日" })).toHaveCount(0);
     await expect(page.getByRole("switch", { name: "仅工作日提醒" })).toBeVisible();
-    const reviewStart = page.getByRole("group", { name: "开始盘点" });
-    await reviewStart.getByLabel("开始盘点 时").fill("09");
-    await reviewStart.getByLabel("开始盘点 分").fill("30");
-    await reviewStart.getByLabel("开始盘点 分").press("Tab");
-    await reviewStart.getByLabel("开始盘点 时").press("Backspace");
-    await expect(reviewStart.getByLabel("开始盘点 时")).toHaveValue("");
-    await expect(reviewStart.getByLabel("开始盘点 分")).toHaveValue("");
+    const reviewStart = page.getByRole("textbox", { name: "开始盘点", exact: true });
+    await reviewStart.click();
+    const timePicker = page.locator(".air-datepicker.juju-air-date-picker.-juju-visible-");
+    await expect(timePicker.locator(".air-datepicker-time")).toBeVisible();
+    await reviewStart.fill("09:45");
+    await reviewStart.press("Tab");
+    await expect(reviewStart).toHaveValue("09:45");
+    await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("juju-toto-settings") ?? "{}").daily_review_start_time)).toBe("09:45");
+    await reviewStart.fill("");
+    await reviewStart.press("Tab");
+    await expect(reviewStart).toHaveValue("");
     await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("juju-toto-settings") ?? "{}").daily_review_start_time)).toBe("");
     const totoStorage = page.locator(".settings-section").filter({ has: page.getByRole("heading", { name: "存储目录" }) });
     await expect(totoStorage.locator(".path-label svg")).toHaveCount(0);
@@ -320,7 +433,7 @@ test("Toto follows the quick-add, edit, finish and separate history workflows", 
     await expect(history.getByRole("row", { name: /阶段三取消验收事项.*已取消/ })).toBeVisible();
     await expect(history.locator(".toto-tool-brand svg")).toBeVisible();
     const filterControls = await history.locator(".toto-history-filterbar").evaluate((element) =>
-        Array.from(element.querySelectorAll(".ju-select-trigger, .ju-temporal-control, .toto-history-filterbar > .ju-button"))
+        Array.from(element.querySelectorAll(".ju-select-trigger, .ju-air-picker-input, .toto-history-filterbar > .ju-button"))
             .map((control) => {
                 const rect = control.getBoundingClientRect();
                 return { top: rect.top, bottom: rect.bottom };

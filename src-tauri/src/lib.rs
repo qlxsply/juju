@@ -3,6 +3,7 @@ mod scheduler;
 mod settings;
 mod toto;
 
+use chrono::{SecondsFormat, Utc};
 use scheduler::TaskScheduler;
 use serde::{Deserialize, Serialize};
 use settings::AppSettings;
@@ -29,6 +30,25 @@ struct WindowPosition {
 }
 
 struct WindowPositionStore(Arc<Mutex<HashMap<String, WindowPosition>>>);
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct TimeContextPayload {
+    now: String,
+    time_zone: String,
+    locale: String,
+}
+
+#[tauri::command]
+fn get_time_context() -> Result<TimeContextPayload, String> {
+    let time_zone =
+        iana_time_zone::get_timezone().map_err(|error| format!("无法读取系统时区：{error}"))?;
+    Ok(TimeContextPayload {
+        now: Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true),
+        time_zone,
+        locale: "zh-CN".into(),
+    })
+}
 
 impl Default for WindowPositionStore {
     fn default() -> Self {
@@ -700,6 +720,7 @@ pub fn run() {
         )
         .manage(TaskScheduler::default())
         .invoke_handler(tauri::generate_handler![
+            get_time_context,
             load_app_settings,
             save_app_settings,
             schedule_demo_task,

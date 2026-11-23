@@ -13,7 +13,7 @@ type JuButtonVariant =
     | "subnav"
     | "subnavActive"
     | "launcher";
-type JuButtonSize = "default" | "compact";
+type JuButtonSize = "default" | "compact" | "large";
 
 interface JuButtonProps extends Omit<
     ButtonHTMLAttributes<HTMLButtonElement>,

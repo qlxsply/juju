@@ -2178,6 +2178,7 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "csv",
+ "iana-time-zone",
  "log",
  "reqwest 0.12.28",
  "serde",

@@ -5,6 +5,7 @@ import { CalendarClock, X } from "lucide-react";
 import { JuButton, JuDataTable, JuIconButton, type JuColumn } from "../ju";
 import { closeCurrentToolWindow, openTotoToolWindow } from "../../services/desktop";
 import { useWindowDrag } from "../../hooks/useWindowDrag";
+import { useTimeContext } from "../date-time/time-context";
 
 interface ReminderRow {
     id: string;
@@ -13,6 +14,13 @@ interface ReminderRow {
 
 export function TotoReminderWindow() {
     const startWindowDrag = useWindowDrag();
+    const timeContext = useTimeContext();
+    const clock = new Intl.DateTimeFormat(timeContext.locale, {
+        timeZone: timeContext.timeZone,
+        hour: "2-digit",
+        minute: "2-digit",
+        hourCycle: "h23",
+    }).format(new Date(typeof timeContext.now === "number" ? timeContext.now : Date.parse(timeContext.now)));
     const [content, setContent] = useState(() =>
         new URLSearchParams(window.location.search).get("content") ?? "",
     );
@@ -42,7 +50,7 @@ export function TotoReminderWindow() {
             <header className="toto-tool-header draggable-titlebar" onMouseDown={startWindowDrag}>
                 <div className="toto-tool-brand"><CalendarClock size={18} /><strong>Toto 提醒</strong></div>
                 <div className="toto-tool-actions">
-                    <span>{new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+                    <span>{clock}</span>
                     <JuIconButton label="关闭提醒窗口" onMouseDown={(event) => event.stopPropagation()} onClick={() => void close()}><X size={17} /></JuIconButton>
                 </div>
             </header>

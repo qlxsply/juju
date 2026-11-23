@@ -1,12 +1,16 @@
-import { lazy, Suspense, useCallback, useEffect, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useState, type CSSProperties } from "react";
 import { emitTo, listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { LogicalSize } from "@tauri-apps/api/dpi";
+import { Temporal } from "@js-temporal/polyfill";
 import {
     ArrowLeftRight,
     Clock3,
     Database,
+    Ellipsis,
     Palette,
+    Plus,
+    Save,
     Settings as SettingsIcon,
 } from "lucide-react";
 import jujuIcon from "../src-tauri/icons/icon.ico";
@@ -16,6 +20,7 @@ import {
     JuCheckbox,
     JuConfirmDialog,
     JuDatePicker,
+    JuDateTimePicker,
     JuDataTable,
     type JuColumn,
     JuDialog,
@@ -31,7 +36,7 @@ import {
     JuSeparator,
     JuStatusBar,
     JuSwitch,
-    JuTemporalInput,
+    JuTimePicker,
     JuTabs,
     JuTextarea,
     JuToast,
@@ -39,6 +44,11 @@ import {
     JuTooltip,
 } from "./components/ju";
 import { useThemeStore } from "./design-system/theme-store";
+import { designTokens, tokenCategories } from "./design-system/tokens";
+import { parsePickerInput } from "./components/date-time/direct-input";
+import { resolvePickerFormat } from "./components/date-time/picker-format";
+import { TimeContextProvider } from "./components/date-time/time-context-provider";
+import { useTimeContext } from "./components/date-time/time-context";
 import { SettingsPage as ReferenceSettingsPage } from "./components/shell/SettingsPage";
 import { TotoToolWindow } from "./components/tools/TotoToolWindow";
 import { TotoHistoryWindow } from "./components/tools/TotoHistoryWindow";
@@ -101,6 +111,33 @@ const demoColumns: JuColumn<DemoRow>[] = [
 ];
 
 export function App() {
+    return (
+        <TimeContextProvider>
+            <AppContent />
+        </TimeContextProvider>
+    );
+}
+
+function formatDemoWallTime(instant: string, timeZone: string, locale: string): string {
+    const value = Temporal.Instant.from(instant).toZonedDateTimeISO(timeZone);
+    const pad = (part: number) => String(part).padStart(2, "0");
+    if (locale === "en-US") {
+        const hour = value.hour % 12 || 12;
+        return `${pad(value.month)}/${pad(value.day)}/${value.year} ${pad(hour)}:${pad(value.minute)} ${value.hour < 12 ? "AM" : "PM"}`;
+    }
+    return `${value.year}-${pad(value.month)}-${pad(value.day)} ${pad(value.hour)}:${pad(value.minute)}`;
+}
+
+function parseDemoWallTime(input: string, timeZone: string, locale: string): string {
+    const formats = resolvePickerFormat({ mode: "datetime", locale });
+    const fields = parsePickerInput(input, formats.inputFormat, "datetime", locale);
+    return Temporal.PlainDateTime.from(fields)
+        .toZonedDateTime(timeZone, { disambiguation: "reject" })
+        .toInstant()
+        .toString();
+}
+
+function AppContent() {
     const initialTool = new URLSearchParams(window.location.search).get("tool");
     const nativeLabel = isTauri() ? getCurrentWindow().label : "";
     const [view, setView] = useState(() => {
@@ -404,7 +441,15 @@ function DesignSystemShowcase() {
     const [preferredMode, setPreferredMode] = useState("desktop");
     const [selectedDate, setSelectedDate] = useState("2026-11-21");
     const [selectedTime, setSelectedTime] = useState("09:30");
-    const [selectedDateTime, setSelectedDateTime] = useState("2026-11-21T09:30");
+    const [selectedDateTime, setSelectedDateTime] = useState("2026-11-21T01:30:00Z");
+    const [dstPolicy, setDstPolicy] = useState<"reject" | "earlier" | "later">("reject");
+    const appTimeContext = useTimeContext();
+    const [demoTimeZone, setDemoTimeZone] = useState(appTimeContext.timeZone);
+    const [demoLocale, setDemoLocale] = useState(appTimeContext.locale);
+    const [demoNow, setDemoNow] = useState(() => Temporal.Now.instant().toString());
+    const [demoTimeInput, setDemoTimeInput] = useState(() => formatDemoWallTime(Temporal.Now.instant().toString(), appTimeContext.timeZone, appTimeContext.locale));
+    const [demoTimeError, setDemoTimeError] = useState("");
+    const demoTimeContext = { now: demoNow, timeZone: demoTimeZone, locale: demoLocale };
     const [page, setPage] = useState(1);
     const mode = useThemeStore((state) => state.mode);
     const setMode = useThemeStore((state) => state.setMode);
@@ -437,12 +482,17 @@ function DesignSystemShowcase() {
                         <div className="token-heading-row">
                             <SectionHeading
                                 title="Design Tokens"
-                                description="颜色与主题令牌驱动公共组件的统一外观。"
+                                description="颜色、字体、尺寸、形状、状态和动效由令牌统一定义，组件与页面均引用同一套规范。"
                             />
-                            <div className="token-theme-control">
-                                <span>主题模式</span>
+                        </div>
+                        <div aria-label="工作环境设置" className="token-environment-settings">
+                            <div className="token-environment-heading">
+                                <strong>工作环境</strong>
+                                <span>下方组件示例共用这些设置；本地时间会按语言解析，并结合时区转换为绝对时间。</span>
+                            </div>
+                            <div className="token-environment-controls">
                                 <JuSelect
-                                    ariaLabel="主题模式"
+                                    label="主题模式"
                                     value={mode}
                                     onValueChange={(value) => setMode(value as typeof mode)}
                                     options={[
@@ -451,10 +501,75 @@ function DesignSystemShowcase() {
                                         { value: "dark", label: "深色" },
                                     ]}
                                 />
+                                <JuSelect
+                                    label="业务时区"
+                                    value={demoTimeZone}
+                                    onValueChange={(nextZone) => {
+                                        setDemoTimeZone(nextZone);
+                                        try {
+                                            setDemoNow(parseDemoWallTime(demoTimeInput, nextZone, demoLocale));
+                                            setDemoTimeError("");
+                                        } catch (error) {
+                                            setDemoTimeError(error instanceof Error ? error.message : String(error));
+                                        }
+                                    }}
+                                    options={[
+                                        { value: "Asia/Shanghai", label: "Asia/Shanghai" },
+                                        { value: "America/New_York", label: "America/New_York" },
+                                        { value: "UTC", label: "UTC" },
+                                    ]}
+                                />
+                                <JuSelect
+                                    label="日历语言"
+                                    value={demoLocale}
+                                    onValueChange={(nextLocale) => {
+                                        setDemoLocale(nextLocale);
+                                        setDemoTimeInput(formatDemoWallTime(demoNow, demoTimeZone, nextLocale));
+                                        setDemoTimeError("");
+                                    }}
+                                    options={[
+                                        { value: "zh-CN", label: "简体中文" },
+                                        { value: "en-US", label: "English (US)" },
+                                    ]}
+                                />
+                                <JuInput
+                                    label="示例时间（本地）"
+                                    value={demoTimeInput}
+                                    error={demoTimeError || undefined}
+                                    placeholder={resolvePickerFormat({ mode: "datetime", locale: demoLocale }).inputFormat}
+                                    onChange={(event) => {
+                                        const nextInput = event.currentTarget.value;
+                                        setDemoTimeInput(nextInput);
+                                        try {
+                                            setDemoNow(parseDemoWallTime(nextInput, demoTimeZone, demoLocale));
+                                            setDemoTimeError("");
+                                        } catch {
+                                            // Keep editing text; validate and report a complete value on blur.
+                                        }
+                                    }}
+                                    onBlur={() => {
+                                        try {
+                                            setDemoNow(parseDemoWallTime(demoTimeInput, demoTimeZone, demoLocale));
+                                            setDemoTimeError("");
+                                        } catch (error) {
+                                            setDemoTimeError(error instanceof Error ? error.message : String(error));
+                                        }
+                                    }}
+                                />
                             </div>
+                            <p className="date-time-demo-output">传入组件的 now（绝对时间，UTC）：{demoNow}</p>
                         </div>
-                        <div className="token-grid">
-                            {colorTokens.map(({ name, token }) => <TokenSwatch key={token} name={name} token={token} />)}
+                        <div className="token-category-list">
+                            {tokenCategories.map((tokenCategory) => (
+                                <section className="token-category" key={tokenCategory}>
+                                    <h3>{tokenCategory}</h3>
+                                    <div className="token-grid">
+                                        {designTokens.filter((token) => token.category === tokenCategory).map((token) => (
+                                            <TokenSwatch key={token.variable} {...token} />
+                                        ))}
+                                    </div>
+                                </section>
+                            ))}
                         </div>
                         <p className="muted-copy theme-hint">
                             当前主题：{mode === "system" ? "跟随系统" : mode === "light" ? "浅色" : "深色"}
@@ -470,9 +585,12 @@ function DesignSystemShowcase() {
                                 <JuButton variant="outline">描边操作</JuButton>
                                 <JuButton variant="ghost">轻量操作</JuButton>
                                 <JuButton variant="destructive">危险操作</JuButton>
+                                <JuButton size="large">大尺寸</JuButton>
                                 <JuButton disabled>不可用</JuButton>
+                                <JuButton><Plus size={16} />带图标操作</JuButton>
+                                <JuButton variant="outline"><Save size={16} />保存</JuButton>
                                 <JuTooltip content="更多操作">
-                                    <JuIconButton label="更多操作">···</JuIconButton>
+                                    <JuIconButton label="更多操作" size="compact"><Ellipsis size={16} aria-hidden="true" /></JuIconButton>
                                 </JuTooltip>
                                 <JuButton loading>正在处理</JuButton>
                             </div>
@@ -500,9 +618,57 @@ function DesignSystemShowcase() {
                                     { value: "data", label: "数据工具" },
                                 ]}
                             />
-                            <JuDatePicker label="计划日期" value={selectedDate} onChange={setSelectedDate} />
-                            <JuTemporalInput label="计划时间" type="time" value={selectedTime} onChange={setSelectedTime} />
-                            <JuTemporalInput label="日期和时间" type="datetime-local" value={selectedDateTime} onChange={setSelectedDateTime} />
+                            <JuDatePicker {...demoTimeContext} label="计划日期" value={selectedDate} onChange={(next) => setSelectedDate(next ?? "")} />
+                            <JuTimePicker {...demoTimeContext} label="计划时间" value={selectedTime} onChange={(next) => setSelectedTime(next ?? "")} />
+                            <JuDateTimePicker {...demoTimeContext} label="日期和时间" value={selectedDateTime} onChange={(next) => setSelectedDateTime(next ?? "")} />
+                            <JuDateTimePicker {...demoTimeContext} label="now 默认值" />
+                            <JuDateTimePicker
+                                {...demoTimeContext}
+                                label="DST 重复时间策略演示"
+                                value="2026-11-01T05:30:00Z"
+                                disambiguation={dstPolicy}
+                            />
+                            <JuSelect
+                                label="重复时间处理"
+                                value={dstPolicy}
+                                onValueChange={(value) => setDstPolicy(value as typeof dstPolicy)}
+                                options={[
+                                    { value: "reject", label: "拒绝歧义时间" },
+                                    { value: "earlier", label: "选择较早时刻" },
+                                    { value: "later", label: "选择较晚时刻" },
+                                ]}
+                            />
+                            <JuDatePicker {...demoTimeContext} label="日期范围限制" value="2026-11-21" min="2026-11-01" max="2026-11-30" />
+                            <JuTimePicker {...demoTimeContext} label="时间范围与步长" value="09:30" min="08:00" max="18:00" minuteStep={5} />
+                            <JuDatePicker {...demoTimeContext} label="禁用日期组件" value="2026-11-21" disabled />
+                            <JuDateTimePicker {...demoTimeContext} label="错误状态示例" value="invalid-date-time" />
+                            <JuDateTimePicker
+                                {...demoTimeContext}
+                                label="DST 重复时间示例"
+                                value="2026-11-01T05:30:00Z"
+                                disambiguation={dstPolicy}
+                            />
+                            <JuSelect
+                                label="重复时间策略"
+                                value={dstPolicy}
+                                onValueChange={(value) => setDstPolicy(value as typeof dstPolicy)}
+                                options={[
+                                    { value: "reject", label: "拒绝歧义时间" },
+                                    { value: "earlier", label: "选择较早时刻" },
+                                    { value: "later", label: "选择较晚时刻" },
+                                ]}
+                            />
+                            <JuDatePicker {...demoTimeContext} label="范围内日期" value="2026-11-21" min="2026-11-01" max="2026-11-30" />
+                            <JuTimePicker {...demoTimeContext} label="受限时间（5 分钟步长）" value="09:30" min="08:00" max="18:00" minuteStep={5} />
+                            <JuDatePicker {...demoTimeContext} label="禁用日期" value="2026-11-21" disabled />
+                            <JuDateTimePicker {...demoTimeContext} label="错误值示例" value="not-an-instant" />
+                            <JuButton
+                                variant="secondary"
+                                onClick={() => setSelectedDateTime(Temporal.Instant.from(demoNow).toString())}
+                            >
+                                外部设置 DateTime value
+                            </JuButton>
+                            <p className="date-time-demo-output">Date: {selectedDate} · Time: {selectedTime} · Instant: {selectedDateTime}</p>
                             <JuTextarea label="备注" placeholder="输入备注" rows={3} />
                             <div className="choice-stack">
                                 <JuCheckbox label="订阅本地提醒" checked={newsletter} onCheckedChange={setNewsletter} />
@@ -1115,6 +1281,10 @@ function PlaceholderToolWindow({ toolId }: { toolId: string }) {
 }
 
 export function LegacyTotoWindow({ settings }: { settings: AppSettings }) {
+    const timeContext = useTimeContext();
+    const today = (typeof timeContext.now === "number"
+        ? Temporal.Instant.fromEpochMilliseconds(timeContext.now)
+        : Temporal.Instant.from(timeContext.now)).toZonedDateTimeISO(timeContext.timeZone).toPlainDate();
     const [items, setItems] = useState<TotoItem[]>([]);
     const [history, setHistory] = useState<TotoHistoryItem[]>([]);
     const [showHistory, setShowHistory] = useState(false);
@@ -1122,12 +1292,8 @@ export function LegacyTotoWindow({ settings }: { settings: AppSettings }) {
     const [historyStatus, setHistoryStatus] = useState("all");
     const [historyPage, setHistoryPage] = useState(1);
     const [historyPageSize, setHistoryPageSize] = useState(10);
-    const [historyFromDate, setHistoryFromDate] = useState(() => {
-        const firstDay = new Date();
-        firstDay.setDate(1);
-        return localDateInput(firstDay);
-    });
-    const [historyToDate, setHistoryToDate] = useState(() => localDateInput());
+    const [historyFromDate, setHistoryFromDate] = useState(() => today.with({ day: 1 }).toString());
+    const [historyToDate, setHistoryToDate] = useState(() => today.toString());
     const [settingsOpen, setSettingsOpen] = useState(false);
     const [defaultRemindMinutes, setDefaultRemindMinutes] = useState(5);
     const [remindMinutesDraft, setRemindMinutesDraft] = useState("5");
@@ -1194,6 +1360,10 @@ export function LegacyTotoWindow({ settings }: { settings: AppSettings }) {
 
     const saveItem = async () => {
         try {
+            if (plannedDate && plannedTime) {
+                Temporal.PlainDateTime.from(`${plannedDate}T${plannedTime}`)
+                    .toZonedDateTime(timeContext.timeZone, { disambiguation: "reject" });
+            }
             const plannedAt =
                 plannedDate && plannedTime
                     ? `${plannedDate} ${plannedTime}`
@@ -1441,18 +1611,17 @@ export function LegacyTotoWindow({ settings }: { settings: AppSettings }) {
                         />
                         <JuDatePicker
                             label="计划日期"
+                            {...timeContext}
                             value={plannedDate}
-                            onChange={setPlannedDate}
+                            onChange={(next) => setPlannedDate(next ?? "")}
                             disabled={quickEntry}
                         />
-                        <JuInput
+                        <JuTimePicker
                             label="计划时间（可选）"
-                            type="time"
+                            {...timeContext}
                             value={plannedTime}
                             disabled={quickEntry}
-                            onChange={(event) =>
-                                setPlannedTime(event.currentTarget.value)
-                            }
+                            onChange={(next) => setPlannedTime(next ?? "")}
                         />
                         <JuInput
                             label="备注"
@@ -1541,17 +1710,19 @@ export function LegacyTotoWindow({ settings }: { settings: AppSettings }) {
                                 />
                                 <JuDatePicker
                                     label="结束日期起"
+                                    {...timeContext}
                                     value={historyFromDate}
                                     onChange={(value) => {
-                                        setHistoryFromDate(value);
+                                        setHistoryFromDate(value ?? "");
                                         setHistoryPage(1);
                                     }}
                                 />
                                 <JuDatePicker
                                     label="结束日期止"
+                                    {...timeContext}
                                     value={historyToDate}
                                     onChange={(value) => {
-                                        setHistoryToDate(value);
+                                        setHistoryToDate(value ?? "");
                                         setHistoryPage(1);
                                     }}
                                 />
@@ -1604,13 +1775,6 @@ export function LegacyTotoWindow({ settings }: { settings: AppSettings }) {
     );
 }
 
-function localDateInput(date = new Date()) {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, "0");
-    const day = String(date.getDate()).padStart(2, "0");
-    return `${year}-${month}-${day}`;
-}
-
 function SectionHeading({
     title,
     description,
@@ -1628,42 +1792,16 @@ function SectionHeading({
     );
 }
 
-function TokenSwatch({ name, token }: { name: string; token: string }) {
+function TokenSwatch({ name, variable, sample }: { name: string; variable: string; sample: string }) {
     return (
         <div className="token-card">
             <span
-                className="token-color"
-                style={{ backgroundColor: `var(${token})` }}
+                aria-hidden="true"
+                className={`token-preview is-${sample}`}
+                style={{ "--design-token": `var(${variable})` } as CSSProperties}
             />
             <span className="token-name">{name}</span>
-            <code>{token}</code>
+            <code>{variable}</code>
         </div>
     );
 }
-
-const colorTokens = [
-    { name: "主色", token: "--primary" },
-    { name: "主色悬停", token: "--primary-hover" },
-    { name: "主色文字", token: "--primary-foreground" },
-    { name: "背景", token: "--background" },
-    { name: "表面", token: "--surface" },
-    { name: "表面悬停", token: "--surface-hover" },
-    { name: "正文", token: "--foreground" },
-    { name: "次要文字", token: "--muted-foreground" },
-    { name: "边框", token: "--border" },
-    { name: "选中背景", token: "--selection" },
-    { name: "焦点环", token: "--focus-ring" },
-    { name: "成功", token: "--success" },
-    { name: "警告", token: "--warning" },
-    { name: "危险", token: "--destructive" },
-    { name: "危险文字", token: "--destructive-foreground" },
-    { name: "禁用背景", token: "--disabled-background" },
-    { name: "禁用文字", token: "--disabled-foreground" },
-    { name: "遮罩", token: "--overlay" },
-    { name: "工具：JSON", token: "--tool-json" },
-    { name: "工具：Toto", token: "--tool-toto" },
-    { name: "工具：EchoHttp", token: "--tool-echo" },
-    { name: "工具：Kairos", token: "--tool-kairos" },
-    { name: "工具：MySQL", token: "--tool-mysql" },
-    { name: "工具：设计系统", token: "--tool-design" },
-];

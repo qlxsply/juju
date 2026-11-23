@@ -23,6 +23,19 @@ export interface AppSettings {
     toolSettings: Record<string, Record<string, unknown>>;
 }
 
+export interface TimeContext {
+    now: string;
+    timeZone: string;
+    locale: string;
+}
+
+export async function getTimeContext(): Promise<TimeContext> {
+    if (!isTauri()) {
+        throw new Error("浏览器模式必须由示例显式提供 TimeContext。");
+    }
+    return invoke<TimeContext>("get_time_context");
+}
+
 export interface TotoItem {
     id: string;
     content: string;

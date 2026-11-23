@@ -8,19 +8,21 @@ interface JuIconButtonProps extends Omit<
     label: string;
     children: ReactNode;
     variant?: "default" | "ghost" | "destructive";
+    size?: "default" | "compact";
 }
 
 export function JuIconButton({
     label,
     children,
     variant = "ghost",
+    size = "default",
     ...props
 }: JuIconButtonProps) {
     return (
         <ButtonPrimitive
             {...props}
             aria-label={label}
-            className={`ju-icon-button ju-icon-button-${variant}`}
+            className={`ju-icon-button ju-icon-button-${variant} ju-icon-button-${size}`}
             type={props.type ?? "button"}
         >
             {children}

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { isTauri } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { CalendarClock, ClipboardList, Plus, RefreshCw, Settings2, X } from "lucide-react";
+import { Temporal } from "@js-temporal/polyfill";
 import {
     JuButton,
     JuCheckbox,
@@ -10,12 +11,13 @@ import {
     JuDialog,
     JuInput,
     JuStatusBar,
-    JuTemporalInput,
+    JuTimePicker,
     JuTextarea,
     type JuColumn,
 } from "../ju";
 import type { TotoItem, TotoQuickPreview, TotoToolSettings } from "../../services/desktop";
 import { useWindowDrag } from "../../hooks/useWindowDrag";
+import { useTimeContext } from "../date-time/time-context";
 import {
     addTotoQuickItem,
     closeCurrentToolWindow,
@@ -32,6 +34,7 @@ import {
 type ItemDialogMode = "add" | "edit" | "detail" | "complete" | "cancel" | null;
 
 export function TotoToolWindow() {
+    const timeContext = useTimeContext();
     const startWindowDrag = useWindowDrag();
     const mainRef = useRef<HTMLElement | null>(null);
     const [items, setItems] = useState<TotoItem[]>([]);
@@ -166,14 +169,23 @@ export function TotoToolWindow() {
                 if (useReminder && (!reminderDate || !reminderTime)) {
                     throw new Error("请选择有效提醒日期和 24 小时制时间。");
                 }
+                if (usePlan && planDate && planTime) {
+                    Temporal.PlainDateTime.from(`${planDate}T${planTime}`)
+                        .toZonedDateTime(timeContext.timeZone, { disambiguation: "reject" });
+                }
+                if (useReminder && reminderDate && reminderTime) {
+                    Temporal.PlainDateTime.from(`${reminderDate}T${reminderTime}`)
+                        .toZonedDateTime(timeContext.timeZone, { disambiguation: "reject" });
+                }
                 const plannedAt = usePlan && planDate && planTime ? `${planDate} ${planTime}` : null;
                 let remindAt = useReminder && reminderDate && reminderTime ? `${reminderDate} ${reminderTime}` : null;
                 const originalPlan = target.planned_at?.slice(0, 16) ?? null;
                 const originalReminder = target.reminder_at?.slice(0, 16) ?? null;
                 if (plannedAt !== originalPlan && remindAt === originalReminder && plannedAt) {
-                    const planned = new Date(`${plannedAt.replace(" ", "T")}:00`);
-                    planned.setMinutes(planned.getMinutes() - Number(toolSettings.default_remind_minutes ?? 5));
-                    remindAt = `${localDateInput(planned)} ${String(planned.getHours()).padStart(2, "0")}:${String(planned.getMinutes()).padStart(2, "0")}`;
+                    const planned = Temporal.PlainDateTime.from(plannedAt.replace(" ", "T"));
+                    const reminder = planned.subtract({ minutes: Number(toolSettings.default_remind_minutes ?? 5) });
+                    reminder.toZonedDateTime(timeContext.timeZone, { disambiguation: "reject" });
+                    remindAt = `${reminder.toPlainDate()} ${String(reminder.hour).padStart(2, "0")}:${String(reminder.minute).padStart(2, "0")}`;
                 }
                 await updateTotoItemFull(target.id, content, plannedAt, remindAt, notes);
                 setNotice("事项已更新。");
@@ -189,7 +201,7 @@ export function TotoToolWindow() {
             busyRef.current = false;
             setBusy(false);
         }
-    }, [content, mode, notes, planDate, planTime, quickInput, refresh, reminderDate, reminderTime, target, toolSettings.default_remind_minutes, usePlan, useReminder]);
+    }, [content, mode, notes, planDate, planTime, quickInput, refresh, reminderDate, reminderTime, target, timeContext.timeZone, toolSettings.default_remind_minutes, usePlan, useReminder]);
 
     const showDetails = (item: TotoItem) => {
         setTarget(item);
@@ -297,7 +309,7 @@ export function TotoToolWindow() {
                 footer={mode === "detail" ? <JuButton onClick={() => setMode(null)}>关闭</JuButton> : <><JuButton variant="outline" onClick={() => setMode(null)}>取消</JuButton><JuButton loading={busy} onClick={() => void save()}>{mode === "complete" || mode === "cancel" ? "确认" : mode === "edit" ? "保存" : "新增"}</JuButton></>}
             >
                 {mode === "add" && <div className="toto-quick-editor"><JuInput label="事项内容 @计划时间[@提前提醒分钟]" autoFocus value={quickInput} onChange={(event) => { setQuickInput(event.currentTarget.value); setQuickPreview(null); }} placeholder="写周报@1630" /><p className="toto-syntax-help">日期支持 HHmm、ddHHmm、MMddHHmm、yyyyMMddHHmm、+1600、W11600；相对时间支持 H2M30、M45。第三段为提醒提前分钟。</p><div className={`toto-quick-preview${error ? " invalid" : ""}`}>{error || (quickPreview ? `${quickPreview.content} ${quickPreview.plannedAt ?? "无计划时间"}${quickPreview.reminderAt ? ` 提醒 ${quickPreview.reminderAt}` : ""}` : "输入事项内容及计划时间")}</div></div>}
-                {mode === "edit" && <div className="toto-edit-form"><JuInput label="事项内容" value={content} onChange={(event) => setContent(event.currentTarget.value)} /><div className="toto-time-pair"><section><JuCheckbox ariaLabel="启用计划时间" label="计划时间" checked={usePlan} onCheckedChange={setUsePlan} /><div className="toto-time-controls"><JuDatePicker label="计划日期" value={planDate} disabled={!usePlan} onChange={setPlanDate} /><JuTemporalInput label="计划时间" type="time" value={planTime} disabled={!usePlan} onChange={setPlanTime} /></div></section><section><JuCheckbox ariaLabel="启用提醒时间" label="提醒时间" checked={useReminder} onCheckedChange={setUseReminder} /><div className="toto-time-controls"><JuDatePicker label="提醒日期" value={reminderDate} disabled={!useReminder} onChange={setReminderDate} /><JuTemporalInput label="提醒时间" type="time" value={reminderTime} disabled={!useReminder} onChange={setReminderTime} /></div></section></div><JuTextarea label="备注" value={notes} onChange={(event) => setNotes(event.currentTarget.value)} /></div>}
+                {mode === "edit" && <div className="toto-edit-form"><JuInput label="事项内容" value={content} onChange={(event) => setContent(event.currentTarget.value)} /><div className="toto-time-pair"><section><JuCheckbox ariaLabel="启用计划时间" label="计划时间" checked={usePlan} onCheckedChange={setUsePlan} /><div className="toto-time-controls"><JuDatePicker label="计划日期" {...timeContext} value={planDate} disabled={!usePlan} onChange={(value) => setPlanDate(value ?? "")} /><JuTimePicker label="计划时间" {...timeContext} value={planTime} disabled={!usePlan} onChange={(value) => setPlanTime(value ?? "")} /></div></section><section><JuCheckbox ariaLabel="启用提醒时间" label="提醒时间" checked={useReminder} onCheckedChange={setUseReminder} /><div className="toto-time-controls"><JuDatePicker label="提醒日期" {...timeContext} value={reminderDate} disabled={!useReminder} onChange={(value) => setReminderDate(value ?? "")} /><JuTimePicker label="提醒时间" {...timeContext} value={reminderTime} disabled={!useReminder} onChange={(value) => setReminderTime(value ?? "")} /></div></section></div><JuTextarea label="备注" value={notes} onChange={(event) => setNotes(event.currentTarget.value)} /></div>}
                 {(mode === "complete" || mode === "cancel") && <div className="toto-end-form"><p>确认{mode === "complete" ? "完成" : "取消"}：{target?.content}</p><JuTextarea label={mode === "complete" ? "完成备注" : "取消备注"} value={notes} onChange={(event) => setNotes(event.currentTarget.value)} /></div>}
                 {mode === "detail" && target && <dl className="toto-item-detail">{[["事项内容", target.content], ["计划时间", target.planned_at ?? "—"], ["提醒时间", target.reminder_at ?? "—"], ["创建时间", target.created_at], ["提醒状态", target.reminder_status], ["响铃时间", target.reminded_at ?? "—"], ["备注", target.notes || "—"]].map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>}
                 {error && mode !== "add" && <p className="settings-error" role="alert">{error}</p>}
@@ -305,7 +317,6 @@ export function TotoToolWindow() {
         </div>
     );
 }
-
 function shortcutMatches(value: string, event: KeyboardEvent): boolean {
     if (!value || value === "None") return false;
     const parts = value.toLowerCase().split("+").map((part) => part.trim());
@@ -315,8 +326,4 @@ function shortcutMatches(value: string, event: KeyboardEvent): boolean {
         && parts.includes("ctrl") === event.ctrlKey
         && parts.includes("shift") === event.shiftKey
         && parts.includes("win") === event.metaKey;
-}
-
-function localDateInput(date: Date): string {
-    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
