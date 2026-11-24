@@ -377,7 +377,7 @@ export async function openTotoHistoryWindow(): Promise<void> {
             "Toto 历史事项",
         );
     } else {
-        window.open("/?tool=toto-history", "juju-toto-history", "width=1200,height=620");
+        window.open("/?tool=toto-history", "juju-toto-history", "width=1360,height=620");
     }
 }
 
@@ -461,7 +461,7 @@ async function openTauriWindow(label: string, url: string, title: string) {
     const webviewWindow = new WebviewWindow(label, {
         url,
         title,
-        width: label === "settings" ? 860 : label === "toto-history" || label === "toto" ? 1200 : label === "tool-json" ? 1200 : label === "tool-design-system" ? 1180 : label === "toto-reminder" ? 520 : 640,
+        width: label === "settings" ? 860 : label === "toto-history" ? 1360 : label === "toto" ? 1200 : label === "tool-json" ? 1200 : label === "tool-design-system" ? 1180 : label === "toto-reminder" ? 520 : 640,
         height: label === "settings" ? 590 : label === "toto-history" ? 620 : label === "toto" ? 600 : label === "tool-json" ? 760 : label === "tool-design-system" ? 820 : label === "toto-reminder" ? 320 : 440,
         minWidth: label === "settings" ? 670 : label === "toto-history" || label === "toto" ? 1200 : label === "tool-json" ? 900 : label === "tool-design-system" ? 960 : label === "toto-reminder" ? 360 : 560,
         minHeight: label === "settings" ? 470 : label === "toto-history" ? 425 : label === "toto" ? 420 : label === "tool-json" ? 600 : label === "tool-design-system" ? 640 : label === "toto-reminder" ? 240 : 360,

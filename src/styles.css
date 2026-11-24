@@ -3310,33 +3310,90 @@ h1 {
     gap: 6px;
 }
 
-.toto-tool-actions .ju-button {
-    min-width: 0;
-    height: var(--button-height-sm);
-    padding: 0 var(--space-2);
-    font-size: var(--font-size-sm);
-}
-
 .toto-main-grid {
     min-height: 0;
     flex: 1;
     overflow: auto;
-    padding: 0 10px;
+    padding: 0;
+    outline: none;
 }
+
+.ju-overflow-text {
+    display: block;
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.ju-overflow-text[role="button"] { cursor: pointer; }
+.ju-overflow-text:focus-visible {
+    outline: var(--focus-outline);
+    outline-offset: var(--focus-outline-offset);
+}
+.ju-overflow-popover {
+    z-index: var(--z-popover);
+    width: max-content;
+    max-width: min(400px, calc(100vw - 16px));
+    padding: var(--space-3);
+    border: var(--border-width) var(--border-style) var(--border);
+    border-radius: var(--radius-md);
+    background: var(--background);
+    color: var(--foreground);
+    box-shadow: var(--shadow-popover);
+}
+.ju-overflow-full-text {
+    max-height: 240px;
+    overflow: auto;
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+    user-select: text;
+}
+.ju-overflow-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin-top: var(--space-2);
+    color: var(--muted-foreground);
+    font-size: var(--font-size-sm);
+}
+.overflow-demo {
+    display: grid;
+    gap: var(--space-2);
+    margin-bottom: var(--space-4);
+}
+.overflow-demo > div {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+}
+.overflow-demo > div > span { width: 70px; flex: none; color: var(--muted-foreground); }
+.overflow-demo-width { width: 180px; max-width: 100%; }
 
 .toto-tool-window .ju-table-container {
     height: 100%;
     overflow: auto;
     border: 0;
     border-radius: 0;
+    outline: none;
+}
+
+.toto-tool-window .ju-table tbody tr.is-selected {
+    box-shadow: inset 3px 0 var(--focus-ring);
 }
 
 .toto-tool-window .ju-table {
     width: 100%;
-    min-width: 1150px;
+    table-layout: fixed;
     border-collapse: separate;
     border-spacing: 0;
 }
+.toto-tool-window .ju-table th:nth-child(1) { width: 235px; }
+.toto-tool-window .ju-table th:nth-child(2),
+.toto-tool-window .ju-table th:nth-child(3),
+.toto-tool-window .ju-table th:nth-child(5) { width: 142px; }
+.toto-tool-window .ju-table th:nth-child(4) { width: 85px; }
 
 .toto-tool-window .ju-table th {
     position: sticky;
@@ -3346,6 +3403,7 @@ h1 {
     background: var(--surface);
     color: var(--muted-foreground);
     font-weight: 600;
+    white-space: nowrap;
 }
 
 .toto-tool-window .ju-table td {
@@ -3492,12 +3550,22 @@ h1 {
 
 .toto-history-filterbar {
     display: grid;
-    grid-template-columns: minmax(190px, 1fr) 116px 106px minmax(140px, 160px) 20px minmax(140px, 160px) auto auto;
+    grid-template-columns: minmax(190px, 1fr) 116px minmax(360px, 470px) auto auto;
     align-items: center;
     gap: 8px;
     padding: 8px 12px;
     border-bottom: 1px solid var(--border);
 }
+
+.ju-preset-date-range {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: var(--space-2);
+}
+.ju-preset-date-range > .ju-field:first-child { width: 112px; flex: none; }
+.ju-preset-date-range > .ju-field:last-child { min-width: 0; flex: 1; }
+.ju-preset-date-range .ju-field-heading:has(.ju-field-label.sr-only):not(:has(.ju-validation-indicator)) { display: none; }
 
 .toto-history-filterbar > .ju-field {
     min-width: 0;
@@ -3522,10 +3590,18 @@ h1 {
 
 .toto-history-window .ju-table {
     width: 100%;
-    min-width: 1150px;
+    table-layout: fixed;
     border-collapse: separate;
     border-spacing: 0;
 }
+.toto-history-window .ju-table th:nth-child(1) { width: 235px; }
+.toto-history-window .ju-table th:nth-child(2),
+.toto-history-window .ju-table th:nth-child(3),
+.toto-history-window .ju-table th:nth-child(4),
+.toto-history-window .ju-table th:nth-child(5) { width: 142px; }
+.toto-history-window .ju-table th:nth-child(6) { width: 85px; }
+.toto-history-window .ju-table th,
+.toto-history-window .ju-table td { white-space: nowrap; }
 
 .toto-history-window .ju-table th {
     position: sticky;

@@ -10,6 +10,7 @@ import {
     JuDatePicker,
     JuDialog,
     JuInput,
+    JuOverflowText,
     JuStatusBar,
     JuTimePicker,
     JuTextarea,
@@ -37,6 +38,7 @@ export function TotoToolWindow() {
     const timeContext = useTimeContext();
     const startWindowDrag = useWindowDrag();
     const mainRef = useRef<HTMLElement | null>(null);
+    const keyboardSelection = useRef(false);
     const [items, setItems] = useState<TotoItem[]>([]);
     const [selectedId, setSelectedId] = useState<string | null>(null);
     const [toolSettings, setToolSettings] = useState<TotoToolSettings>(defaultTotoToolSettings);
@@ -57,6 +59,17 @@ export function TotoToolWindow() {
     const [busy, setBusy] = useState(false);
     const busyRef = useRef(false);
     const selected = items.find((item) => item.id === selectedId) ?? null;
+    useEffect(() => {
+        if (!keyboardSelection.current) return;
+        keyboardSelection.current = false;
+        const container = mainRef.current?.querySelector<HTMLElement>(".ju-table-container");
+        const row = container?.querySelector<HTMLElement>("tr.is-selected");
+        if (!container || !row) return;
+        const top = row.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop;
+        const headerHeight = container.querySelector("thead")?.getBoundingClientRect().height ?? 0;
+        if (top < container.scrollTop + headerHeight) container.scrollTop = top - headerHeight;
+        else if (top + row.offsetHeight > container.scrollTop + container.clientHeight) container.scrollTop = top + row.offsetHeight - container.clientHeight;
+    }, [selectedId]);
 
     const refresh = useCallback(async () => {
         try {
@@ -214,6 +227,7 @@ export function TotoToolWindow() {
 
     useEffect(() => {
         const onKeyDown = (event: KeyboardEvent) => {
+            if (event.defaultPrevented || (event.key === "Escape" && event.target instanceof Element && event.target.closest('[role="dialog"]'))) return;
             if (mode) {
                 if (event.key === "Escape") {
                     event.preventDefault();
@@ -253,12 +267,12 @@ export function TotoToolWindow() {
     }, [close, mode, refresh, save, selected, toolSettings]);
 
     const columns: JuColumn<TotoItem>[] = useMemo(() => [
-        { id: "content", header: "事项内容", cell: (item) => item.content },
+        { id: "content", header: "事项内容", cell: (item) => <JuOverflowText text={item.content} /> },
         { id: "planned", header: "计划时间", cell: (item) => item.planned_at ?? "—" },
         { id: "remind", header: "提醒时间", cell: (item) => item.reminder_at ?? "—" },
         { id: "status", header: "提醒状态", cell: (item) => <span className={`toto-status status-${item.reminder_status === "已提醒" ? "reminded" : item.reminder_status === "未提醒" ? "pending" : "none"}`}>{item.reminder_status}</span> },
         { id: "created", header: "创建时间", cell: (item) => item.created_at },
-        { id: "notes", header: "备注", cell: (item) => item.notes || "—" },
+        { id: "notes", header: "备注", cell: (item) => <JuOverflowText text={item.notes || "—"} /> },
     ], []);
 
     const dialogTitle = mode === "add" ? "新增事项" : mode === "edit" ? "编辑事项" : mode === "complete" ? "完成事项" : mode === "cancel" ? "取消事项" : "事项详情";
@@ -268,11 +282,11 @@ export function TotoToolWindow() {
             <header className="toto-tool-header draggable-titlebar" onMouseDown={startWindowDrag}>
                 <div className="toto-tool-brand"><CalendarClock size={19} /><strong>Toto 日程提醒</strong></div>
                 <div className="toto-tool-actions">
-                    <JuButton onClick={openAdd}><Plus size={15} /> 新增</JuButton>
-                    <JuButton variant="outline" onClick={() => void openTotoHistoryWindow()}><ClipboardList size={15} /> 历史</JuButton>
-                    <JuButton variant="outline" onClick={() => void refresh()}><RefreshCw size={15} /> 刷新</JuButton>
-                    <JuButton variant="outline" onClick={() => void openSettingsWindow("toto")}><Settings2 size={15} /> 设置</JuButton>
-                    <JuButton variant="ghost" onMouseDown={(event) => event.stopPropagation()} onClick={() => void close()}><X size={16} /> 关闭</JuButton>
+                    <JuButton size="compact" onClick={openAdd}><Plus size={15} /> 新增</JuButton>
+                    <JuButton size="compact" variant="outline" onClick={() => void openTotoHistoryWindow()}><ClipboardList size={15} /> 历史</JuButton>
+                    <JuButton size="compact" variant="outline" onClick={() => void refresh()}><RefreshCw size={15} /> 刷新</JuButton>
+                    <JuButton size="compact" variant="outline" onClick={() => void openSettingsWindow("toto")}><Settings2 size={15} /> 设置</JuButton>
+                    <JuButton size="compact" variant="ghost" onMouseDown={(event) => event.stopPropagation()} onClick={() => void close()}><X size={16} /> 关闭</JuButton>
                 </div>
             </header>
             {error && mode === null && <p className="settings-error toto-tool-error" role="alert">{error}</p>}
@@ -285,6 +299,7 @@ export function TotoToolWindow() {
                     const nextIndex = index < 0
                         ? event.key === "ArrowDown" ? 0 : items.length - 1
                         : (index + (event.key === "ArrowDown" ? 1 : -1) + items.length) % items.length;
+                    keyboardSelection.current = true;
                     setSelectedId(items[nextIndex].id);
                 }
                 if (event.key === "Enter" && selected) showDetails(selected);

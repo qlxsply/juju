@@ -22,6 +22,7 @@ import {
     JuConfirmDialog,
     JuDatePicker,
     JuDateRangePicker,
+    JuPresetDateRangePicker,
     JuDateTimePicker,
     JuDataTable,
     type JuColumn,
@@ -31,6 +32,7 @@ import {
     JuInput,
     JuIconButton,
     JuLoading,
+    JuOverflowText,
     JuPagination,
     JuRadioGroup,
     JuSearchInput,
@@ -444,6 +446,7 @@ function DesignSystemShowcase() {
     const [preferredMode, setPreferredMode] = useState("desktop");
     const [selectedDate, setSelectedDate] = useState("2026-11-21");
     const [range, setRange] = useState({ start: null as string | null, end: null as string | null });
+    const [presetRange, setPresetRange] = useState({ start: null as string | null, end: null as string | null });
     const [restrictedRange, setRestrictedRange] = useState({ start: null as string | null, end: null as string | null });
     const [rangeStart, setRangeStart] = useState<string | null>(null);
     const [rangeEnd, setRangeEnd] = useState<string | null>(null);
@@ -455,7 +458,7 @@ function DesignSystemShowcase() {
     const [demoTimeZone, setDemoTimeZone] = useState(appTimeContext.timeZone);
     const [demoLocale, setDemoLocale] = useState(appTimeContext.locale);
     const [demoNow, setDemoNow] = useState(() => Temporal.Now.instant().toString());
-    const [demoTimeInput, setDemoTimeInput] = useState(() => formatDemoWallTime(Temporal.Now.instant().toString(), appTimeContext.timeZone, appTimeContext.locale));
+    const [demoTimeInput, setDemoTimeInput] = useState(() => formatDemoWallTime(demoNow, appTimeContext.timeZone, appTimeContext.locale));
     const [demoTimeError, setDemoTimeError] = useState("");
     const demoTimeContext = { now: demoNow, timeZone: demoTimeZone, locale: demoLocale };
     const [page, setPage] = useState(1);
@@ -487,7 +490,7 @@ function DesignSystemShowcase() {
             <div className="showcase-body">
                 <aside className="showcase-sidebar" aria-label="工作台目录">
                     <nav aria-label="设计系统导航">
-                        <a className="showcase-nav-link" href="#environment">演示环境</a>
+                        <a className="showcase-nav-link" href="#environment">预览环境</a>
                         <details open>
                             <summary>Design Tokens</summary>
                             <div className="showcase-nav-children">
@@ -512,11 +515,11 @@ function DesignSystemShowcase() {
                 </aside>
                 <main className="showcase-content">
                     <section className="showcase-section" id="environment">
-                        <SectionHeading title="演示环境" description="组件示例共用这些设置；本地时间会按语言解析，并结合时区转换为绝对时间。" />
-                        <div aria-label="演示环境设置" className="token-environment-settings">
+                        <SectionHeading title="预览环境" description="应用主题影响整个应用；时区、语言地区和时间用于预览组件。" />
+                        <div aria-label="预览环境设置" className="token-environment-settings">
                             <div className="token-environment-controls">
                                 <JuSelect
-                                    label="主题模式"
+                                    label="应用主题"
                                     value={mode}
                                     onValueChange={(value) => setMode(value as typeof mode)}
                                     options={[
@@ -526,16 +529,12 @@ function DesignSystemShowcase() {
                                     ]}
                                 />
                                 <JuSelect
-                                    label="业务时区"
+                                    label="预览时区"
                                     value={demoTimeZone}
                                     onValueChange={(nextZone) => {
                                         setDemoTimeZone(nextZone);
-                                        try {
-                                            setDemoNow(parseDemoWallTime(demoTimeInput, nextZone, demoLocale));
-                                            setDemoTimeError("");
-                                        } catch (error) {
-                                            setDemoTimeError(error instanceof Error ? error.message : String(error));
-                                        }
+                                        setDemoTimeInput(formatDemoWallTime(demoNow, nextZone, demoLocale));
+                                        setDemoTimeError("");
                                     }}
                                     options={[
                                         { value: "Asia/Shanghai", label: "Asia/Shanghai" },
@@ -544,7 +543,7 @@ function DesignSystemShowcase() {
                                     ]}
                                 />
                                 <JuSelect
-                                    label="日历语言"
+                                    label="语言地区"
                                     value={demoLocale}
                                     onValueChange={(nextLocale) => {
                                         setDemoLocale(nextLocale);
@@ -552,12 +551,12 @@ function DesignSystemShowcase() {
                                         setDemoTimeError("");
                                     }}
                                     options={[
-                                        { value: "zh-CN", label: "简体中文" },
-                                        { value: "en-US", label: "English (US)" },
+                                        { value: "zh-CN", label: "中文（中国） · zh-CN" },
+                                        { value: "en-US", label: "英语（美国） · en-US" },
                                     ]}
                                 />
                                 <JuInput
-                                    label="示例时间（本地）"
+                                    label="预览时间"
                                     value={demoTimeInput}
                                     hint={`传入组件的 now（绝对时间，UTC）：${demoNow}`}
                                     error={demoTimeError || undefined}
@@ -581,6 +580,14 @@ function DesignSystemShowcase() {
                                         }
                                     }}
                                 />
+                            </div>
+                            <div>
+                                <JuButton variant="outline" size="compact" onClick={() => {
+                                    const now = Temporal.Now.instant().toString();
+                                    setDemoNow(now);
+                                    setDemoTimeInput(formatDemoWallTime(now, demoTimeZone, demoLocale));
+                                    setDemoTimeError("");
+                                }}>使用当前时间</JuButton>
                             </div>
                         </div>
                     </section>
@@ -682,6 +689,9 @@ function DesignSystemShowcase() {
                             <ShowcaseExample title="日期范围" code="JuDateRangePicker" description="在一个日历中选择起止日期，可拖动端点调整。">
                                 <JuDateRangePicker {...demoTimeContext} label="日期范围" value={range} onChange={setRange} />
                             </ShowcaseExample>
+                            <ShowcaseExample title="预设日期范围" code="JuPresetDateRangePicker" description="按预览时间和时区选择本周、本月等范围，也可手动选择。">
+                                <JuPresetDateRangePicker {...demoTimeContext} label="预设日期范围" value={presetRange} onChange={setPresetRange} />
+                            </ShowcaseExample>
                             <ShowcaseExample title="禁止跨越禁用日期" code="JuDateRangePicker disabledDates" description="不可选择或跨越 2026-11-13。">
                                 <JuDateRangePicker {...demoTimeContext} label="禁止跨越的日期范围" value={restrictedRange} onChange={setRestrictedRange} disabledDates={["2026-11-13"]} />
                             </ShowcaseExample>
@@ -733,7 +743,7 @@ function DesignSystemShowcase() {
                                 variant="secondary"
                                 onClick={() => setSelectedDateTime(Temporal.Instant.from(demoNow).toString())}
                             >
-                                将日期时间设为演示环境时间
+                                将日期时间设为预览环境时间
                             </JuButton>
                             <div className="date-time-demo-output date-time-demo-values" aria-label="日期时间示例的内部值">
                                 <div>日期：{selectedDate || "未选择"}</div>
@@ -781,6 +791,22 @@ function DesignSystemShowcase() {
                     <section className="showcase-section" id="data">
                         <SectionHeading title="数据组件" description="表格、搜索、分页和空状态。" />
                         <div className="showcase-example-list component-examples">
+                            <ShowcaseExample title="文本溢出与完整内容" code="JuOverflowText" description="单行截断；悬停预览，点击或键盘打开后可选择并复制全文。" wide>
+                                <div className="overflow-demo">
+                                    <div><span>未截断</span><div className="overflow-demo-width"><JuOverflowText text="简短内容" /></div></div>
+                                    <div><span>固定宽度</span><div className="overflow-demo-width"><JuOverflowText text="这是超出单元格宽度的长文本，可以展开查看和复制完整内容。" /></div></div>
+                                    <div><span>长链接</span><div className="overflow-demo-width"><JuOverflowText text="https://example.com/design-system/components/overflow-text?source=workbench" /></div></div>
+                                </div>
+                                <JuDataTable
+                                    caption="溢出文本示例表格"
+                                    columns={[
+                                        { id: "name", header: "事项", cell: (row: { name: string; notes: string }) => row.name },
+                                        { id: "notes", header: "备注（固定宽度）", cell: (row: { name: string; notes: string }) => <div className="overflow-demo-width"><JuOverflowText text={row.notes} /></div> },
+                                    ]}
+                                    data={[{ name: "示例事项", notes: "表格列宽有限时，完整内容仍可展开查看并复制。" }]}
+                                    getRowId={(row) => row.name}
+                                />
+                            </ShowcaseExample>
                             <ShowcaseExample title="搜索输入" code="JuSearchInput" description="按名称筛选下方数据表格。">
                             <div className="table-toolbar">
                                 <JuSearchInput value={searchText} onValueChange={setSearchText} />

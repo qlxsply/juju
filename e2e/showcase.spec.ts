@@ -1,5 +1,36 @@
 import { expect, test } from "@playwright/test";
 
+test("overflow text shows and copies complete truncated content", async ({ page, context }) => {
+    await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+    await page.goto("/");
+    const [design] = await Promise.all([
+        page.waitForEvent("popup"),
+        page.getByRole("button", { name: /设计系统工作台/ }).click(),
+    ]);
+    const section = design.locator("#data");
+    const short = section.getByText("简短内容", { exact: true });
+    await expect(short).not.toHaveAttribute("tabindex");
+    const text = "这是超出单元格宽度的长文本，可以展开查看和复制完整内容。";
+    const trigger = section.getByRole("button", { name: `查看完整内容：${text}` });
+    await expect(trigger).toBeVisible();
+    await trigger.focus();
+    await trigger.press("Enter");
+    const popover = design.locator(".ju-overflow-popover");
+    await expect(popover).toBeVisible();
+    await expect(popover.locator(".ju-overflow-full-text")).toHaveText(text);
+    await popover.getByRole("button", { name: "复制" }).click();
+    await expect(popover.getByRole("status")).toHaveText("已复制");
+    expect(await design.evaluate(() => navigator.clipboard.readText())).toBe(text);
+    await design.keyboard.press("Escape");
+    await expect(popover).toBeHidden();
+    await trigger.hover();
+    await expect(popover).toBeVisible();
+    await trigger.click();
+    await popover.getByRole("button", { name: "复制" }).click();
+    await expect(popover.getByRole("status")).toHaveText("已复制");
+    await design.close();
+});
+
 test("reference launcher and settings control the workbench theme", async ({
     page,
 }) => {
@@ -347,7 +378,7 @@ test("design workbench showcases public components and keeps theme controls stab
     const navigation = design.getByRole("navigation", { name: "设计系统导航" });
     await expect(navigation).toBeVisible();
     await expect(design.locator(".sidebar-heading")).toHaveCount(0);
-    await expect(navigation.getByRole("link", { name: "演示环境" })).toBeVisible();
+    await expect(navigation.getByRole("link", { name: "预览环境" })).toBeVisible();
     await expect(design.locator(".showcase-section")).toHaveCount(6);
     for (const section of ["#forms", "#data", "#feedback"]) {
         const borders = await design.locator(`${section} .showcase-example`).evaluateAll((rows) =>
@@ -355,7 +386,7 @@ test("design workbench showcases public components and keeps theme controls stab
         );
         expect(borders.every((width) => width === "0px")).toBe(true);
     }
-    for (const heading of ["演示环境", "Design Tokens", "按钮与状态", "表单组件", "数据组件", "弹窗与反馈"]) {
+    for (const heading of ["预览环境", "Design Tokens", "按钮与状态", "表单组件", "数据组件", "弹窗与反馈"]) {
         await expect(design.getByRole("heading", { name: heading })).toBeVisible();
     }
     const headingStyles = await design.locator("#environment h2, #design-tokens h2").evaluateAll((headings) =>
@@ -541,7 +572,7 @@ test("design workbench showcases public components and keeps theme controls stab
     await picker.locator(".air-datepicker-time--row input").last().press("ArrowRight");
     await expect(picker).toBeVisible();
     await design.getByRole("textbox", { name: "备注", exact: true }).click();
-    await expect(picker).not.toHaveClass(/-juju-visible-/);
+    await expect(picker).not.toBeVisible();
 
     const dateTimeField = design.getByRole("textbox", { name: "日期和时间", exact: true });
     const dateTimeInputId = await dateTimeField.getAttribute("id");
@@ -558,7 +589,7 @@ test("design workbench showcases public components and keeps theme controls stab
     await expect(dateTimeField).toHaveValue("2026-11-24 09:45");
     await expect(design.getByText(/日期时间（UTC）：2026-11-24T01:45:00Z/)).toBeVisible();
     await dateTimeField.press("Escape");
-    await design.getByRole("combobox", { name: "业务时区" }).click();
+    await design.getByRole("combobox", { name: "预览时区" }).click();
     await design.getByRole("option", { name: "America/New_York" }).click();
     await expect(dateTimeField).toHaveValue("2026-11-23 20:45");
     await expect(design.getByText(/日期时间（UTC）：2026-11-24T01:45:00Z/)).toBeVisible();
@@ -571,7 +602,7 @@ test("design workbench showcases public components and keeps theme controls stab
 
     await design.setViewportSize({ width: 1200, height: 420 });
     await design.evaluate(() => window.scrollTo(0, 0));
-    const themePicker = design.getByRole("combobox", { name: "主题模式" });
+    const themePicker = design.getByRole("combobox", { name: "应用主题" });
     const triggerBox = await themePicker.boundingBox();
     const arrowBox = await themePicker.locator("svg").boundingBox();
     expect(triggerBox).not.toBeNull();
@@ -609,7 +640,7 @@ test("date-time controls use explicit business zone and locale, not the browser 
         const dateField = design.getByRole("textbox", { name: "计划日期", exact: true });
         const timeField = design.getByRole("textbox", { name: "计划时间", exact: true });
         const dateTimeField = design.getByRole("textbox", { name: "日期和时间", exact: true });
-        const environmentTime = design.getByRole("textbox", { name: "示例时间（本地）", exact: true });
+        const environmentTime = design.getByRole("textbox", { name: "预览时间", exact: true });
         const environmentNow = design.locator(".token-environment-settings .sr-only").filter({ hasText: "传入组件的 now" });
         await expect(environmentTime).toHaveValue(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/);
         await expect(environmentNow).toContainText(/传入组件的 now（绝对时间，UTC）：\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z/);
@@ -623,18 +654,24 @@ test("date-time controls use explicit business zone and locale, not the browser 
         await expect(timeField).toHaveValue("09:30");
         await expect(dateTimeField).toHaveValue("2026-11-21 09:30");
 
-        await design.getByRole("combobox", { name: "业务时区" }).click();
+        await design.getByRole("combobox", { name: "预览时区" }).click();
         await design.getByRole("option", { name: "UTC" }).click();
-        await expect(environmentNow).toContainText("2026-11-23T09:30:00Z");
+        await expect(environmentNow).toContainText("2026-11-23T01:30:00Z");
+        await expect(environmentTime).toHaveValue("2026-11-23 01:30");
         await expect(dateTimeField).toHaveValue("2026-11-21 01:30");
         await expect(design.getByText(/日期时间（UTC）：2026-11-21T01:30:00Z/)).toBeVisible();
         await expect(dateField).toHaveValue("2026-11-21");
         await expect(timeField).toHaveValue("09:30");
 
-        await design.getByRole("combobox", { name: "日历语言" }).click();
-        await design.getByRole("option", { name: "English (US)" }).click();
-        await expect(environmentTime).toHaveValue("11/23/2026 09:30 AM");
+        await design.getByRole("combobox", { name: "语言地区" }).click();
+        await design.getByRole("option", { name: "英语（美国） · en-US" }).click();
+        await expect(environmentTime).toHaveValue("11/23/2026 01:30 AM");
         await expect(dateTimeField).toHaveValue("11/21/2026 01:30 AM");
+        await expect(dateField).toHaveValue("11/21/2026");
+        await expect(timeField).toHaveValue("09:30 AM");
+        await design.getByRole("button", { name: "使用当前时间" }).click();
+        await expect(environmentTime).toHaveValue(/^\d{2}\/\d{2}\/\d{4} \d{2}:\d{2} (AM|PM)$/);
+        await expect(environmentNow).not.toContainText("2026-11-23T01:30:00Z");
         await design.close();
     } finally {
         await context.close();
@@ -650,7 +687,7 @@ test("external datetime example displays UTC without fractional seconds", async 
     const environment = await design.locator(".token-environment-settings .sr-only").filter({ hasText: "传入组件的 now" }).textContent();
     const instant = environment?.match(/(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.\d+)?Z/)?.[1];
     expect(instant).toBeTruthy();
-    await design.getByRole("button", { name: "将日期时间设为演示环境时间" }).click();
+    await design.getByRole("button", { name: "将日期时间设为预览环境时间" }).click();
     await expect(design.getByLabel("日期时间示例的内部值")).toContainText(`日期时间（UTC）：${instant}Z`);
     await design.close();
 });
@@ -837,6 +874,41 @@ test("settings controls of the same type share row height and vertical alignment
     expect(Math.abs((timeoutBox!.y + timeoutBox!.height / 2) - (timeoutInput!.y + timeoutInput!.height / 2))).toBeLessThanOrEqual(1);
 });
 
+test("Toto table layout and dialog Escape behavior", async ({ page }) => {
+    await page.goto("/");
+    const [toto] = await Promise.all([page.waitForEvent("popup"), page.getByRole("button", { name: /Toto/ }).click()]);
+    await toto.getByRole("button", { name: /新增/ }).click();
+    await expect(toto.getByRole("heading", { name: "新增事项" })).toBeVisible();
+    await toto.keyboard.press("Escape");
+    await expect(toto.getByRole("heading", { name: "新增事项" })).toBeHidden();
+    expect(toto.isClosed()).toBe(false);
+    await toto.getByRole("button", { name: /新增/ }).click();
+    await toto.getByRole("textbox", { name: "事项内容 @计划时间[@提前提醒分钟]" }).fill("测试事项内容用于检查表格列宽与文本溢出显示效果");
+    await toto.getByRole("button", { name: "新增", exact: true }).last().click();
+    const row = toto.getByRole("row", { name: /测试事项内容用于检查/ });
+    await expect(row).toBeVisible();
+    await expect(row.locator(".ju-overflow-text")).toHaveCount(2);
+    const table = toto.locator(".toto-tool-window .ju-table-container");
+    const dimensions = await table.evaluate((element) => ({ scroll: element.scrollWidth, client: element.clientWidth }));
+    expect(dimensions.scroll).toBeLessThanOrEqual(dimensions.client);
+    const heights = await toto.locator(".toto-tool-actions button").evaluateAll((buttons) => buttons.map((button) => button.getBoundingClientRect().height));
+    expect(new Set(heights).size).toBe(1);
+    await row.click();
+    await toto.keyboard.press("Alt+E");
+    await expect(toto.getByRole("heading", { name: "编辑事项" })).toBeVisible();
+    await toto.keyboard.press("Escape");
+    await expect(toto.getByRole("heading", { name: "编辑事项" })).toBeHidden();
+    expect(toto.isClosed()).toBe(false);
+    for (const [shortcut, title] of [["Alt+D", "事项详情"], ["Alt+F", "完成事项"], ["Alt+C", "取消事项"]] as const) {
+        await toto.keyboard.press(shortcut);
+        await expect(toto.getByRole("heading", { name: title })).toBeVisible();
+        await toto.keyboard.press("Escape");
+        await expect(toto.getByRole("heading", { name: title })).toBeHidden();
+        expect(toto.isClosed()).toBe(false);
+    }
+    await toto.close();
+});
+
 test("Toto follows the quick-add, edit, finish and separate history workflows", async ({ page }) => {
     await page.goto("/");
     const [toto] = await Promise.all([
@@ -844,6 +916,12 @@ test("Toto follows the quick-add, edit, finish and separate history workflows", 
         page.getByRole("button", { name: /Toto/ }).click(),
     ]);
     await expect(toto.getByText("Toto 日程提醒", { exact: true })).toBeVisible();
+    const grid = toto.locator(".toto-main-grid");
+    await grid.focus();
+    await expect(grid).toHaveCSS("outline-style", "none");
+    const tableRegion = toto.getByRole("region", { name: "Toto 进行中事项" });
+    await tableRegion.focus();
+    await expect(tableRegion).toHaveCSS("outline-style", "none");
     await expect(toto.locator(".toto-tool-brand svg")).toBeVisible();
     await expect(toto.locator(".toto-selected-actions")).toHaveCount(0);
     await toto.getByRole("button", { name: /新增/ }).click();
