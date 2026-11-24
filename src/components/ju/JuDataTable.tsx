@@ -1,4 +1,5 @@
 import type { KeyboardEventHandler, ReactNode } from "react";
+import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
 
 export interface JuColumn<T> {
     id: string;
@@ -37,21 +38,21 @@ export function JuDataTable<T>({
             tabIndex={0}
             onKeyDown={onKeyDown}
         >
-            <table className="ju-table">
-                {caption && <caption className="sr-only">{caption}</caption>}
-                <thead>
-                    <tr>
+            <Table className="ju-table">
+                {caption && <TableCaption className="sr-only">{caption}</TableCaption>}
+                <TableHeader>
+                    <TableRow>
                         {columns.map((column) => (
-                            <th key={column.id} scope="col">
+                            <TableHead key={column.id} scope="col">
                                 {column.header}
-                            </th>
+                            </TableHead>
                         ))}
-                    </tr>
-                </thead>
-                <tbody>
+                    </TableRow>
+                </TableHeader>
+                <TableBody>
                     {data.length > 0 ? (
                         data.map((row) => (
-                            <tr
+                            <TableRow
                                 key={getRowId(row)}
                                 className={selectedRowId === getRowId(row) ? "is-selected" : undefined}
                                 aria-selected={selectedRowId === getRowId(row)}
@@ -59,22 +60,22 @@ export function JuDataTable<T>({
                                 onDoubleClick={() => onRowDoubleClick?.(row)}
                             >
                                 {columns.map((column) => (
-                                    <td key={column.id}>{column.cell(row)}</td>
+                                    <TableCell key={column.id}>{column.cell(row)}</TableCell>
                                 ))}
-                            </tr>
+                            </TableRow>
                         ))
                     ) : (
-                        <tr>
-                            <td
+                        <TableRow>
+                            <TableCell
                                 className="ju-table-empty"
                                 colSpan={Math.max(columns.length, 1)}
                             >
                                 {emptyMessage}
-                            </td>
-                        </tr>
+                            </TableCell>
+                        </TableRow>
                     )}
-                </tbody>
-            </table>
+                </TableBody>
+            </Table>
         </div>
     );
 }

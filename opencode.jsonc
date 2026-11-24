@@ -6,7 +6,9 @@
       "command": [
         "uvx",
         "code-review-graph",
-        "serve"
+        "serve",
+        "--repo",
+        "D:\\Github\\qlxsply\\juju"
       ]
     }
   }

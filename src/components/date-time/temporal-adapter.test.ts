@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
     contextInstant,
+    changeWallDate,
     fieldsFromZoned,
     normalizeValue,
     validateTimeContext,
@@ -10,6 +11,12 @@ import {
 import { parsePickerInput } from "./direct-input";
 
 describe("explicit date-time zones", () => {
+    it("constrains year and month changes to the last valid day", () => {
+        const base: WallFields = { year: 2026, month: 3, day: 31, hour: 10, minute: 30, second: 0 };
+        const leap = changeWallDate(changeWallDate(base, { year: 2024 }), { month: 2 });
+        expect(leap).toEqual({ ...base, year: 2024, month: 2, day: 29 });
+        expect(changeWallDate(leap, { year: 2025 }).day).toBe(28);
+    });
     it("projects one absolute now into its requested business zones", () => {
         const now = "2026-11-23T12:30:00Z";
         const newYork = contextInstant({ now, timeZone: "America/New_York", locale: "en-US" })

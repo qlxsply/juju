@@ -9,6 +9,8 @@ import { JuInput } from "./JuInput";
 import { JuPagination } from "./JuPagination";
 import { JuSelect } from "./JuSelect";
 import { JuSwitch } from "./JuSwitch";
+import { focusFirstInvalidField } from "./validation";
+import { ValidationIndicator } from "./ValidationIndicator";
 
 describe("Ju components", () => {
     it("provides consistent disabled and loading button behavior", () => {
@@ -25,7 +27,7 @@ describe("Ju components", () => {
             "aria-invalid",
             "true",
         );
-        expect(screen.getByText("名称不能为空")).toBeInTheDocument();
+        expect(screen.getByRole("textbox", { name: "名称" })).toHaveAccessibleDescription("错误：名称不能为空");
     });
 
     it("opens a dialog from its trigger", async () => {
@@ -108,6 +110,38 @@ describe("Ju components", () => {
         await user.click(screen.getByRole("switch", { name: "启用提醒" }));
         expect(onCheckboxChange).toHaveBeenCalledWith(true);
         expect(onSwitchChange).toHaveBeenCalledWith(true);
+    });
+
+    it("opens multiple messages and focuses the first invalid field on request", async () => {
+        const user = userEvent.setup();
+        const { container } = render(<>
+            <JuInput label="错误字段" error="必须填写" />
+            <ValidationIndicator fieldId="multiple" messages={[{ level: "warning", text: "检查格式" }, { level: "info", text: "辅助说明" }]} />
+        </>);
+        await user.click(screen.getByRole("button", { name: "查看警告信息" }));
+        expect(screen.getByText("检查格式")).toBeVisible();
+        expect(screen.getByText("辅助说明")).toBeVisible();
+        await user.keyboard("{Escape}");
+        expect(focusFirstInvalidField(container)).toBe(true);
+        expect(screen.getByRole("textbox", { name: "错误字段" })).toHaveFocus();
+        expect(await screen.findByText("必须填写", { selector: ".ju-validation-popover p" })).toBeVisible();
+    });
+
+    it("supports uncontrolled and indeterminate choices with accessible descriptions", async () => {
+        const user = userEvent.setup();
+        render(<>
+            <JuCheckbox label="部分选中" checked="indeterminate" description="可选择" />
+            <JuCheckbox label="普通勾选" defaultChecked />
+            <JuSwitch label="普通开关" defaultChecked />
+        </>);
+        const mixed = screen.getByRole("checkbox", { name: "部分选中" });
+        expect(mixed).toHaveAttribute("aria-checked", "mixed");
+        expect(mixed).toHaveAccessibleDescription("提示：可选择");
+        expect(mixed.querySelector("svg")).toBeInTheDocument();
+        await user.click(screen.getByLabelText("普通勾选"));
+        expect(screen.getByRole("checkbox", { name: "普通勾选" })).not.toBeChecked();
+        await user.click(screen.getByLabelText("普通开关"));
+        expect(screen.getByRole("switch", { name: "普通开关" })).not.toBeChecked();
     });
 
     it("prevents pagination from moving beyond the last page", async () => {

@@ -1,4 +1,4 @@
-import { useEffect, useState, type KeyboardEvent, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { isTauri } from "@tauri-apps/api/core";
 import {
@@ -961,6 +961,16 @@ function ShortcutRow({
     const [open, setOpen] = useState(false);
     const [draft, setDraft] = useState(value);
     const [error, setError] = useState("");
+    const shortcutInputId = useId();
+    const pendingErrorFocus = useRef(false);
+    const [submitAttempt, setSubmitAttempt] = useState(0);
+    useEffect(() => {
+        if (!error || !pendingErrorFocus.current) return;
+        pendingErrorFocus.current = false;
+        const input = document.getElementById(shortcutInputId);
+        input?.focus();
+        document.dispatchEvent(new CustomEvent("juju:show-validation", { detail: shortcutInputId }));
+    }, [error, shortcutInputId, submitAttempt]);
     const capture = (event: KeyboardEvent<HTMLInputElement>) => {
         event.preventDefault();
         event.stopPropagation();
@@ -991,6 +1001,8 @@ function ShortcutRow({
     };
 
     const submit = async () => {
+        pendingErrorFocus.current = true;
+        setSubmitAttempt((attempt) => attempt + 1);
         if (!draft && !allowNone) {
             setError("此快捷键不能清空。");
             return;
@@ -1009,6 +1021,7 @@ function ShortcutRow({
             setError(result);
             return;
         }
+        pendingErrorFocus.current = false;
         setOpen(false);
     };
 
@@ -1065,6 +1078,7 @@ function ShortcutRow({
                     }
                 >
                     <JuInput
+                        id={shortcutInputId}
                         label="新的快捷键"
                         labelHidden
                         value={draft}

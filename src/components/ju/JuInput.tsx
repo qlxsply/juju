@@ -1,5 +1,7 @@
 import { useId, type InputHTMLAttributes } from "react";
 import { InputPrimitive } from "../ui/input";
+import { ValidationIndicator } from "./ValidationIndicator";
+import { validationMessages } from "./validation";
 
 interface JuInputProps extends Omit<
     InputHTMLAttributes<HTMLInputElement>,
@@ -10,6 +12,7 @@ interface JuInputProps extends Omit<
     hint?: string;
     warning?: string;
     error?: string;
+    success?: string;
 }
 
 export function JuInput({
@@ -18,41 +21,29 @@ export function JuInput({
     hint,
     warning,
     error,
+    success,
     id,
     ...props
 }: JuInputProps) {
     const generatedId = useId();
     const inputId = id ?? generatedId;
-    const messageId = `${inputId}-message`;
-    const message = error ?? warning ?? hint;
-    const level = error ? "error" : warning ? "warning" : "info";
+    const messages = validationMessages({ error, warning, info: hint, success });
+    const describedBy = [props["aria-describedby"], messages.length ? `${inputId}-validation` : null].filter(Boolean).join(" ") || undefined;
 
     return (
-        <label className="ju-field" htmlFor={inputId}>
-            <span className={`ju-field-label${labelHidden ? " sr-only" : ""}`}>
-                {label}
-                {!labelHidden && message && (
-                    <span className={`ju-field-message is-${level}`} id={messageId}>
-                        {message.replace(/[。！？.!?]+$/, "")}
-                    </span>
-                )}
-            </span>
+        <div className="ju-field">
+            <div className="ju-field-heading">
+                <label htmlFor={inputId} className={`ju-field-label${labelHidden ? " sr-only" : ""}`}>{label}</label>
+                <ValidationIndicator fieldId={inputId} messages={messages} hiddenLabel={labelHidden} />
+            </div>
             <InputPrimitive
                 {...props}
                 aria-label={label}
-                aria-describedby={message ? messageId : undefined}
-                aria-invalid={Boolean(error)}
+                aria-describedby={describedBy}
+                aria-invalid={error ? true : props["aria-invalid"]}
                 className="ju-input"
                 id={inputId}
             />
-            {labelHidden && message && (
-                <span
-                    className={`ju-field-message is-${level}`}
-                    id={messageId}
-                >
-                    {message}
-                </span>
-            )}
-        </label>
+        </div>
     );
 }

@@ -1,5 +1,7 @@
 export {
     Content as SelectContent,
+    Group as SelectGroup,
+    Label as SelectLabel,
     Item as SelectItem,
     ItemText as SelectItemText,
     Portal as SelectPortal,

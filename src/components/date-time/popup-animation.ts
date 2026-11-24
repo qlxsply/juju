@@ -7,13 +7,6 @@ export interface PopupPositionController {
     dispose: () => void;
 }
 
-const placementMap: Record<PickerPlacement, Placement> = {
-    "bottom-start": "bottom-start",
-    "bottom-end": "bottom-end",
-    "top-start": "top-start",
-    "top-end": "top-end",
-};
-
 export function createPopupPositionController(placement: PickerPlacement): PopupPositionController {
     let popper: Instance | null = null;
     let animation: Animation | null = null;
@@ -21,6 +14,8 @@ export function createPopupPositionController(placement: PickerPlacement): Popup
     let generation = 0;
     let alive = true;
     let currentElement: HTMLDivElement | null = null;
+    let lockedSide: "top" | "bottom" | null = null;
+    let resizeObserver: ResizeObserver | null = null;
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 
     const clearAnimation = () => {
@@ -35,6 +30,9 @@ export function createPopupPositionController(placement: PickerPlacement): Popup
         clearAnimation();
         popper?.destroy();
         popper = null;
+        resizeObserver?.disconnect();
+        resizeObserver = null;
+        lockedSide = null;
         currentElement?.classList.remove("-juju-visible-");
         currentElement = null;
         done?.();
@@ -62,7 +60,7 @@ export function createPopupPositionController(placement: PickerPlacement): Popup
         animation = currentElement.animate(
             [
                 { transform: "perspective(850px) rotateX(0deg)", opacity: 1 },
-                { transform: "perspective(850px) rotateX(-88deg)", opacity: 0 },
+                { transform: `perspective(850px) rotateX(${lockedSide === "top" ? 88 : -88}deg)`, opacity: 0 },
             ],
             { duration: 320, easing: "cubic-bezier(.55,0,.8,.35)", fill: "forwards" },
         );
@@ -72,7 +70,6 @@ export function createPopupPositionController(placement: PickerPlacement): Popup
     const position: AirDatepickerPositionCallback = ({
         $datepicker,
         $target,
-        $pointer,
         isViewChange,
         done,
     }) => {
@@ -89,6 +86,9 @@ export function createPopupPositionController(placement: PickerPlacement): Popup
             clearAnimation();
             popper?.destroy();
             popper = null;
+            resizeObserver?.disconnect();
+            resizeObserver = null;
+            lockedSide = null;
             currentElement?.classList.remove("-juju-visible-");
             currentElement = null;
             previousDone();
@@ -96,18 +96,36 @@ export function createPopupPositionController(placement: PickerPlacement): Popup
 
         currentElement = $datepicker;
         if (!popper) {
+            const targetRect = $target.getBoundingClientRect();
+            const padding = 8;
+            const gap = 10;
+            const above = Math.max(0, targetRect.top - padding - gap);
+            const below = Math.max(0, window.innerHeight - targetRect.bottom - padding - gap);
+            const height = $datepicker.scrollHeight;
+            const preferred = placement.startsWith("top") ? "top" : "bottom";
+            const preferredSpace = preferred === "top" ? above : below;
+            const oppositeSpace = preferred === "top" ? below : above;
+            lockedSide = preferredSpace >= height || preferredSpace >= oppositeSpace ? preferred : preferred === "top" ? "bottom" : "top";
+            const updateAvailableHeight = () => {
+                if (!currentElement || !lockedSide) return;
+                const rect = $target.getBoundingClientRect();
+                const available = lockedSide === "top" ? rect.top - padding - gap : window.innerHeight - rect.bottom - padding - gap;
+                currentElement.style.maxHeight = `${Math.max(0, available)}px`;
+                currentElement.style.overflowY = currentElement.scrollHeight > Math.max(0, available) ? "auto" : "";
+            };
+            updateAvailableHeight();
             popper = createPopper($target, $datepicker, {
-                placement: placementMap[placement],
+                placement: `${lockedSide}-${placement.endsWith("end") ? "end" : "start"}` as Placement,
                 modifiers: [
                     { name: "offset", options: { offset: [0, 10] } },
                     { name: "flip", enabled: false },
                     { name: "preventOverflow", options: { padding: 8, altBoundary: true } },
-                    { name: "arrow", options: { element: $pointer, padding: 6 } },
                     { name: "computeStyles", options: { gpuAcceleration: false, adaptive: false } },
+                    { name: "jujuAvailableHeight", enabled: true, phase: "beforeRead", fn: updateAvailableHeight },
                 ],
                 onFirstUpdate: () => {
                     if (!currentElement || !alive) return;
-                    currentElement.style.transformOrigin = "center top";
+                    currentElement.style.transformOrigin = lockedSide === "top" ? "center bottom" : "center top";
                     currentElement.style.transform = "perspective(850px) rotateX(0deg)";
                     currentElement.style.opacity = "1";
                     if (isViewChange || reducedMotion.matches) {
@@ -116,7 +134,7 @@ export function createPopupPositionController(placement: PickerPlacement): Popup
                     clearAnimation();
                     animation = currentElement.animate(
                         [
-                            { transform: "perspective(850px) rotateX(-88deg)", opacity: 0.1 },
+                            { transform: `perspective(850px) rotateX(${lockedSide === "top" ? 88 : -88}deg)`, opacity: 0.1 },
                             { transform: "perspective(850px) rotateX(0deg)", opacity: 1 },
                         ],
                         { duration: 520, easing: "cubic-bezier(.2,.72,.18,1)", fill: "forwards" },
@@ -124,6 +142,9 @@ export function createPopupPositionController(placement: PickerPlacement): Popup
                     void animation.finished.catch(() => undefined);
                 },
             });
+            resizeObserver = new ResizeObserver(() => { void popper?.update(); });
+            resizeObserver.observe($datepicker);
+            resizeObserver.observe($target);
         } else {
             void popper.update();
         }
@@ -153,6 +174,9 @@ export function createPopupPositionController(placement: PickerPlacement): Popup
             pendingDone = null;
             popper?.destroy();
             popper = null;
+            resizeObserver?.disconnect();
+            resizeObserver = null;
+            lockedSide = null;
             currentElement = null;
             done?.();
         },

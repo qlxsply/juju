@@ -79,6 +79,13 @@ test("date and time pickers use bounded sliders and native navigation visuals", 
 
     const { input: dateInput, picker: date } = await pickerFor("计划日期");
     await expect(date.locator(".air-datepicker--pointer")).toBeVisible();
+    const pointerCenterOffset = await date.evaluate((element) => {
+        const popup = element.getBoundingClientRect();
+        const arrow = element.querySelector(".air-datepicker--pointer")!.getBoundingClientRect();
+        return Math.abs(arrow.left + arrow.width / 2 - (popup.left + popup.width / 2));
+    });
+    expect(pointerCenterOffset).toBeLessThan(2);
+    await expect(date.locator(".air-datepicker-body--cells.-days- .air-datepicker-cell")).toHaveCount(42);
     await expect(date.locator(".air-datepicker-nav--action svg").first()).toHaveCSS("width", "32px");
     const dayColor = await date.locator(".air-datepicker-body--day-name").first().evaluate((element) => getComputedStyle(element).color);
     const mutedColor = await date.locator(".air-datepicker-nav--action path").first().evaluate((element) => getComputedStyle(element).stroke);
@@ -98,6 +105,7 @@ test("date and time pickers use bounded sliders and native navigation visuals", 
     await expect(date).toBeVisible();
 
     const { input: timeInput, picker: time } = await pickerFor("计划时间");
+    await expect(time.locator(".air-datepicker--time")).toHaveCSS("border-top-width", "0px");
     const hours = time.locator('input[name="hours"]');
     const minutes = time.locator('input[name="minutes"]');
     await expect(hours).toHaveAttribute("min", "0");
@@ -123,10 +131,209 @@ test("date and time pickers use bounded sliders and native navigation visuals", 
     await boundedInput.click();
     await expect(bounded.locator('input[name="minutes"]')).toHaveAttribute("max", "0");
 
+    await design.getByRole("textbox", { name: "名称", exact: true }).focus();
     const { picker: datetime } = await pickerFor("日期和时间");
+    await expect(datetime.locator(".air-datepicker--time")).toHaveCSS("border-top-width", "1px");
     await expect(datetime.locator(".air-datepicker--pointer")).toBeVisible();
     await expect(datetime.locator('input[name="hours"]')).toHaveAttribute("max", "23");
     await expect(datetime.locator('input[name="minutes"]')).toHaveAttribute("max", "59");
+    await design.close();
+});
+
+test("time popup clears selected time while preserving slider position", async ({ page }) => {
+    await page.goto("/");
+    const [design] = await Promise.all([
+        page.waitForEvent("popup"),
+        page.getByRole("button", { name: /设计系统工作台/ }).click(),
+    ]);
+    const input = design.getByRole("textbox", { name: "计划时间", exact: true });
+    await input.fill("14:18");
+    await input.press("Tab");
+    await input.click();
+    const id = (await input.getAttribute("id"))!.replace(/[^a-zA-Z0-9_-]/g, "");
+    const popup = design.locator(`.air-datepicker.juju-air-picker-${id}`);
+    const hours = popup.locator('input[name="hours"]');
+    const minutes = popup.locator('input[name="minutes"]');
+    await expect(hours).toHaveValue("14");
+    await expect(minutes).toHaveValue("18");
+    await popup.getByRole("button", { name: "清空已选时间" }).click();
+    await expect(input).toHaveValue("");
+    await expect(popup).toHaveClass(/-juju-time-empty-/);
+    await expect(hours).toHaveValue("14");
+    await expect(minutes).toHaveValue("18");
+    await minutes.focus();
+    await minutes.press("ArrowRight");
+    await expect(input).toHaveValue("14:19");
+    await expect(popup).not.toHaveClass(/-juju-time-empty-/);
+    await popup.getByRole("button", { name: "清空已选时间" }).focus();
+    await design.keyboard.press("Enter");
+    await expect(input).toHaveValue("");
+    await design.getByRole("textbox", { name: "备注", exact: true }).click();
+    await input.click();
+    await expect(input).toHaveValue("");
+    await expect(popup).toHaveClass(/-juju-time-empty-/);
+    await expect(minutes).toHaveValue("19");
+    await minutes.click();
+    await expect(input).not.toHaveValue("");
+    const bounded = design.getByRole("textbox", { name: "时间范围与步长", exact: true });
+    await bounded.click();
+    const boundedId = (await bounded.getAttribute("id"))!.replace(/[^a-zA-Z0-9_-]/g, "");
+    const boundedPopup = design.locator(`.air-datepicker.juju-air-picker-${boundedId}`);
+    await expect(boundedPopup.locator('input[name="minutes"]')).toHaveValue("30");
+    await boundedPopup.getByRole("button", { name: "清空已选时间" }).click();
+    await expect(bounded).toHaveValue("");
+    const boundedMinutes = boundedPopup.locator('input[name="minutes"]');
+    await expect(boundedMinutes).toHaveValue("30");
+    await boundedMinutes.focus();
+    await boundedMinutes.press("ArrowRight");
+    await expect(bounded).toHaveValue("09:35");
+    await boundedMinutes.press("ArrowRight");
+    await expect(bounded).toHaveValue("09:40");
+    await bounded.click();
+    await boundedPopup.getByRole("button", { name: "清空已选时间" }).click();
+    await expect(bounded).toHaveValue("");
+    await boundedMinutes.focus();
+    await boundedMinutes.press("ArrowLeft");
+    await expect(bounded).toHaveValue("09:35");
+    const dateTime = design.getByRole("textbox", { name: "日期和时间", exact: true });
+    await dateTime.click();
+    const datetimeId = (await dateTime.getAttribute("id"))!.replace(/[^a-zA-Z0-9_-]/g, "");
+    await expect(design.locator(`.air-datepicker.juju-air-picker-${datetimeId} [data-juju-time-toggle]`)).toHaveCount(0);
+    await design.close();
+});
+
+test("range pickers select dates and Delete clears the entire value", async ({ page }) => {
+    await page.goto("/");
+    const [design] = await Promise.all([
+        page.waitForEvent("popup"),
+        page.getByRole("button", { name: /设计系统工作台/ }).click(),
+    ]);
+    const input = design.getByRole("textbox", { name: "日期范围", exact: true });
+    await input.fill("2026-11-09 - 2026-11-15");
+    await input.press("Tab");
+    await expect(input).toHaveValue("2026-11-09 - 2026-11-15");
+    await input.focus();
+    await input.press("Backspace");
+    await expect(input).toHaveValue("");
+    await input.press("Tab");
+    await input.click();
+    const rangeId = (await input.getAttribute("id"))!.replace(/[^a-zA-Z0-9_-]/g, "");
+    const popup = design.locator(`.air-datepicker.juju-air-picker-${rangeId}`);
+    await expect(popup).toBeVisible();
+    await popup.locator(".air-datepicker-cell.-day-:not(.-other-month-)").nth(4).click();
+    await expect(input).not.toHaveValue("");
+    await popup.locator(".air-datepicker-cell.-day-:not(.-other-month-)").nth(8).click();
+    await expect(input).toHaveValue(/ - /);
+    const date = design.getByRole("textbox", { name: "计划日期", exact: true });
+    await date.focus();
+    await date.press("Delete");
+    await expect(date).toHaveValue("");
+    const restricted = design.getByRole("textbox", { name: "禁止跨越的日期范围" });
+    await restricted.fill("2026-11-09 - 2026-11-15");
+    await restricted.press("Tab");
+    await expect(restricted).toHaveAttribute("aria-invalid", "true");
+    await design.close();
+});
+
+test("data and feedback components use individual showcase rows", async ({ page }) => {
+    await page.goto("/");
+    const [design] = await Promise.all([
+        page.waitForEvent("popup"),
+        page.getByRole("button", { name: /设计系统工作台/ }).click(),
+    ]);
+    const data = design.locator("#data");
+    const feedback = design.locator("#feedback");
+    await expect(data.locator(".showcase-example")).toHaveCount(4);
+    await expect(feedback.locator(".showcase-example")).toHaveCount(7);
+    await expect(data.locator(".component-card")).toHaveCount(0);
+    await expect(feedback.locator(".component-card")).toHaveCount(0);
+    const table = data.getByRole("region", { name: "数据表格" });
+    await expect(table.locator('[data-slot="table"]')).toHaveCount(1);
+    await data.getByRole("searchbox", { name: "搜索" }).fill("Toto");
+    await expect(table.getByRole("cell", { name: "Toto 提醒" })).toBeVisible();
+    await expect(table.getByRole("cell", { name: "JSON 文档" })).toHaveCount(0);
+    await feedback.getByRole("button", { name: "打开弹窗" }).click();
+    await expect(design.getByRole("dialog", { name: "示例弹窗" })).toBeVisible();
+    await design.getByRole("button", { name: "完成", exact: true }).click();
+    await feedback.getByRole("tab", { name: "详情" }).click();
+    await expect(feedback.getByText("第二个面板内容。")).toBeVisible();
+    await design.close();
+});
+
+test("form showcase exposes checkbox icons and keyboard tooltips", async ({ page }) => {
+    await page.goto("/");
+    const [design] = await Promise.all([
+        page.waitForEvent("popup"),
+        page.getByRole("button", { name: /设计系统工作台/ }).click(),
+    ]);
+    const mixed = design.getByRole("checkbox", { name: "部分选中" });
+    await expect(mixed).toHaveAttribute("aria-checked", "mixed");
+    await expect(mixed.locator(".ju-checkbox-minus")).toBeVisible();
+    await expect(mixed.locator(".ju-checkbox-check")).toBeHidden();
+    const tooltipTrigger = design.getByRole("button", { name: "悬停或聚焦" });
+    await design.bringToFront();
+    await tooltipTrigger.scrollIntoViewIfNeeded();
+    await design.getByRole("switch", { name: "无效开关" }).focus();
+    await design.keyboard.press("Tab");
+    await design.keyboard.press("Tab");
+    await expect(design.getByRole("tooltip", { name: "保存当前内容" })).toBeVisible();
+    await design.keyboard.press("Escape");
+    await expect(design.getByRole("tooltip", { name: "保存当前内容" })).toBeHidden();
+    await design.close();
+});
+
+test("form controls share a compact visible focus outline", async ({ page }) => {
+    await page.goto("/");
+    const [design] = await Promise.all([
+        page.waitForEvent("popup"),
+        page.getByRole("button", { name: /设计系统工作台/ }).click(),
+    ]);
+    for (const name of ["名称", "备注", "错误示例"]) {
+        const field = design.getByRole("textbox", { name, exact: true });
+        await field.focus();
+        await expect(field).toHaveCSS("outline-width", "2px");
+        await expect(field).toHaveCSS("outline-offset", "1px");
+        if (name === "错误示例") {
+            await expect(field).toHaveAttribute("aria-invalid", "true");
+            expect(await field.evaluate((node) => getComputedStyle(node).borderTopColor)).not.toBe(
+                await field.evaluate((node) => getComputedStyle(node).outlineColor),
+            );
+        }
+    }
+    await design.close();
+});
+
+test("date picker commits year and month and locks popup direction", async ({ page }) => {
+    await page.goto("/");
+    const [design] = await Promise.all([
+        page.waitForEvent("popup"),
+        page.getByRole("button", { name: /设计系统工作台/ }).click(),
+    ]);
+    const input = design.getByRole("textbox", { name: "计划日期", exact: true });
+    await input.fill("2026-03-31");
+    await input.press("Tab");
+    await design.evaluate((id) => {
+        const el = document.getElementById(id) as HTMLElement;
+        Object.assign(el.style, { position: "fixed", top: "auto", bottom: "20px", left: "20px", zIndex: "1000" });
+    }, (await input.getAttribute("id"))!);
+    await design.waitForTimeout(400);
+    await input.click();
+    const id = (await input.getAttribute("id"))!.replace(/[^a-zA-Z0-9_-]/g, "");
+    const picker = design.locator(`.air-datepicker.juju-air-picker-${id}`);
+    await expect(picker).toHaveAttribute("data-popper-placement", /^top/);
+    await picker.locator(".air-datepicker-nav--title").click();
+    await picker.locator(".air-datepicker-nav--title").click();
+    await picker.locator('[data-juju-year="2024"]').click();
+    await expect(input).toHaveValue("2024-03-31");
+    await expect(picker).toHaveAttribute("data-popper-placement", /^top/);
+    await picker.locator('[data-juju-month="2"]').click();
+    await expect(input).toHaveValue("2024-02-29");
+    await expect(picker).toHaveAttribute("data-popper-placement", /^top/);
+    await picker.locator(".air-datepicker-nav--title").click();
+    await picker.locator(".air-datepicker-nav--action").first().click();
+    await expect(input).toHaveValue("2024-02-29");
+    await picker.locator('[data-juju-month="4"][data-juju-year="2023"]').click();
+    await expect(input).toHaveValue("2023-04-29");
     await design.close();
 });
 
@@ -142,6 +349,12 @@ test("design workbench showcases public components and keeps theme controls stab
     await expect(design.locator(".sidebar-heading")).toHaveCount(0);
     await expect(navigation.getByRole("link", { name: "演示环境" })).toBeVisible();
     await expect(design.locator(".showcase-section")).toHaveCount(6);
+    for (const section of ["#forms", "#data", "#feedback"]) {
+        const borders = await design.locator(`${section} .showcase-example`).evaluateAll((rows) =>
+            rows.map((row) => getComputedStyle(row).borderBottomWidth),
+        );
+        expect(borders.every((width) => width === "0px")).toBe(true);
+    }
     for (const heading of ["演示环境", "Design Tokens", "按钮与状态", "表单组件", "数据组件", "弹窗与反馈"]) {
         await expect(design.getByRole("heading", { name: heading })).toBeVisible();
     }
@@ -275,12 +488,14 @@ test("design workbench showcases public components and keeps theme controls stab
         });
         expect(topLayer).toBe("通知");
     }
-    const infoHint = design.getByText("名称仅用于本地显示");
-    await expect(infoHint).toBeHidden();
-    await design.getByRole("textbox", { name: "名称", exact: true }).focus();
-    await expect(infoHint).toBeVisible();
-    await expect(design.getByText("接近长度上限")).toBeVisible();
-    await expect(design.getByText("请检查该字段")).toBeVisible();
+    const nameField = design.getByRole("textbox", { name: "名称", exact: true });
+    await expect(nameField).toHaveAccessibleDescription("提示：名称仅用于本地显示");
+    const nameRow = design.locator(".ju-field").filter({ has: nameField });
+    await nameRow.getByRole("button", { name: "查看提示信息" }).click();
+    await expect(design.locator(".ju-validation-popover")).toContainText("名称仅用于本地显示");
+    await design.keyboard.press("Escape");
+    await expect(design.getByRole("textbox", { name: "警告示例" })).toHaveAccessibleDescription("警告：接近长度上限");
+    await expect(design.getByRole("textbox", { name: "错误示例" })).toHaveAccessibleDescription("错误：请检查该字段");
     const dateField = design.getByRole("textbox", { name: "计划日期", exact: true });
     const dateInputId = await dateField.getAttribute("id");
     const datePicker = design.locator(`.air-datepicker.juju-air-picker-${dateInputId!.replace(/[^a-zA-Z0-9_-]/g, "")}`);
@@ -334,19 +549,19 @@ test("design workbench showcases public components and keeps theme controls stab
     await dateTimeField.fill("2026-11-23 09:45");
     await dateTimeField.press("Tab");
     await expect(dateTimeField).toHaveValue("2026-11-23 09:45");
-    await expect(design.getByText(/Instant: 2026-11-23T01:45:00Z/)).toBeVisible();
+    await expect(design.getByText(/日期时间（UTC）：2026-11-23T01:45:00Z/)).toBeVisible();
     await dateTimeField.click();
     picker = dateTimePicker;
     await expect(picker).toHaveClass(/-juju-visible-/);
     await picker.locator(".air-datepicker-cell.-day-").filter({ hasText: /^24$/ }).click();
     await expect(picker).toHaveClass(/-juju-visible-/);
     await expect(dateTimeField).toHaveValue("2026-11-24 09:45");
-    await expect(design.getByText(/Instant: 2026-11-24T01:45:00Z/)).toBeVisible();
+    await expect(design.getByText(/日期时间（UTC）：2026-11-24T01:45:00Z/)).toBeVisible();
     await dateTimeField.press("Escape");
     await design.getByRole("combobox", { name: "业务时区" }).click();
     await design.getByRole("option", { name: "America/New_York" }).click();
     await expect(dateTimeField).toHaveValue("2026-11-23 20:45");
-    await expect(design.getByText(/Instant: 2026-11-24T01:45:00Z/)).toBeVisible();
+    await expect(design.getByText(/日期时间（UTC）：2026-11-24T01:45:00Z/)).toBeVisible();
     const temporalHeights = await design.locator(".ju-air-picker-input").evaluateAll((controls) =>
         controls.map((control) => Math.round(control.getBoundingClientRect().height)),
     );
@@ -395,9 +610,13 @@ test("date-time controls use explicit business zone and locale, not the browser 
         const timeField = design.getByRole("textbox", { name: "计划时间", exact: true });
         const dateTimeField = design.getByRole("textbox", { name: "日期和时间", exact: true });
         const environmentTime = design.getByRole("textbox", { name: "示例时间（本地）", exact: true });
-        const environmentNow = design.locator(".token-environment-settings .date-time-demo-output");
+        const environmentNow = design.locator(".token-environment-settings .sr-only").filter({ hasText: "传入组件的 now" });
         await expect(environmentTime).toHaveValue(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/);
         await expect(environmentNow).toContainText(/传入组件的 now（绝对时间，UTC）：\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z/);
+        const timeSettings = design.locator(".ju-field").filter({ has: environmentTime });
+        await timeSettings.getByRole("button", { name: "查看提示信息" }).click();
+        await expect(design.locator(".ju-validation-popover")).toContainText("传入组件的 now（绝对时间，UTC）");
+        await design.keyboard.press("Escape");
         await environmentTime.fill("2026-11-23 09:30");
         await expect(environmentNow).toContainText("2026-11-23T01:30:00Z");
         await expect(dateField).toHaveValue("2026-11-21");
@@ -408,7 +627,7 @@ test("date-time controls use explicit business zone and locale, not the browser 
         await design.getByRole("option", { name: "UTC" }).click();
         await expect(environmentNow).toContainText("2026-11-23T09:30:00Z");
         await expect(dateTimeField).toHaveValue("2026-11-21 01:30");
-        await expect(design.getByText(/Instant: 2026-11-21T01:30:00Z/)).toBeVisible();
+        await expect(design.getByText(/日期时间（UTC）：2026-11-21T01:30:00Z/)).toBeVisible();
         await expect(dateField).toHaveValue("2026-11-21");
         await expect(timeField).toHaveValue("09:30");
 
@@ -420,6 +639,20 @@ test("date-time controls use explicit business zone and locale, not the browser 
     } finally {
         await context.close();
     }
+});
+
+test("external datetime example displays UTC without fractional seconds", async ({ page }) => {
+    await page.goto("/");
+    const [design] = await Promise.all([
+        page.waitForEvent("popup"),
+        page.getByRole("button", { name: /设计系统工作台/ }).click(),
+    ]);
+    const environment = await design.locator(".token-environment-settings .sr-only").filter({ hasText: "传入组件的 now" }).textContent();
+    const instant = environment?.match(/(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.\d+)?Z/)?.[1];
+    expect(instant).toBeTruthy();
+    await design.getByRole("button", { name: "将日期时间设为演示环境时间" }).click();
+    await expect(design.getByLabel("日期时间示例的内部值")).toContainText(`日期时间（UTC）：${instant}Z`);
+    await design.close();
 });
 
 test("launcher settings persist as plain application preferences", async ({

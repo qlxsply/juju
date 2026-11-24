@@ -21,6 +21,7 @@ import {
     JuCheckbox,
     JuConfirmDialog,
     JuDatePicker,
+    JuDateRangePicker,
     JuDateTimePicker,
     JuDataTable,
     type JuColumn,
@@ -42,6 +43,7 @@ import {
     JuTextarea,
     JuToast,
     JuToolbar,
+    JuTooltip,
 } from "./components/ju";
 import { useThemeStore } from "./design-system/theme-store";
 import { colorTokenDetails, designTokens, layoutTokenDetails, tokenCategories } from "./design-system/tokens";
@@ -441,7 +443,12 @@ function DesignSystemShowcase() {
     const [notifications, setNotifications] = useState(false);
     const [preferredMode, setPreferredMode] = useState("desktop");
     const [selectedDate, setSelectedDate] = useState("2026-11-21");
+    const [range, setRange] = useState({ start: null as string | null, end: null as string | null });
+    const [restrictedRange, setRestrictedRange] = useState({ start: null as string | null, end: null as string | null });
+    const [rangeStart, setRangeStart] = useState<string | null>(null);
+    const [rangeEnd, setRangeEnd] = useState<string | null>(null);
     const [selectedTime, setSelectedTime] = useState("09:30");
+    const [boundedTime, setBoundedTime] = useState<string | null>("09:30");
     const [selectedDateTime, setSelectedDateTime] = useState("2026-11-21T01:30:00Z");
     const [dstPolicy, setDstPolicy] = useState<"reject" | "earlier" | "later">("reject");
     const appTimeContext = useTimeContext();
@@ -552,6 +559,7 @@ function DesignSystemShowcase() {
                                 <JuInput
                                     label="示例时间（本地）"
                                     value={demoTimeInput}
+                                    hint={`传入组件的 now（绝对时间，UTC）：${demoNow}`}
                                     error={demoTimeError || undefined}
                                     placeholder={resolvePickerFormat({ mode: "datetime", locale: demoLocale }).inputFormat}
                                     onChange={(event) => {
@@ -574,7 +582,6 @@ function DesignSystemShowcase() {
                                     }}
                                 />
                             </div>
-                            <p className="date-time-demo-output">传入组件的 now（绝对时间，UTC）：{demoNow}</p>
                         </div>
                     </section>
                     <section className="showcase-section" id="design-tokens">
@@ -644,9 +651,16 @@ function DesignSystemShowcase() {
 
                     <section className="showcase-section" id="forms">
                         <SectionHeading title="表单组件" description="输入、选择、日期和状态控制。" />
-                        <div className="component-card form-grid">
+                        <div className="showcase-example-list form-examples">
+                            <ShowcaseExample title="文本输入" code="JuInput" description="输入普通文本，支持提示、只读和校验状态。">
                             <JuInput label="名称" placeholder="输入名称" hint="名称仅用于本地显示" />
                             <JuInput label="只读字段" value="Juju Desktop" readOnly />
+                            <JuInput label="禁用输入" placeholder="不可编辑" disabled />
+                            <JuInput label="必填输入" placeholder="请输入" required />
+                            <JuInput label="警告示例" defaultValue="即将达到限制" warning="接近长度上限" />
+                            <JuInput label="错误示例" defaultValue="字段有错误" error="请检查该字段" />
+                            </ShowcaseExample>
+                            <ShowcaseExample title="选择器" code="JuSelect" description="从预设选项中选择一项。">
                             <JuSelect
                                 label="工具分类"
                                 value={category}
@@ -656,8 +670,30 @@ function DesignSystemShowcase() {
                                     { value: "data", label: "数据工具" },
                                 ]}
                             />
+                            <JuSelect label="分组选项" placeholder="请选择" groups={[{ label: "常用工具", options: [{ value: "toto", label: "Toto" }, { value: "other", label: "不可用选项", disabled: true }] }, { label: "数据工具", options: [{ value: "json", label: "JSON" }] }]} />
+                            <JuSelect label="禁用选择器" disabled options={[{ value: "a", label: "选项" }]} />
+                            <JuSelect label="无效选择器" error="请选择一个选项" options={[{ value: "a", label: "选项" }]} />
+                            </ShowcaseExample>
+                            <ShowcaseExample title="日期选择器" code="JuDatePicker" description="选择单个日期；Delete 或 Backspace 清空。">
                             <JuDatePicker {...demoTimeContext} label="计划日期" value={selectedDate} onChange={(next) => setSelectedDate(next ?? "")} />
+                            <JuDatePicker {...demoTimeContext} label="日期范围限制" value="2026-11-21" min="2026-11-01" max="2026-11-30" />
+                            <JuDatePicker {...demoTimeContext} label="禁用日期组件" value="2026-11-21" disabled />
+                            </ShowcaseExample>
+                            <ShowcaseExample title="日期范围" code="JuDateRangePicker" description="在一个日历中选择起止日期，可拖动端点调整。">
+                                <JuDateRangePicker {...demoTimeContext} label="日期范围" value={range} onChange={setRange} />
+                            </ShowcaseExample>
+                            <ShowcaseExample title="禁止跨越禁用日期" code="JuDateRangePicker disabledDates" description="不可选择或跨越 2026-11-13。">
+                                <JuDateRangePicker {...demoTimeContext} label="禁止跨越的日期范围" value={restrictedRange} onChange={setRestrictedRange} disabledDates={["2026-11-13"]} />
+                            </ShowcaseExample>
+                            <ShowcaseExample title="最小和最大日期" code="JuDatePicker min / max" description="开始和结束日期互相约束，允许同一天。">
+                                <JuDatePicker {...demoTimeContext} label="开始日期" value={rangeStart} max={rangeEnd ?? undefined} onChange={setRangeStart} />
+                                <JuDatePicker {...demoTimeContext} label="结束日期" value={rangeEnd} min={rangeStart ?? undefined} onChange={setRangeEnd} />
+                            </ShowcaseExample>
+                            <ShowcaseExample title="时间选择器" code="JuTimePicker" description="选择无时区的时间，支持范围和步长。">
                             <JuTimePicker {...demoTimeContext} label="计划时间" value={selectedTime} onChange={(next) => setSelectedTime(next ?? "")} />
+                            <JuTimePicker {...demoTimeContext} label="时间范围与步长" value={boundedTime} onChange={setBoundedTime} min="08:00" max="18:00" minuteStep={5} />
+                            </ShowcaseExample>
+                            <ShowcaseExample title="日期时间选择器" code="JuDateTimePicker" description="选择绝对时间，按工作环境的时区展示并校验 DST。">
                             <JuDateTimePicker {...demoTimeContext} label="日期和时间" value={selectedDateTime} onChange={(next) => setSelectedDateTime(next ?? "")} />
                             <JuDateTimePicker {...demoTimeContext} label="now 默认值" />
                             <JuDateTimePicker
@@ -676,9 +712,6 @@ function DesignSystemShowcase() {
                                     { value: "later", label: "选择较晚时刻" },
                                 ]}
                             />
-                            <JuDatePicker {...demoTimeContext} label="日期范围限制" value="2026-11-21" min="2026-11-01" max="2026-11-30" />
-                            <JuTimePicker {...demoTimeContext} label="时间范围与步长" value="09:30" min="08:00" max="18:00" minuteStep={5} />
-                            <JuDatePicker {...demoTimeContext} label="禁用日期组件" value="2026-11-21" disabled />
                             <JuDateTimePicker {...demoTimeContext} label="错误状态示例" value="invalid-date-time" />
                             <JuDateTimePicker
                                 {...demoTimeContext}
@@ -696,22 +729,42 @@ function DesignSystemShowcase() {
                                     { value: "later", label: "选择较晚时刻" },
                                 ]}
                             />
-                            <JuDatePicker {...demoTimeContext} label="范围内日期" value="2026-11-21" min="2026-11-01" max="2026-11-30" />
-                            <JuTimePicker {...demoTimeContext} label="受限时间（5 分钟步长）" value="09:30" min="08:00" max="18:00" minuteStep={5} />
-                            <JuDatePicker {...demoTimeContext} label="禁用日期" value="2026-11-21" disabled />
-                            <JuDateTimePicker {...demoTimeContext} label="错误值示例" value="not-an-instant" />
                             <JuButton
                                 variant="secondary"
                                 onClick={() => setSelectedDateTime(Temporal.Instant.from(demoNow).toString())}
                             >
-                                外部设置 DateTime value
+                                将日期时间设为演示环境时间
                             </JuButton>
-                            <p className="date-time-demo-output">Date: {selectedDate} · Time: {selectedTime} · Instant: {selectedDateTime}</p>
+                            <div className="date-time-demo-output date-time-demo-values" aria-label="日期时间示例的内部值">
+                                <div>日期：{selectedDate || "未选择"}</div>
+                                <div>时间：{selectedTime || "未选择"}</div>
+                                <div>日期时间（UTC）：{selectedDateTime ? Temporal.Instant.from(selectedDateTime).toString({ smallestUnit: "second", roundingMode: "trunc" }) : "未选择"}</div>
+                            </div>
+                            </ShowcaseExample>
+                            <ShowcaseExample title="多行输入" code="JuTextarea" description="输入多行文本。">
                             <JuTextarea label="备注" placeholder="输入备注" rows={3} />
+                            </ShowcaseExample>
+                            <ShowcaseExample title="勾选框" code="JuCheckbox" description="选择布尔或部分选中的状态。">
                             <div className="choice-stack">
                                 <JuCheckbox label="订阅本地提醒" checked={newsletter} onCheckedChange={setNewsletter} />
-                                <JuSwitch label="启用通知" checked={notifications} onCheckedChange={setNotifications} />
+                                <JuCheckbox label="默认选中" defaultChecked description="可点击标签切换。" />
+                                <JuCheckbox label="部分选中" checked="indeterminate" />
+                                <JuCheckbox label="禁用勾选" disabled />
+                                <JuCheckbox label="需要同意" error="请先同意。" />
                             </div>
+                            </ShowcaseExample>
+                            <ShowcaseExample title="开关" code="JuSwitch" description="立即切换功能状态。">
+                            <div className="choice-stack">
+                                <JuSwitch label="启用通知" checked={notifications} onCheckedChange={setNotifications} />
+                                <JuSwitch label="默认开启" defaultChecked description="切换后立即生效。" />
+                                <JuSwitch label="禁用开关" disabled />
+                                <JuSwitch label="无效开关" error="请先完成设置。" />
+                            </div>
+                            </ShowcaseExample>
+                            <ShowcaseExample title="文字提示" code="JuTooltip" description="鼠标悬停或键盘聚焦时显示补充说明。">
+                                <JuTooltip content="保存当前内容" side="top"><JuButton variant="outline">悬停或聚焦</JuButton></JuTooltip>
+                            </ShowcaseExample>
+                            <ShowcaseExample title="单选" code="JuRadioGroup" description="在互斥选项中选择一项。">
                             <JuRadioGroup
                                 label="工作环境"
                                 value={preferredMode}
@@ -721,31 +774,38 @@ function DesignSystemShowcase() {
                                     { value: "portable", label: "便携" },
                                 ]}
                             />
-                            <JuInput label="警告示例" defaultValue="即将达到限制" warning="接近长度上限" />
-                            <JuInput label="错误示例" defaultValue="字段有错误" error="请检查该字段" />
+                            </ShowcaseExample>
                         </div>
                     </section>
 
                     <section className="showcase-section" id="data">
                         <SectionHeading title="数据组件" description="表格、搜索、分页和空状态。" />
-                        <div className="component-card">
+                        <div className="showcase-example-list component-examples">
+                            <ShowcaseExample title="搜索输入" code="JuSearchInput" description="按名称筛选下方数据表格。">
                             <div className="table-toolbar">
                                 <JuSearchInput value={searchText} onValueChange={setSearchText} />
                             </div>
+                            </ShowcaseExample>
+                            <ShowcaseExample title="数据表格" code="JuDataTable" description="按列展示数据，支持行选择和空状态。" wide>
                             <JuDataTable
                                 columns={demoColumns}
                                 data={demoRows.filter((row) => row.name.toLocaleLowerCase().includes(searchText.toLocaleLowerCase()))}
                                 getRowId={(row) => row.name}
                             />
+                            </ShowcaseExample>
+                            <ShowcaseExample title="分页" code="JuPagination" description="在多页数据之间切换。">
                             <JuPagination page={page} pageCount={3} onPageChange={setPage} />
+                            </ShowcaseExample>
+                            <ShowcaseExample title="空状态" code="JuEmptyState" description="没有可展示数据时提供说明。">
                             <JuEmptyState title="没有更多工具" description="新工具会在后续开发阶段加入。" />
+                            </ShowcaseExample>
                         </div>
                     </section>
 
                     <section className="showcase-section" id="feedback">
                         <SectionHeading title="弹窗与反馈" description="统一的对话框、标签页和状态反馈。" />
-                        <div className="component-card">
-                            <div className="demo-row">
+                        <div className="showcase-example-list component-examples">
+                            <ShowcaseExample title="对话框" code="JuDialog" description="展示需要用户查看或处理的内容。">
                                 <JuDialog
                                     title="示例弹窗"
                                     description="弹窗尺寸、遮罩和焦点行为由公共组件统一管理。"
@@ -754,6 +814,8 @@ function DesignSystemShowcase() {
                                 >
                                     <p className="dialog-copy">这是 JuDialog 的真实工作示例。</p>
                                 </JuDialog>
+                            </ShowcaseExample>
+                            <ShowcaseExample title="确认对话框" code="JuConfirmDialog" description="执行危险或不可逆操作前请求确认。">
                                 <JuConfirmDialog
                                     title="确认清空"
                                     description="此操作会清空当前示例数据。"
@@ -762,10 +824,17 @@ function DesignSystemShowcase() {
                                     destructive
                                     onConfirm={showNotification}
                                 />
+                            </ShowcaseExample>
+                            <ShowcaseExample title="通知" code="JuToast" description="显示操作结果的临时反馈。">
+                                <div className="demo-row">
                                 <JuButton variant="secondary" onClick={showNotification}>显示通知</JuButton>
                                 {showToast && <JuToast>操作已完成</JuToast>}
                             </div>
+                            </ShowcaseExample>
+                            <ShowcaseExample title="分隔线" code="JuSeparator" description="区分相邻内容区域。">
                             <JuSeparator />
+                            </ShowcaseExample>
+                            <ShowcaseExample title="标签页" code="JuTabs" description="在相关内容面板之间切换。">
                             <JuTabs
                                 label="示例标签页"
                                 tabs={[
@@ -773,13 +842,18 @@ function DesignSystemShowcase() {
                                     { id: "second", label: "详情", content: <p>第二个面板内容。</p> },
                                 ]}
                             />
+                            </ShowcaseExample>
+                            <ShowcaseExample title="工具栏" code="JuToolbar" description="将状态和操作集中在同一工具栏。">
                             <JuToolbar>
                                 <span className="toolbar-label">工具栏</span>
                                 <span className="toolbar-spacer" />
                                 <JuBadge variant="success">已连接</JuBadge>
                                 <JuButton variant="outline">操作</JuButton>
                             </JuToolbar>
+                            </ShowcaseExample>
+                            <ShowcaseExample title="状态栏" code="JuStatusBar" description="在固定区域展示当前状态。">
                             <JuStatusBar><span>状态栏左侧</span><span>状态栏右侧</span></JuStatusBar>
+                            </ShowcaseExample>
                         </div>
                     </section>
                 </main>
@@ -1830,9 +1904,9 @@ function SectionHeading({
     );
 }
 
-function ShowcaseExample({ title, description, code, children }: { title: string; description: string; code: string; children: ReactNode }) {
+function ShowcaseExample({ title, description, code, children, wide = false }: { title: string; description: string; code: string; children: ReactNode; wide?: boolean }) {
     return (
-        <article className="showcase-example">
+        <article className={`showcase-example${wide ? " showcase-example-wide" : ""}`}>
             <div className="color-token-content">
                 <div className="token-detail-heading"><h4>{title}</h4><code>{code}</code></div>
                 <p>{description}</p>

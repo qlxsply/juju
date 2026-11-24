@@ -476,16 +476,12 @@ async function openTauriWindow(label: string, url: string, title: string) {
         webviewWindow.once("tauri://created", () => resolve());
         webviewWindow.once("tauri://error", (event) => reject(event.payload));
     });
-    if (label === "toto") {
+    if (label === "toto" || (label.startsWith("tool-") && label !== "tool-json")) {
         await webviewWindow.onCloseRequested((event) => {
             event.preventDefault();
-            void closeCurrentToolWindow().catch((reason: unknown) => console.error(reason));
-        });
-    }
-    if (label.startsWith("tool-") && label !== "tool-json") {
-        await webviewWindow.onCloseRequested((event) => {
-            event.preventDefault();
-            void closeCurrentToolWindow().catch((reason: unknown) => console.error(reason));
+            // This listener runs in the window that created the child, so
+            // getCurrentWindow() would identify the opener, not the child.
+            void invoke("close_window_command", { label }).catch((reason: unknown) => console.error(reason));
         });
     }
     if (label === "tool-json" && isTauri()) {
@@ -495,7 +491,7 @@ async function openTauriWindow(label: string, url: string, title: string) {
         if (jsonSettings?.openMaximized === true) await webviewWindow.maximize();
         await webviewWindow.onCloseRequested((event) => {
             event.preventDefault();
-            void closeCurrentToolWindow().catch((reason: unknown) => console.error(reason));
+            void invoke("close_window_command", { label }).catch((reason: unknown) => console.error(reason));
         });
     }
     await webviewWindow.show();

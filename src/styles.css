@@ -83,6 +83,7 @@
     --border-style-dashed: dashed;
     --border-style: var(--border-style-solid);
     --focus-outline: var(--border-width-strong) solid var(--focus-ring);
+    --focus-outline-offset: 1px;
     --control-height-sm: 28px;
     --control-height: 34px;
     --control-height-lg: 40px;
@@ -194,10 +195,12 @@ select {
 
 button:focus-visible,
 input:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
 [role="combobox"]:focus-visible,
 [role="tab"]:focus-visible {
     outline: var(--focus-outline);
-    outline-offset: 2px;
+    outline-offset: var(--focus-outline-offset);
 }
 
 .showcase-shell {
@@ -402,13 +405,6 @@ input:focus-visible,
     width: 100%;
 }
 
-.token-environment-settings .date-time-demo-output {
-    margin: 0;
-    padding: 0;
-    background: transparent;
-    color: var(--muted-foreground);
-}
-
 .design-system-workbench .token-grid {
     grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
     gap: var(--space-2);
@@ -447,6 +443,28 @@ input:focus-visible,
 
 .showcase-example-preview {
     min-width: 0;
+}
+.form-examples .showcase-example,
+.component-examples .showcase-example {
+    grid-template-columns: minmax(180px, 1fr) minmax(240px, 2fr);
+}
+.form-examples .showcase-example-preview,
+.component-examples .showcase-example-preview {
+    display: grid;
+    gap: var(--space-3);
+}
+.component-examples .showcase-example-wide {
+    grid-template-columns: minmax(0, 1fr);
+}
+.component-examples .table-toolbar { margin: 0; }
+.ju-checkbox[data-state="checked"] .ju-checkbox-minus,
+.ju-checkbox[data-state="indeterminate"] .ju-checkbox-check { display: none; }
+.ju-choice-description { display: block; color: var(--muted-foreground); font-size: var(--font-size-sm); }
+.ju-choice-description.is-error { color: var(--destructive); }
+.ju-select-group-label { padding: 6px 8px; color: var(--muted-foreground); font-size: var(--font-size-sm); }
+.air-datepicker.juju-air-date-picker.-disabled-range- {
+    --adp-cell-background-color-in-range: var(--surface-hover);
+    --adp-cell-background-color-selected: var(--disabled-foreground);
 }
 
 .showcase-menu-example {
@@ -1278,10 +1296,48 @@ h1 {
 
 .ju-field {
     display: flex;
+    position: relative;
     min-width: 0;
     flex-direction: column;
     gap: 6px;
 }
+.ju-field-heading {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    gap: 6px;
+}
+.ju-field-heading .ju-field-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ju-validation-indicator {
+    display: inline-grid;
+    flex: 0 0 18px;
+    width: 18px;
+    height: 18px;
+    place-items: center;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    cursor: pointer;
+}
+.ju-validation-indicator.is-info { color: var(--primary); }
+.ju-validation-indicator.is-warning { color: var(--warning); }
+.ju-validation-indicator.is-error { color: var(--destructive); }
+.ju-validation-indicator.is-success { color: var(--success); }
+.ju-validation-indicator:focus-visible { outline: var(--focus-outline); outline-offset: var(--focus-outline-offset); border-radius: 3px; }
+.ju-field-heading:has(.ju-validation-indicator.is-hidden-label) { position: absolute; z-index: 1; right: 4px; top: 0; transform: translateY(-100%); }
+.ju-validation-popover {
+    z-index: var(--z-popover);
+    max-width: min(320px, calc(100vw - 24px));
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-control);
+    background: var(--background);
+    color: var(--foreground);
+    box-shadow: var(--shadow-popover);
+    font-size: var(--font-size-sm);
+}
+.ju-validation-popover p, .ju-validation-popover ul { margin: 0; }
+.ju-validation-popover ul { padding-left: 1.25em; }
 
 .ju-field-label {
     color: var(--foreground);
@@ -1305,7 +1361,11 @@ h1 {
     color: var(--muted-foreground);
 }
 
-.ju-input[aria-invalid="true"] {
+.ju-input[aria-invalid="true"],
+.ju-textarea[aria-invalid="true"],
+.ju-select-trigger[aria-invalid="true"],
+.ju-checkbox[aria-invalid="true"],
+.ju-switch[aria-invalid="true"] {
     border-color: var(--destructive);
 }
 
@@ -1569,7 +1629,7 @@ h1 {
 .air-datepicker.juju-air-date-picker.-custom-position- { transition: none; }
 .air-datepicker.juju-air-date-picker .air-datepicker-nav { border-bottom-color: var(--border); }
 .air-datepicker.juju-air-date-picker .air-datepicker-nav--action { width: 32px; min-width: 32px; height: 32px; }
-.air-datepicker.juju-air-date-picker .air-datepicker-nav--action:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
+.air-datepicker.juju-air-date-picker .air-datepicker-nav--action:focus-visible { outline: var(--focus-outline); outline-offset: var(--focus-outline-offset); }
 .air-datepicker.juju-air-date-picker .air-datepicker-nav--title { color: var(--foreground); font-weight: var(--font-weight-semibold); }
 .air-datepicker.juju-air-date-picker .air-datepicker-nav--title i { color: var(--primary); }
 .air-datepicker.juju-air-date-picker .air-datepicker-cell.-juju-business-today- { color: var(--primary); font-weight: var(--font-weight-semibold); }
@@ -1577,9 +1637,19 @@ h1 {
 .air-datepicker.juju-air-date-picker .air-datepicker-cell.-selected- { color: var(--primary-foreground); font-weight: var(--font-weight-semibold); }
 .air-datepicker.juju-air-date-picker .air-datepicker-time--current-hours,
 .air-datepicker.juju-air-date-picker .air-datepicker-time--current-minutes { color: var(--foreground); }
+.air-datepicker.juju-air-date-picker.-only-timepicker- .air-datepicker--time { border-top: 0; }
+.air-datepicker.juju-air-date-picker.-only-timepicker- .air-datepicker-time--current[data-juju-time-toggle][aria-disabled="false"] { cursor: pointer; }
+.air-datepicker.juju-air-date-picker.-only-timepicker- .air-datepicker-time--current[data-juju-time-toggle]:focus-visible { outline: var(--focus-outline); outline-offset: var(--focus-outline-offset); border-radius: 3px; }
+.air-datepicker.juju-air-date-picker.-only-timepicker-.-juju-time-empty- .air-datepicker-time--current { position: relative; }
+.air-datepicker.juju-air-date-picker.-only-timepicker-.-juju-time-empty- .air-datepicker-time--current > * { visibility: hidden; }
+.air-datepicker.juju-air-date-picker.-only-timepicker-.-juju-time-empty- .air-datepicker-time--current::after { content: "--:--"; position: absolute; left: 0; color: var(--muted-foreground); }
+.air-datepicker.juju-air-date-picker.-only-timepicker-.-juju-time-empty- .air-datepicker-time--row { opacity: 0.55; }
 .air-datepicker.juju-air-date-picker .air-datepicker-time--row input[type="range"]::-webkit-slider-thumb { background: var(--background); }
 .air-datepicker.juju-air-date-picker .air-datepicker-time--row input[type="range"]::-moz-range-thumb { background: var(--background); }
 .air-datepicker.juju-air-date-picker .air-datepicker--pointer::after { background: var(--background); }
+.air-datepicker.juju-air-date-picker .air-datepicker--pointer { left: calc(50% - var(--pointer-half-size)); right: auto; }
+.air-datepicker.juju-air-date-picker[data-popper-placement^="bottom"] .air-datepicker--pointer { top: calc(-1 * var(--pointer-half-size)); bottom: auto; }
+.air-datepicker.juju-air-date-picker[data-popper-placement^="top"] .air-datepicker--pointer { top: calc(100% - var(--pointer-half-size)); bottom: auto; }
 
 @media (prefers-reduced-motion: reduce) {
     .air-datepicker.juju-air-date-picker,
@@ -3608,6 +3678,10 @@ h1 {
 }
 
 @media (max-width: 640px) {
+    .form-examples .showcase-example,
+    .component-examples .showcase-example {
+        grid-template-columns: minmax(0, 1fr);
+    }
     .showcase-example {
         grid-template-columns: minmax(0, 1fr);
         gap: var(--space-2);

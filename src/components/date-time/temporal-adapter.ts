@@ -10,6 +10,12 @@ export interface WallFields {
     second: number;
 }
 
+export function changeWallDate(fields: WallFields, change: { year?: number; month?: number }): WallFields {
+    const date = Temporal.PlainDate.from({ year: fields.year, month: fields.month, day: fields.day })
+        .with(change, { overflow: "constrain" });
+    return { ...fields, year: date.year, month: date.month, day: date.day };
+}
+
 export class DateTimeValueError extends Error {
     constructor(readonly code: PickerValidationError["code"], message: string) {
         super(message);

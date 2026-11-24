@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { ReactElement, ReactNode } from "react";
 import {
     TooltipContent,
     TooltipPortal,
@@ -10,16 +10,22 @@ import {
 export function JuTooltip({
     content,
     children,
+    side = "top",
+    sideOffset = 5,
+    delayDuration = 400,
 }: {
-    content: string;
-    children: ReactNode;
+    content: ReactNode;
+    children: ReactElement;
+    side?: "top" | "bottom" | "left" | "right";
+    sideOffset?: number;
+    delayDuration?: number;
 }) {
     return (
-        <TooltipProvider delayDuration={400}>
+        <TooltipProvider delayDuration={delayDuration}>
             <TooltipRoot>
                 <TooltipTrigger asChild>{children}</TooltipTrigger>
                 <TooltipPortal>
-                    <TooltipContent className="ju-tooltip" sideOffset={5}>
+                    <TooltipContent className="ju-tooltip" side={side} sideOffset={sideOffset}>
                         {content}
                     </TooltipContent>
                 </TooltipPortal>
