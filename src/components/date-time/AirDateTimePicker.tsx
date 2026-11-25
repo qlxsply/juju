@@ -255,6 +255,17 @@ export function AirDateTimePicker(props: AirPickerProps) {
         const text = input.value.trim();
         if (!text) {
             if (current.required) {
+                const previous = lastCommittedValue.current;
+                try {
+                    const carrier = toCarrier(previous, current);
+                    if (carrier && previous) {
+                        void pickerRef.current?.selectDate(carrier, { silent: true, updateTime: true });
+                        reportError("");
+                        return previous;
+                    }
+                } catch {
+                    // An invalid previously controlled value cannot be restored.
+                }
                 reportError(localeText(current.locale).required);
                 return undefined;
             }

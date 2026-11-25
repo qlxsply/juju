@@ -1566,7 +1566,7 @@ export function LegacyTotoWindow({ settings }: { settings: AppSettings }) {
                 await updateTotoItem(editingId, content, plannedAt, notes);
                 setNotice("事项已更新。");
             } else if (quickEntry) {
-                await addTotoQuickItem(content);
+                await addTotoQuickItem(content, timeContext);
                 setNotice("快速事项已新增。");
             } else {
                 await addTotoItem(content, plannedAt, notes);

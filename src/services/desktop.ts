@@ -2,9 +2,10 @@ import { enable, disable } from "@tauri-apps/plugin-autostart";
 import { open } from "@tauri-apps/plugin-dialog";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
-import { getCurrentWindow } from "@tauri-apps/api/window";
+import { currentMonitor, getCurrentWindow } from "@tauri-apps/api/window";
 import { LogicalSize } from "@tauri-apps/api/dpi";
 import { restoreState, saveWindowState, StateFlags } from "@tauri-apps/plugin-window-state";
+import { parseTotoQuickEntry } from "./toto-quick-entry";
 
 export interface AppSettings {
     startAtLogin: boolean;
@@ -93,6 +94,9 @@ const browserTasks = new Map<string, number>();
 const TOTO_ITEMS_KEY = "juju-toto-items";
 const TOTO_HISTORY_KEY = "juju-toto-history";
 const TOTO_CONFIG_KEY = "juju-toto-config";
+const TOTO_WINDOW_WIDTH = 1200;
+// 1200 / φ ≈ 742: enough room for the date-time popup without excess height.
+const TOTO_WINDOW_HEIGHT = 742;
 
 export async function loadAppSettings(): Promise<AppSettings> {
     if (isTauri()) {
@@ -365,7 +369,7 @@ export async function openTotoToolWindow(): Promise<void> {
     if (isTauri()) {
         await openTauriWindow("toto", "/?tool=toto", "Toto 日程提醒");
     } else {
-        window.open("/?tool=toto", "juju-toto", "width=1200,height=600");
+        window.open("/?tool=toto", "juju-toto", `width=${TOTO_WINDOW_WIDTH},height=${TOTO_WINDOW_HEIGHT}`);
     }
 }
 
@@ -458,11 +462,16 @@ async function openTauriWindow(label: string, url: string, title: string) {
             "get_window_position",
             { label },
         ).catch(() => null);
+    const monitor = label === "toto" ? await currentMonitor().catch(() => null) : null;
+    const availableHeight = monitor && monitor.scaleFactor > 0
+        ? Math.floor(monitor.workArea.size.height / monitor.scaleFactor) - 24
+        : TOTO_WINDOW_HEIGHT;
+    const totoHeight = Math.max(420, Math.min(TOTO_WINDOW_HEIGHT, availableHeight));
     const webviewWindow = new WebviewWindow(label, {
         url,
         title,
-        width: label === "settings" ? 860 : label === "toto-history" ? 1360 : label === "toto" ? 1200 : label === "tool-json" ? 1200 : label === "tool-design-system" ? 1180 : label === "toto-reminder" ? 520 : 640,
-        height: label === "settings" ? 590 : label === "toto-history" ? 620 : label === "toto" ? 600 : label === "tool-json" ? 760 : label === "tool-design-system" ? 820 : label === "toto-reminder" ? 320 : 440,
+        width: label === "settings" ? 860 : label === "toto-history" ? 1360 : label === "toto" ? TOTO_WINDOW_WIDTH : label === "tool-json" ? 1200 : label === "tool-design-system" ? 1180 : label === "toto-reminder" ? 520 : 640,
+        height: label === "settings" ? 590 : label === "toto-history" ? 620 : label === "toto" ? totoHeight : label === "tool-json" ? 760 : label === "tool-design-system" ? 820 : label === "toto-reminder" ? 320 : 440,
         minWidth: label === "settings" ? 670 : label === "toto-history" || label === "toto" ? 1200 : label === "tool-json" ? 900 : label === "tool-design-system" ? 960 : label === "toto-reminder" ? 360 : 560,
         minHeight: label === "settings" ? 470 : label === "toto-history" ? 425 : label === "toto" ? 420 : label === "tool-json" ? 600 : label === "tool-design-system" ? 640 : label === "toto-reminder" ? 240 : 360,
         center: !rememberedPosition,
@@ -567,7 +576,7 @@ export async function addTotoItem(
     return item;
 }
 
-export async function addTotoQuickItem(input: string): Promise<TotoItem> {
+export async function addTotoQuickItem(input: string, context: TimeContext): Promise<TotoItem> {
     if (isTauri()) {
         const item = await invoke<Record<string, unknown>>(
             "add_toto_quick_item",
@@ -575,15 +584,21 @@ export async function addTotoQuickItem(input: string): Promise<TotoItem> {
         );
         return mapNativeTotoItem(item);
     }
-    const [content, rawPlanned] = input.split("@");
-    let plannedAt: string | null = null;
-    if (rawPlanned) {
-        if (!/^\d{12}$/.test(rawPlanned)) {
-            throw new Error("浏览器预览只支持 yyyyMMddHHmm 快速时间格式。");
-        }
-        plannedAt = `${rawPlanned.slice(0, 4)}-${rawPlanned.slice(4, 6)}-${rawPlanned.slice(6, 8)} ${rawPlanned.slice(8, 10)}:${rawPlanned.slice(10, 12)}`;
-    }
-    return addTotoItem(content, plannedAt, "");
+    const parsed = parseTotoQuickEntry(input, context, await loadTotoDefaultRemindMinutes());
+    const items = readBrowserList<TotoItem>(TOTO_ITEMS_KEY);
+    const item: TotoItem = {
+        id: crypto.randomUUID(),
+        content: parsed.content,
+        planned_at: parsed.plannedAt,
+        reminder_at: parsed.reminderAt,
+        created_at: new Date().toISOString().slice(0, 19).replace("T", " "),
+        created_order: Math.max(0, ...items.map((row) => row.created_order)) + 1,
+        reminder_status: parsed.plannedAt ? "未提醒" : "无提醒",
+        reminded_at: null,
+        notes: "",
+    };
+    localStorage.setItem(TOTO_ITEMS_KEY, JSON.stringify([...items, item]));
+    return item;
 }
 
 export async function updateTotoItem(
@@ -627,9 +642,9 @@ export async function downloadTotoCalendar(year: number): Promise<TotoHoliday[]>
     return response.json() as Promise<TotoHoliday[]>;
 }
 
-export async function previewTotoQuickItem(input: string): Promise<TotoQuickPreview> {
+export async function previewTotoQuickItem(input: string, context: TimeContext): Promise<TotoQuickPreview> {
     if (isTauri()) return invoke<TotoQuickPreview>("preview_toto_quick_item", { input });
-    return { content: input.split("@")[0].trim(), plannedAt: null, reminderAt: null };
+    return parseTotoQuickEntry(input, context, await loadTotoDefaultRemindMinutes());
 }
 
 export async function updateTotoItemFull(

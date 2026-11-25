@@ -1336,6 +1336,8 @@ h1 {
 .ju-validation-popover {
     z-index: var(--z-popover);
     max-width: min(320px, calc(100vw - 24px));
+    max-height: min(400px, calc(100vh - 24px));
+    overflow-y: auto;
     padding: var(--space-2) var(--space-3);
     border: 1px solid var(--border);
     border-radius: var(--radius-control);
@@ -1344,7 +1346,7 @@ h1 {
     box-shadow: var(--shadow-popover);
     font-size: var(--font-size-sm);
 }
-.ju-validation-popover p, .ju-validation-popover ul { margin: 0; }
+.ju-validation-popover p, .ju-validation-popover ul { margin: 0; white-space: pre-line; }
 .ju-validation-popover ul { padding-left: 1.25em; }
 
 .ju-field-label {
@@ -3567,13 +3569,6 @@ h1 {
 .toto-item-dialog .ju-dialog-body { min-height: 0; overflow-y: auto; }
 .toto-item-dialog--edit .ju-textarea,
 .toto-item-dialog--expanded .toto-end-form .ju-textarea { min-height: clamp(120px, 24vh, 220px); }
-
-.toto-syntax-help {
-    margin: -5px 0 0;
-    color: var(--muted-foreground);
-    font-size: 11px;
-    line-height: 1.6;
-}
 
 .toto-quick-preview {
     min-height: 46px;

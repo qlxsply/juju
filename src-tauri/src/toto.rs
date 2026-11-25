@@ -593,13 +593,30 @@ fn parse_quick_text(
     now: NaiveDateTime,
     default_remind_minutes: i64,
 ) -> Result<ParsedQuickText, String> {
-    let parts: Vec<&str> = input.split('@').collect();
-    if parts.len() > 3 {
-        return Err("快速新增最多只能包含三个 @ 分段。".into());
+    let input = input.trim_start();
+    let (content, suffix) = if let Some(bracketed) = input.strip_prefix('[') {
+        let end = bracketed
+            .rfind(']')
+            .ok_or_else(|| "以 [ 开头的事项内容必须以 ] 结束。".to_string())?;
+        let suffix = bracketed[end + 1..].trim_start();
+        if !suffix.is_empty() && !suffix.starts_with('@') {
+            return Err("事项内容后的计划时间必须以 @ 开头。".into());
+        }
+        (&bracketed[..end], suffix)
+    } else {
+        let end = input.find('@').unwrap_or(input.len());
+        (&input[..end], &input[end..])
+    };
+    let content = validate_content(content.to_string())?;
+    let parts: Vec<&str> = suffix
+        .strip_prefix('@')
+        .map(|text| text.split('@').collect())
+        .unwrap_or_default();
+    if parts.len() > 2 {
+        return Err("快速新增最多只能包含计划时间和提前提醒分钟两个分段。".into());
     }
-    let content = validate_content(parts[0].to_string())?;
-    let planned_at = if parts.len() >= 2 {
-        let value = parts[1].trim();
+    let planned_at = if let Some(value) = parts.first() {
+        let value = value.trim();
         if value.is_empty() {
             return Err("计划时间不能为空。".into());
         }
@@ -611,9 +628,12 @@ fn parse_quick_text(
     } else {
         None
     };
-    let reminder_lead_minutes = if parts.len() == 3 {
-        let minutes = parts[2]
-            .trim()
+    let reminder_lead_minutes = if let Some(value) = parts
+        .get(1)
+        .map(|value| value.trim())
+        .filter(|value| !value.is_empty())
+    {
+        let minutes = value
             .parse::<i64>()
             .map_err(|_| "提醒提前分钟数必须是非负整数。".to_string())?;
         if minutes < 0 {
@@ -633,6 +653,9 @@ fn parse_quick_text(
 
 fn parse_planned_time(value: &str, now: NaiveDateTime) -> Result<NaiveDateTime, String> {
     let value = value.to_ascii_uppercase();
+    if !value.is_ascii() {
+        return Err("计划时间格式无效。".into());
+    }
     if value.starts_with('+') {
         let days = value
             .chars()
@@ -1110,6 +1133,75 @@ mod tests {
             .unwrap();
         assert!(parse_quick_text("无效日期@202602301200", now, 5).is_err());
         assert!(parse_quick_text("事项@1600@-1", now, 5).is_err());
+    }
+
+    #[test]
+    fn quick_text_supports_bracketed_at_signs_and_optional_reminder_minutes() {
+        let now = NaiveDate::from_ymd_opt(2026, 11, 21)
+            .unwrap()
+            .and_hms_opt(9, 0, 0)
+            .unwrap();
+        let parsed = parse_quick_text("[确认邮箱test@gamil.com] @1600", now, 5).unwrap();
+        assert_eq!(parsed.content, "确认邮箱test@gamil.com");
+        assert_eq!(parsed.planned_at.as_deref(), Some("2026-11-21 16:00:00"));
+        assert_eq!(parsed.reminder_lead_minutes, 5);
+        assert_eq!(
+            parse_quick_text("[[这是事项内容] @1700@", now, 5)
+                .unwrap()
+                .content,
+            "[这是事项内容"
+        );
+        assert_eq!(
+            parse_quick_text("[a]b@c] @1600@  ", now, 5)
+                .unwrap()
+                .content,
+            "a]b@c"
+        );
+        assert_eq!(
+            parse_quick_text("普通事项@1600@0", now, 5)
+                .unwrap()
+                .reminder_lead_minutes,
+            0
+        );
+        assert_eq!(
+            parse_quick_text("事项@w11600", now, 5)
+                .unwrap()
+                .planned_at
+                .as_deref(),
+            Some("2026-11-23 16:00:00")
+        );
+        assert_eq!(
+            parse_quick_text("事项@WW11600", now, 5)
+                .unwrap()
+                .planned_at
+                .as_deref(),
+            Some("2026-11-30 16:00:00")
+        );
+        assert_eq!(
+            parse_quick_text("事项@w71600", now, 5)
+                .unwrap()
+                .planned_at
+                .as_deref(),
+            Some("2026-11-29 16:00:00")
+        );
+        assert_eq!(
+            parse_quick_text("事项@++1600", now, 5)
+                .unwrap()
+                .planned_at
+                .as_deref(),
+            Some("2026-11-23 16:00:00")
+        );
+        assert_eq!(
+            parse_quick_text("事项@h2m30", now, 5)
+                .unwrap()
+                .planned_at
+                .as_deref(),
+            Some("2026-11-21 11:30:00")
+        );
+        assert!(parse_quick_text("[这是事项内容 @1700", now, 5).is_err());
+        assert!(parse_quick_text("[内容] 多余文字@1600", now, 5).is_err());
+        assert!(parse_quick_text("普通@1600@5@多余", now, 5).is_err());
+        assert!(parse_quick_text("事项@W周1600", now, 5).is_err());
     }
 
     #[test]
