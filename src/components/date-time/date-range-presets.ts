@@ -2,6 +2,13 @@ import { Temporal } from "@js-temporal/polyfill";
 import type { DateRange } from "./DateRangePicker";
 
 export const dateRangePresets = ["本周", "上一周", "本月", "上一月", "本年", "上一年"] as const;
+export function matchingDateRangePreset(value: DateRange, now: string | number, timeZone: string): typeof dateRangePresets[number] | null {
+    if (!value.start || !value.end) return null;
+    return dateRangePresets.find((preset) => {
+        const range = presetDateRange(preset, now, timeZone);
+        return range?.start === value.start && range.end === value.end;
+    }) ?? null;
+}
 export function presetDateRange(preset: string, now: string | number, timeZone: string): DateRange | null {
     const instant = typeof now === "number" ? Temporal.Instant.fromEpochMilliseconds(now) : Temporal.Instant.from(now);
     const today = instant.toZonedDateTimeISO(timeZone).toPlainDate();

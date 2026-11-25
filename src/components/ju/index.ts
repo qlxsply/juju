@@ -24,6 +24,7 @@ export { JuStatusBar } from "./JuStatusBar";
 export { JuSwitch } from "./JuSwitch";
 export { JuTextarea } from "./JuTextarea";
 export { JuTabs, type JuTab } from "./JuTabs";
+export { JuText } from "./JuText";
 export { JuToast } from "./JuToast";
 export { JuToolbar } from "./JuToolbar";
 export { JuTooltip } from "./JuTooltip";

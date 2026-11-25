@@ -42,7 +42,16 @@ describe("Ju components", () => {
         expect(
             screen.getByRole("dialog", { name: "确认操作" }),
         ).toBeInTheDocument();
+        expect(screen.getByRole("dialog", { name: "确认操作" })).not.toHaveAttribute("aria-describedby");
+        expect(document.querySelector(".ju-dialog-description")).not.toBeInTheDocument();
         expect(screen.getByText("确认内容")).toBeInTheDocument();
+    });
+
+    it("keeps an optional dialog description accessible", async () => {
+        const user = userEvent.setup();
+        render(<JuDialog title="说明" description="补充说明" trigger={<JuButton>打开说明</JuButton>} />);
+        await user.click(screen.getByRole("button", { name: "打开说明" }));
+        expect(screen.getByRole("dialog", { name: "说明" })).toHaveAccessibleDescription("补充说明");
     });
 
     it("lets users choose an option with keyboard interaction", async () => {
@@ -63,6 +72,35 @@ describe("Ju components", () => {
         screen.getByRole("combobox", { name: "主题" }).focus();
         await user.keyboard("{ArrowDown}{ArrowDown}{Enter}");
         expect(onValueChange).toHaveBeenCalledWith("dark");
+    });
+
+    it("submits and resets an uncontrolled named select", async () => {
+        const user = userEvent.setup();
+        render(<form aria-label="筛选">
+            <JuSelect label="分类" name="category" defaultValue="a" options={[
+                { value: "a", label: "甲" }, { value: "b", label: "乙" },
+            ]} />
+            <button type="reset">重置</button>
+        </form>);
+        const form = screen.getByRole("form", { name: "筛选" }) as HTMLFormElement;
+        await user.click(screen.getByRole("combobox", { name: "分类" }));
+        await user.click(screen.getByRole("option", { name: "乙" }));
+        expect(new FormData(form).get("category")).toBe("b");
+        await user.click(screen.getByRole("button", { name: "重置" }));
+        expect(new FormData(form).get("category")).toBe("a");
+    });
+
+    it("keeps a select usable inside a dialog", async () => {
+        const user = userEvent.setup();
+        render(<JuDialog title="筛选设置" trigger={<JuButton>打开筛选</JuButton>}>
+            <JuSelect label="筛选分类" options={[{ value: "a", label: "甲" }, { value: "b", label: "乙" }]} />
+        </JuDialog>);
+        await user.click(screen.getByRole("button", { name: "打开筛选" }));
+        const select = screen.getByRole("combobox", { name: "筛选分类" });
+        await user.click(select);
+        await user.click(screen.getByRole("option", { name: "乙" }));
+        expect(select).toHaveTextContent("乙");
+        expect(screen.getByRole("dialog", { name: "筛选设置" })).toBeInTheDocument();
     });
 
     it("renders configured table columns and rows", () => {

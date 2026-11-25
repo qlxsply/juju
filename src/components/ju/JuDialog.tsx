@@ -18,6 +18,7 @@ interface JuDialogProps {
     footer?: ReactNode;
     open?: boolean;
     onOpenChange?: (open: boolean) => void;
+    className?: string;
 }
 
 export function JuDialog({
@@ -28,20 +29,20 @@ export function JuDialog({
     footer,
     open,
     onOpenChange,
+    className,
 }: JuDialogProps) {
     return (
         <DialogRoot open={open} onOpenChange={onOpenChange}>
             {trigger && <DialogTrigger asChild>{trigger}</DialogTrigger>}
             <DialogPortal>
                 <DialogOverlay className="ju-dialog-overlay" />
-                <DialogContent className="ju-dialog-content">
+                <DialogContent className={`ju-dialog-content${className ? ` ${className}` : ""}`}
+                    {...(!description ? { "aria-describedby": undefined } : {})}>
                     <div className="ju-dialog-heading">
                         <DialogTitle className="ju-dialog-title">
                             {title}
                         </DialogTitle>
-                        <DialogDescription className="ju-dialog-description">
-                            {description ?? " "}
-                        </DialogDescription>
+                        {description && <DialogDescription className="ju-dialog-description">{description}</DialogDescription>}
                     </div>
                     {children && (
                         <div className="ju-dialog-body">{children}</div>

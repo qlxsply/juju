@@ -285,7 +285,12 @@ export function AirDateTimePicker(props: AirPickerProps) {
             dateFormat: current.dateFormat,
             timeFormat: current.timeFormat,
         });
-        return makePickerOptions(current, formats, selectedValue, pickerClass, positionRef.current, onAirSelect);
+        return {
+            ...makePickerOptions(current, formats, selectedValue, pickerClass, positionRef.current, onAirSelect),
+            // Keep interactive date/time popups inside an enclosing modal's
+            // focus and pointer boundary instead of placing them behind it.
+            container: inputRef.current?.closest<HTMLElement>('[role="dialog"]') ?? document.body,
+        };
     };
 
     useEffect(() => {
@@ -390,6 +395,26 @@ export function AirDateTimePicker(props: AirPickerProps) {
             picker.$datepicker.addEventListener("click", onTimeClick);
             picker.$datepicker.addEventListener("keydown", onTimeKeyDown);
         }
+        const syncTimeHourBounds = (event: Event) => {
+            if (!(event.target instanceof HTMLInputElement) || event.target.name !== "hours") return;
+            const minutes = picker.$datepicker.querySelector<HTMLInputElement>('input[name="minutes"]');
+            if (!minutes) return;
+            const options = latestProps.current;
+            const bounds = getBounds(options);
+            const toMinutes = (value: string) => {
+                const [hour, minute] = value.split(":").map(Number);
+                return hour * 60 + minute;
+            };
+            let total = Number(event.target.value) * 60 + Number(minutes.value);
+            if (bounds.min) total = Math.max(total, toMinutes(bounds.min));
+            if (bounds.max) total = Math.min(total, toMinutes(bounds.max));
+            const value = `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
+            const carrier = toCarrier(value, options);
+            // Refresh Air Datepicker's minute bounds before its own input
+            // handler commits the new hour, without emitting a second change.
+            if (carrier) void picker.selectDate(carrier, { silent: true, updateTime: true });
+        };
+        if (current.mode === "time") picker.$datepicker.addEventListener("input", syncTimeHourBounds, true);
         const selectSliderPosition = (event: Event) => {
             if (timeSelectedRef.current || !(event.target instanceof HTMLInputElement) || event.target.type !== "range" || latestProps.current.disabled || latestProps.current.readOnly) return;
             window.setTimeout(() => {
@@ -403,7 +428,10 @@ export function AirDateTimePicker(props: AirPickerProps) {
                 fields.second = 0;
                 const result = fieldsToValue(fields, "time");
                 if (!isInBounds(result, latestProps.current, getBounds(latestProps.current))) return;
-                void picker.selectDate(fieldsToCarrier(fields), { updateTime: true });
+                // Time bounds use the fixed date from timeToCarrier; the actual
+                // current date would make Air Datepicker drop those bounds.
+                const carrier = toCarrier(result, latestProps.current);
+                if (carrier) void picker.selectDate(carrier, { updateTime: true });
             }, 0);
         };
         if (current.mode === "time") {
@@ -444,6 +472,7 @@ export function AirDateTimePicker(props: AirPickerProps) {
             timeObserver?.disconnect();
             picker.$datepicker.removeEventListener("click", onTimeClick);
             picker.$datepicker.removeEventListener("keydown", onTimeKeyDown);
+            picker.$datepicker.removeEventListener("input", syncTimeHourBounds, true);
             picker.$datepicker.removeEventListener("pointerup", selectSliderPosition);
             picker.$datepicker.removeEventListener("keyup", selectSliderPosition);
             positionRef.current?.dispose();
@@ -513,6 +542,7 @@ export function AirDateTimePicker(props: AirPickerProps) {
     });
     const actualValue = value ?? "";
     const currentError = validationMessage || selectionState.error;
+    const messages = validationMessages({ error: currentError, info: props.hint });
     const nativeFormat = props.mode === "date"
         ? formats.dateFormat
         : props.mode === "time"
@@ -521,13 +551,13 @@ export function AirDateTimePicker(props: AirPickerProps) {
 
     return (
         <div className={`ju-field ju-air-picker-field${props.className ? ` ${props.className}` : ""}`}>
-            {(props.label || currentError) && <div className="ju-field-heading">
+            {(props.label || messages.length > 0) && <div className="ju-field-heading">
                 {props.label && <label htmlFor={inputId} className={`ju-field-label${props.labelHidden ? " sr-only" : ""}`}>{props.label}</label>}
-                <ValidationIndicator fieldId={inputId} messages={validationMessages({ error: currentError })} hiddenLabel={props.labelHidden || !props.label} />
+                <ValidationIndicator fieldId={inputId} messages={messages} hiddenLabel={props.labelHidden || !props.label} />
             </div>}
             <span className="ju-air-picker-control">
                 <input
-                    aria-describedby={currentError ? `${inputId}-validation` : undefined}
+                    aria-describedby={messages.length ? `${inputId}-validation` : undefined}
                     aria-invalid={currentError ? "true" : undefined}
                     aria-label={props.label}
                     autoComplete="off"

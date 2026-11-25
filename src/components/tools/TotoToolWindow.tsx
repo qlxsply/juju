@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { isTauri } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { CalendarClock, ClipboardList, Plus, RefreshCw, Settings2, X } from "lucide-react";
@@ -6,16 +6,15 @@ import { Temporal } from "@js-temporal/polyfill";
 import {
     JuButton,
     JuCheckbox,
-    JuDataTable,
-    JuDatePicker,
+    JuDateTimePicker,
     JuDialog,
     JuInput,
-    JuOverflowText,
     JuStatusBar,
-    JuTimePicker,
+    JuText,
     JuTextarea,
-    type JuColumn,
 } from "../ju";
+import { TotoTaskList } from "./TotoTaskList";
+import { totoPickerValueToWallTime, totoWallTimeToPickerValue } from "./toto-date-time";
 import type { TotoItem, TotoQuickPreview, TotoToolSettings } from "../../services/desktop";
 import { useWindowDrag } from "../../hooks/useWindowDrag";
 import { useTimeContext } from "../date-time/time-context";
@@ -38,7 +37,7 @@ export function TotoToolWindow() {
     const timeContext = useTimeContext();
     const startWindowDrag = useWindowDrag();
     const mainRef = useRef<HTMLElement | null>(null);
-    const keyboardSelection = useRef(false);
+    const initialFocusDone = useRef(false);
     const [items, setItems] = useState<TotoItem[]>([]);
     const [selectedId, setSelectedId] = useState<string | null>(null);
     const [toolSettings, setToolSettings] = useState<TotoToolSettings>(defaultTotoToolSettings);
@@ -53,6 +52,8 @@ export function TotoToolWindow() {
     const [useReminder, setUseReminder] = useState(false);
     const [reminderDate, setReminderDate] = useState("");
     const [reminderTime, setReminderTime] = useState("");
+    const [planValidationError, setPlanValidationError] = useState<string | null>(null);
+    const [reminderValidationError, setReminderValidationError] = useState<string | null>(null);
     const [notes, setNotes] = useState("");
     const [error, setError] = useState("");
     const [notice, setNotice] = useState("");
@@ -60,16 +61,10 @@ export function TotoToolWindow() {
     const busyRef = useRef(false);
     const selected = items.find((item) => item.id === selectedId) ?? null;
     useEffect(() => {
-        if (!keyboardSelection.current) return;
-        keyboardSelection.current = false;
-        const container = mainRef.current?.querySelector<HTMLElement>(".ju-table-container");
-        const row = container?.querySelector<HTMLElement>("tr.is-selected");
-        if (!container || !row) return;
-        const top = row.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop;
-        const headerHeight = container.querySelector("thead")?.getBoundingClientRect().height ?? 0;
-        if (top < container.scrollTop + headerHeight) container.scrollTop = top - headerHeight;
-        else if (top + row.offsetHeight > container.scrollTop + container.clientHeight) container.scrollTop = top + row.offsetHeight - container.clientHeight;
-    }, [selectedId]);
+        if (initialFocusDone.current || !selectedId || mode) return;
+        initialFocusDone.current = true;
+        if (document.activeElement === document.body) mainRef.current?.querySelector<HTMLElement>("tr[data-toto-row][tabindex='0']")?.focus({ preventScroll: true });
+    }, [selectedId, mode]);
 
     const refresh = useCallback(async () => {
         try {
@@ -83,13 +78,14 @@ export function TotoToolWindow() {
     }, []);
 
     useEffect(() => {
-        mainRef.current?.focus({ preventScroll: true });
         if (!isTauri()) return;
         let active = true;
         let unlisten: (() => void) | undefined;
         void getCurrentWindow().onFocusChanged(({ payload: focused }) => {
             if (!focused) return;
-            mainRef.current?.focus({ preventScroll: true });
+            if (document.activeElement === document.body && !document.querySelector('[role="dialog"]')) {
+                mainRef.current?.querySelector<HTMLElement>("tr[data-toto-row][tabindex='0']")?.focus({ preventScroll: true });
+            }
             void refresh();
             void loadTotoSettings()
                 .then((loaded) => { if (active) setToolSettings(loaded); })
@@ -152,6 +148,8 @@ export function TotoToolWindow() {
         setUseReminder(item.reminder_at !== null);
         setReminderDate(item.reminder_at?.slice(0, 10) ?? "");
         setReminderTime(item.reminder_at?.slice(11, 16) ?? "");
+        setPlanValidationError(null);
+        setReminderValidationError(null);
         setNotes(item.notes);
         setError("");
         setMode("edit");
@@ -176,6 +174,8 @@ export function TotoToolWindow() {
                 await addTotoQuickItem(quickInput);
                 setNotice("事项已新增。");
             } else if (mode === "edit" && target) {
+                if (usePlan && planValidationError) throw new Error(`计划时间无效：${planValidationError}`);
+                if (useReminder && reminderValidationError) throw new Error(`提醒时间无效：${reminderValidationError}`);
                 if (usePlan && (!planDate || !planTime)) {
                     throw new Error("请选择有效计划日期和 24 小时制时间。");
                 }
@@ -214,7 +214,7 @@ export function TotoToolWindow() {
             busyRef.current = false;
             setBusy(false);
         }
-    }, [content, mode, notes, planDate, planTime, quickInput, refresh, reminderDate, reminderTime, target, timeContext.timeZone, toolSettings.default_remind_minutes, usePlan, useReminder]);
+    }, [content, mode, notes, planDate, planTime, planValidationError, quickInput, refresh, reminderDate, reminderTime, reminderValidationError, target, timeContext.timeZone, toolSettings.default_remind_minutes, usePlan, useReminder]);
 
     const showDetails = (item: TotoItem) => {
         setTarget(item);
@@ -266,16 +266,7 @@ export function TotoToolWindow() {
         return () => window.removeEventListener("keydown", onKeyDown);
     }, [close, mode, refresh, save, selected, toolSettings]);
 
-    const columns: JuColumn<TotoItem>[] = useMemo(() => [
-        { id: "content", header: "事项内容", cell: (item) => <JuOverflowText text={item.content} /> },
-        { id: "planned", header: "计划时间", cell: (item) => item.planned_at ?? "—" },
-        { id: "remind", header: "提醒时间", cell: (item) => item.reminder_at ?? "—" },
-        { id: "status", header: "提醒状态", cell: (item) => <span className={`toto-status status-${item.reminder_status === "已提醒" ? "reminded" : item.reminder_status === "未提醒" ? "pending" : "none"}`}>{item.reminder_status}</span> },
-        { id: "created", header: "创建时间", cell: (item) => item.created_at },
-        { id: "notes", header: "备注", cell: (item) => <JuOverflowText text={item.notes || "—"} /> },
-    ], []);
-
-    const dialogTitle = mode === "add" ? "新增事项" : mode === "edit" ? "编辑事项" : mode === "complete" ? "完成事项" : mode === "cancel" ? "取消事项" : "事项详情";
+    const dialogTitle = mode === "add" ? "新增" : mode === "edit" ? "编辑" : mode === "complete" ? "完成" : mode === "cancel" ? "取消" : "详情";
 
     return (
         <div className="toto-tool-window">
@@ -290,44 +281,42 @@ export function TotoToolWindow() {
                 </div>
             </header>
             {error && mode === null && <p className="settings-error toto-tool-error" role="alert">{error}</p>}
-            <main ref={mainRef} className="toto-main-grid" onKeyDown={(event) => {
-                if (event.key === "ArrowLeft" || event.key === "ArrowRight") event.preventDefault();
-                if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-                    event.preventDefault();
-                    if (!items.length) return;
-                    const index = items.findIndex((item) => item.id === selectedId);
-                    const nextIndex = index < 0
-                        ? event.key === "ArrowDown" ? 0 : items.length - 1
-                        : (index + (event.key === "ArrowDown" ? 1 : -1) + items.length) % items.length;
-                    keyboardSelection.current = true;
-                    setSelectedId(items[nextIndex].id);
-                }
-                if (event.key === "Enter" && selected) showDetails(selected);
-            }} tabIndex={0}>
-                <JuDataTable
-                    caption="Toto 进行中事项"
-                    columns={columns}
-                    data={items}
-                    getRowId={(item) => item.id}
-                    emptyMessage="暂无进行中事项，按 Alt+A 新增。"
-                    selectedRowId={selectedId}
-                    onRowClick={(item) => setSelectedId(item.id)}
-                    onRowDoubleClick={showDetails}
-                />
+            <main ref={mainRef} className="toto-main-grid">
+                <TotoTaskList items={items} selectedId={selectedId}
+                    onSelect={(item) => setSelectedId(item.id)} onOpen={showDetails} />
             </main>
-            <footer className="toto-tool-footer"><JuStatusBar><span role={notice ? "status" : undefined}>{notice || `进行中：${items.length} 项`}</span><span>Alt+A 新增 · Alt+Q 历史 · Alt+R 刷新 · Alt+D 详情 · Alt+E 编辑 · Alt+F 完成 · Alt+C 取消</span></JuStatusBar></footer>
+            <footer className="toto-tool-footer"><JuStatusBar><span role={notice ? "status" : undefined}>{notice || `进行中：${items.length} 项`}</span><span>F2 长文本 · Alt+A 新增 · Alt+Q 历史 · Alt+R 刷新 · Alt+D 详情 · Alt+E 编辑 · Alt+F 完成 · Alt+C 取消</span></JuStatusBar></footer>
             <JuDialog
                 title={dialogTitle}
-                description={mode === "add" ? "输入事项内容及计划时间。快速语法可在一行中输入内容@时间[@提醒分钟]。" : "Toto 事项"}
+                className={`toto-item-dialog${mode === "edit" ? " toto-item-dialog--edit" : mode === "detail" || mode === "complete" || mode === "cancel" ? " toto-item-dialog--expanded" : ""}`}
                 open={mode !== null}
                 onOpenChange={(open) => { if (!open) setMode(null); }}
                 footer={mode === "detail" ? <JuButton onClick={() => setMode(null)}>关闭</JuButton> : <><JuButton variant="outline" onClick={() => setMode(null)}>取消</JuButton><JuButton loading={busy} onClick={() => void save()}>{mode === "complete" || mode === "cancel" ? "确认" : mode === "edit" ? "保存" : "新增"}</JuButton></>}
             >
-                {mode === "add" && <div className="toto-quick-editor"><JuInput label="事项内容 @计划时间[@提前提醒分钟]" autoFocus value={quickInput} onChange={(event) => { setQuickInput(event.currentTarget.value); setQuickPreview(null); }} placeholder="写周报@1630" /><p className="toto-syntax-help">日期支持 HHmm、ddHHmm、MMddHHmm、yyyyMMddHHmm、+1600、W11600；相对时间支持 H2M30、M45。第三段为提醒提前分钟。</p><div className={`toto-quick-preview${error ? " invalid" : ""}`}>{error || (quickPreview ? `${quickPreview.content} ${quickPreview.plannedAt ?? "无计划时间"}${quickPreview.reminderAt ? ` 提醒 ${quickPreview.reminderAt}` : ""}` : "输入事项内容及计划时间")}</div></div>}
-                {mode === "edit" && <div className="toto-edit-form"><JuInput label="事项内容" value={content} onChange={(event) => setContent(event.currentTarget.value)} /><div className="toto-time-pair"><section><JuCheckbox ariaLabel="启用计划时间" label="计划时间" checked={usePlan} onCheckedChange={setUsePlan} /><div className="toto-time-controls"><JuDatePicker label="计划日期" {...timeContext} value={planDate} disabled={!usePlan} onChange={(value) => setPlanDate(value ?? "")} /><JuTimePicker label="计划时间" {...timeContext} value={planTime} disabled={!usePlan} onChange={(value) => setPlanTime(value ?? "")} /></div></section><section><JuCheckbox ariaLabel="启用提醒时间" label="提醒时间" checked={useReminder} onCheckedChange={setUseReminder} /><div className="toto-time-controls"><JuDatePicker label="提醒日期" {...timeContext} value={reminderDate} disabled={!useReminder} onChange={(value) => setReminderDate(value ?? "")} /><JuTimePicker label="提醒时间" {...timeContext} value={reminderTime} disabled={!useReminder} onChange={(value) => setReminderTime(value ?? "")} /></div></section></div><JuTextarea label="备注" value={notes} onChange={(event) => setNotes(event.currentTarget.value)} /></div>}
-                {(mode === "complete" || mode === "cancel") && <div className="toto-end-form"><p>确认{mode === "complete" ? "完成" : "取消"}：{target?.content}</p><JuTextarea label={mode === "complete" ? "完成备注" : "取消备注"} value={notes} onChange={(event) => setNotes(event.currentTarget.value)} /></div>}
-                {mode === "detail" && target && <dl className="toto-item-detail">{[["事项内容", target.content], ["计划时间", target.planned_at ?? "—"], ["提醒时间", target.reminder_at ?? "—"], ["创建时间", target.created_at], ["提醒状态", target.reminder_status], ["响铃时间", target.reminded_at ?? "—"], ["备注", target.notes || "—"]].map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>}
-                {error && mode !== "add" && <p className="settings-error" role="alert">{error}</p>}
+                {mode === "add" && <div className="toto-quick-editor"><JuInput label="事项内容 @计划时间[@提前提醒分钟]" autoFocus value={quickInput} onChange={(event) => { setQuickInput(event.currentTarget.value); setQuickPreview(null); }} placeholder="写周报@1630" /><p className="toto-syntax-help"><JuText>日期支持 HHmm、ddHHmm、MMddHHmm、yyyyMMddHHmm、+1600、W11600；相对时间支持 H2M30、M45。第三段为提醒提前分钟。</JuText></p><div className={`toto-quick-preview${error ? " invalid" : ""}`}><JuText>{error || (quickPreview ? `${quickPreview.content} ${quickPreview.plannedAt ?? "无计划时间"}${quickPreview.reminderAt ? ` 提醒 ${quickPreview.reminderAt}` : ""}` : "输入事项内容及计划时间")}</JuText></div></div>}
+                {mode === "edit" && <div className="toto-edit-form">
+                    <JuInput label="事项内容" value={content} onChange={(event) => setContent(event.currentTarget.value)} />
+                    <div className="toto-time-pair">
+                        <section>
+                            <JuCheckbox ariaLabel="启用计划时间" label="计划时间" checked={usePlan} onCheckedChange={setUsePlan} />
+                            <JuDateTimePicker {...timeContext} label="计划时间" labelHidden disabled={!usePlan}
+                                value={totoWallTimeToPickerValue(planDate, planTime, timeContext.timeZone)}
+                                onValidationError={setPlanValidationError}
+                                onChange={(value) => { const next = totoPickerValueToWallTime(value, timeContext.timeZone); setPlanDate(next.date); setPlanTime(next.time); }} />
+                        </section>
+                        <section>
+                            <JuCheckbox ariaLabel="启用提醒时间" label="提醒时间" checked={useReminder} onCheckedChange={setUseReminder} />
+                            <JuDateTimePicker {...timeContext} label="提醒时间" labelHidden disabled={!useReminder}
+                                value={totoWallTimeToPickerValue(reminderDate, reminderTime, timeContext.timeZone)}
+                                onValidationError={setReminderValidationError}
+                                onChange={(value) => { const next = totoPickerValueToWallTime(value, timeContext.timeZone); setReminderDate(next.date); setReminderTime(next.time); }} />
+                        </section>
+                    </div>
+                    <JuTextarea label="备注" value={notes} onChange={(event) => setNotes(event.currentTarget.value)} />
+                </div>}
+                {(mode === "complete" || mode === "cancel") && <div className="toto-end-form"><p><JuText>确认{mode === "complete" ? "完成" : "取消"}：{target?.content}</JuText></p><JuTextarea label={mode === "complete" ? "完成备注" : "取消备注"} value={notes} onChange={(event) => setNotes(event.currentTarget.value)} /></div>}
+                {mode === "detail" && target && <dl className="toto-item-detail">{[["事项内容", target.content], ["计划时间", target.planned_at ?? "—"], ["提醒时间", target.reminder_at ?? "—"], ["创建时间", target.created_at], ["提醒状态", target.reminder_status], ["响铃时间", target.reminded_at ?? "—"], ["备注", target.notes || "—"]].map(([label, value]) => <div key={label}><dt><JuText>{label}</JuText></dt><dd><JuText>{value}</JuText></dd></div>)}</dl>}
+                {error && mode !== "add" && <p className="settings-error" role="alert"><JuText>{error}</JuText></p>}
             </JuDialog>
         </div>
     );

@@ -7,7 +7,11 @@ export interface PopupPositionController {
     dispose: () => void;
 }
 
+// Only one picker should be closing when another picker starts opening.
+let closingPopup: { owner: object; finish: () => void } | null = null;
+
 export function createPopupPositionController(placement: PickerPlacement): PopupPositionController {
+    const owner = {};
     let popper: Instance | null = null;
     let animation: Animation | null = null;
     let pendingDone: (() => void) | null = null;
@@ -25,6 +29,7 @@ export function createPopupPositionController(placement: PickerPlacement): Popup
 
     const finishHide = (token: number) => {
         if (token !== generation) return;
+        if (closingPopup?.owner === owner) closingPopup = null;
         const done = pendingDone;
         pendingDone = null;
         clearAnimation();
@@ -52,6 +57,7 @@ export function createPopupPositionController(placement: PickerPlacement): Popup
         currentElement.classList.remove("-juju-visible-");
         pendingDone = done;
         const token = ++generation;
+        closingPopup = { owner, finish: () => finishHide(token) };
         clearAnimation();
         if (reducedMotion.matches) {
             finishHide(token);
@@ -78,10 +84,16 @@ export function createPopupPositionController(placement: PickerPlacement): Popup
             return;
         }
 
-        // A fast reopen completes the previous hide handshake before replacing its Popper instance.
+        // Finish a different picker's close immediately, so two popups never overlap.
+        if (closingPopup && closingPopup.owner !== owner) closingPopup.finish();
+
+        // Reuse the same mounted node on a fast reopen. Calling the previous
+        // done callback here would destroy it in the middle of Air Datepicker's
+        // show(), making its measured height zero. The next actual hide will
+        // run that same cleanup callback once the popup is really closed.
         if (pendingDone) {
-            const previousDone = pendingDone;
             pendingDone = null;
+            if (closingPopup?.owner === owner) closingPopup = null;
             generation += 1;
             clearAnimation();
             popper?.destroy();
@@ -91,7 +103,6 @@ export function createPopupPositionController(placement: PickerPlacement): Popup
             lockedSide = null;
             currentElement?.classList.remove("-juju-visible-");
             currentElement = null;
-            previousDone();
         }
 
         currentElement = $datepicker;
@@ -167,6 +178,7 @@ export function createPopupPositionController(placement: PickerPlacement): Popup
         dispose() {
             if (!alive) return;
             alive = false;
+            if (closingPopup?.owner === owner) closingPopup = null;
             generation += 1;
             reducedMotion.removeEventListener("change", onMotionPreferenceChange);
             clearAnimation();

@@ -83,7 +83,7 @@
     --border-style-dashed: dashed;
     --border-style: var(--border-style-solid);
     --focus-outline: var(--border-width-strong) solid var(--focus-ring);
-    --focus-outline-offset: 1px;
+    --focus-outline-offset: 0px;
     --control-height-sm: 28px;
     --control-height: 34px;
     --control-height-lg: 40px;
@@ -1323,6 +1323,14 @@ h1 {
 .ju-validation-indicator.is-warning { color: var(--warning); }
 .ju-validation-indicator.is-error { color: var(--destructive); }
 .ju-validation-indicator.is-success { color: var(--success); }
+.showcase-validation-indicators { display: flex; flex-direction: column; gap: var(--space-2); }
+.showcase-validation-indicator { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); }
+.showcase-validation-indicator code { color: var(--muted-foreground); }
+.showcase-validation-indicator > span:last-child { color: var(--muted-foreground); }
+.showcase-focus-rules { display: grid; gap: var(--space-3); }
+.showcase-focus-rules > p { margin: 0; color: var(--muted-foreground); font-size: var(--font-size-sm); }
+.showcase-focus-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); }
+.showcase-focus-actions a { color: var(--primary); border-radius: var(--radius-control); }
 .ju-validation-indicator:focus-visible { outline: var(--focus-outline); outline-offset: var(--focus-outline-offset); border-radius: 3px; }
 .ju-field-heading:has(.ju-validation-indicator.is-hidden-label) { position: absolute; z-index: 1; right: 4px; top: 0; transform: translateY(-100%); }
 .ju-validation-popover {
@@ -1650,6 +1658,37 @@ h1 {
 .air-datepicker.juju-air-date-picker .air-datepicker--pointer { left: calc(50% - var(--pointer-half-size)); right: auto; }
 .air-datepicker.juju-air-date-picker[data-popper-placement^="bottom"] .air-datepicker--pointer { top: calc(-1 * var(--pointer-half-size)); bottom: auto; }
 .air-datepicker.juju-air-date-picker[data-popper-placement^="top"] .air-datepicker--pointer { top: calc(100% - var(--pointer-half-size)); bottom: auto; }
+.air-datepicker.juju-air-date-picker.-juju-preset-range- {
+    --adp-grid-areas: "presets nav" "presets body" "presets timepicker" "presets buttons";
+    width: min(100vw - 16px, calc(var(--adp-width) + 112px));
+    grid-template-columns: 112px minmax(0, 1fr);
+}
+.ju-date-range-presets {
+    grid-area: presets;
+    background: var(--surface);
+    border-right: var(--border-width) var(--border-style) var(--border);
+    border-radius: var(--radius-lg) 0 0 var(--radius-lg);
+    padding: var(--space-2);
+}
+.ju-date-range-presets > div { display: flex; flex-direction: column; gap: var(--space-1); }
+.ju-date-range-presets button {
+    border: 0;
+    border-radius: var(--radius-control);
+    background: transparent;
+    color: var(--foreground);
+    font: inherit;
+    text-align: left;
+    padding: var(--space-2);
+    cursor: pointer;
+}
+.ju-date-range-presets button:hover:not(:disabled) { background: var(--surface-hover); }
+.ju-date-range-presets button[aria-pressed="true"] { background: var(--primary-soft); color: var(--primary); }
+.ju-date-range-presets button:disabled { color: var(--disabled-foreground); cursor: not-allowed; }
+.ju-date-range-presets button:focus-visible { outline: var(--focus-outline); outline-offset: var(--focus-outline-offset); }
+.air-datepicker.juju-air-date-picker.-juju-preset-range- .air-datepicker-cell.-juju-business-today- {
+    box-shadow: inset 0 0 0 1px var(--primary);
+}
+.air-datepicker.juju-air-date-picker.-juju-preset-range- .air-datepicker-cell.-juju-business-today-.-selected- { color: var(--primary-foreground); }
 
 @media (prefers-reduced-motion: reduce) {
     .air-datepicker.juju-air-date-picker,
@@ -1682,11 +1721,13 @@ h1 {
 .ju-select-trigger[data-state="open"] .ju-select-chevron {
     transform: rotate(180deg);
 }
+.ju-select-trigger[data-state="open"]:not([aria-invalid="true"]) { border-color: var(--primary); }
+.ju-select-placeholder { color: var(--muted-foreground); }
 
 .ju-select-content {
     z-index: 10;
-    min-width: var(--radix-select-trigger-width);
-    max-height: 240px;
+    width: var(--radix-popover-trigger-width);
+    max-height: min(240px, var(--radix-popover-content-available-height));
     overflow: auto;
     padding: 4px;
     border: 1px solid var(--border);
@@ -1709,10 +1750,49 @@ h1 {
     background: var(--selection);
     color: var(--primary);
 }
+.ju-select-item[aria-selected="true"]:not([data-highlighted]) { font-weight: var(--font-weight-semibold); }
 
 .ju-select-item[data-disabled] {
     color: var(--disabled-foreground);
     cursor: not-allowed;
+}
+
+/* A common keyboard focus indicator, including non-native interactive controls. */
+:is(a[href], button, input, textarea, select, summary, [tabindex], [role="menuitem"], [role="option"]):focus-visible {
+    outline: var(--focus-outline);
+    outline-offset: var(--focus-outline-offset);
+}
+/* Editable fields also indicate pointer focus; an expanded select remains active. */
+:is(.ju-input, .ju-textarea, .ju-select-trigger):focus,
+.ju-select-trigger[data-state="open"] {
+    outline: var(--focus-outline);
+    outline-offset: var(--focus-outline-offset);
+}
+:is(.ju-input, .ju-textarea, .ju-select-trigger)[aria-invalid="true"]:is(:focus, [data-state="open"]),
+:is(button, input, textarea, select, [tabindex])[aria-invalid="true"]:focus-visible {
+    outline-color: var(--destructive);
+}
+.json-filter:has(input:focus-visible) {
+    outline: var(--focus-outline);
+    outline-offset: var(--focus-outline-offset);
+}
+.json-filter input:focus-visible { outline: none; }
+@media (forced-colors: active) {
+    :is(a[href], button, input, textarea, select, summary, [tabindex], [role="menuitem"], [role="option"]):focus-visible,
+    :is(.ju-input, .ju-textarea, .ju-select-trigger):focus,
+    .ju-select-trigger[data-state="open"],
+    .json-filter:has(input:focus-visible) {
+        outline: 2px solid Highlight;
+        outline-offset: 0;
+    }
+    :is(.ju-input, .ju-textarea, .ju-select-trigger, .ju-checkbox, .ju-switch)[aria-invalid="true"] {
+        border-color: Mark;
+    }
+    :is(.ju-input, .ju-textarea, .ju-select-trigger)[aria-invalid="true"]:is(:focus, [data-state="open"]),
+    :is(button, input, textarea, select, [tabindex])[aria-invalid="true"]:focus-visible {
+        outline-color: Highlight;
+    }
+    .json-filter input:focus-visible { outline: none; }
 }
 
 .ju-table-container {
@@ -3313,7 +3393,7 @@ h1 {
 .toto-main-grid {
     min-height: 0;
     flex: 1;
-    overflow: auto;
+    overflow: hidden;
     padding: 0;
     outline: none;
 }
@@ -3371,12 +3451,16 @@ h1 {
 .overflow-demo > div > span { width: 70px; flex: none; color: var(--muted-foreground); }
 .overflow-demo-width { width: 180px; max-width: 100%; }
 
-.toto-tool-window .ju-table-container {
+.toto-tool-window .toto-task-list {
     height: 100%;
     overflow: auto;
     border: 0;
     border-radius: 0;
     outline: none;
+}
+.toto-task-table tbody tr[data-toto-row]:focus-visible { outline: none; }
+@media (forced-colors: active) {
+    .toto-task-table tbody tr[data-toto-row]:focus-visible { outline: 2px solid Highlight; outline-offset: -2px; }
 }
 
 .toto-tool-window .ju-table tbody tr.is-selected {
@@ -3475,6 +3559,14 @@ h1 {
     display: grid;
     gap: 14px;
 }
+.toto-item-dialog { display: flex; flex-direction: column; max-height: calc(100vh - 24px); }
+.toto-item-dialog--edit,
+.toto-item-dialog--expanded { width: min(calc(100vw - 32px), 680px); }
+.toto-item-dialog .ju-dialog-heading,
+.toto-item-dialog .ju-dialog-footer { flex-shrink: 0; }
+.toto-item-dialog .ju-dialog-body { min-height: 0; overflow-y: auto; }
+.toto-item-dialog--edit .ju-textarea,
+.toto-item-dialog--expanded .toto-end-form .ju-textarea { min-height: clamp(120px, 24vh, 220px); }
 
 .toto-syntax-help {
     margin: -5px 0 0;
@@ -3510,10 +3602,9 @@ h1 {
     gap: 8px;
 }
 
-.toto-time-controls {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 120px;
-    gap: 8px;
+.toto-time-pair .ju-field-heading:has(.ju-field-label.sr-only):not(:has(.ju-validation-indicator)) { display: none; }
+@media (max-width: 540px) {
+    .toto-time-pair { grid-template-columns: minmax(0, 1fr); }
 }
 
 .toto-end-form > p {
@@ -3550,22 +3641,14 @@ h1 {
 
 .toto-history-filterbar {
     display: grid;
-    grid-template-columns: minmax(190px, 1fr) 116px minmax(360px, 470px) auto auto;
+    grid-template-columns: minmax(190px, 1fr) 116px minmax(230px, 300px) auto auto;
     align-items: center;
     gap: 8px;
     padding: 8px 12px;
     border-bottom: 1px solid var(--border);
 }
 
-.ju-preset-date-range {
-    display: flex;
-    min-width: 0;
-    align-items: center;
-    gap: var(--space-2);
-}
-.ju-preset-date-range > .ju-field:first-child { width: 112px; flex: none; }
-.ju-preset-date-range > .ju-field:last-child { min-width: 0; flex: 1; }
-.ju-preset-date-range .ju-field-heading:has(.ju-field-label.sr-only):not(:has(.ju-validation-indicator)) { display: none; }
+.toto-history-filterbar .ju-field-heading:has(.ju-field-label.sr-only):not(:has(.ju-validation-indicator)) { display: none; }
 
 .toto-history-filterbar > .ju-field {
     min-width: 0;

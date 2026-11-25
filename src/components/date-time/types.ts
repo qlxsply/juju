@@ -27,6 +27,7 @@ export interface PickerCommonProps extends PickerTimeContext {
     format?: string;
     placement?: PickerPlacement;
     label?: string;
+    hint?: string;
     labelHidden?: boolean;
     id?: string;
     className?: string;

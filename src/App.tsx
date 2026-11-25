@@ -42,11 +42,15 @@ import {
     JuSwitch,
     JuTimePicker,
     JuTabs,
+    JuText,
     JuTextarea,
     JuToast,
     JuToolbar,
     JuTooltip,
+    ValidationIndicator,
 } from "./components/ju";
+import { validationIndicatorDefinitions } from "./components/ju/validation-indicator-definitions";
+import type { ValidationLevel } from "./components/ju/validation";
 import { useThemeStore } from "./design-system/theme-store";
 import { colorTokenDetails, designTokens, layoutTokenDetails, tokenCategories } from "./design-system/tokens";
 import { parsePickerInput } from "./components/date-time/direct-input";
@@ -444,6 +448,7 @@ function DesignSystemShowcase() {
     const [newsletter, setNewsletter] = useState(true);
     const [notifications, setNotifications] = useState(false);
     const [preferredMode, setPreferredMode] = useState("desktop");
+    const [focusDemoRadio, setFocusDemoRadio] = useState("first");
     const [selectedDate, setSelectedDate] = useState("2026-11-21");
     const [range, setRange] = useState({ start: null as string | null, end: null as string | null });
     const [presetRange, setPresetRange] = useState({ start: null as string | null, end: null as string | null });
@@ -667,6 +672,56 @@ function DesignSystemShowcase() {
                             <JuInput label="警告示例" defaultValue="即将达到限制" warning="接近长度上限" />
                             <JuInput label="错误示例" defaultValue="字段有错误" error="请检查该字段" />
                             </ShowcaseExample>
+                            <ShowcaseExample title="字段提醒图标" code="ValidationIndicator" description="统一的字段级提示状态；点击图标查看说明，错误优先于警告、成功和提示。">
+                                <div className="showcase-validation-indicators" aria-label="字段提醒图标类型">
+                                    {(Object.entries(validationIndicatorDefinitions) as [ValidationLevel, typeof validationIndicatorDefinitions[ValidationLevel]][]).map(([level, definition]) => (
+                                        <div className="showcase-validation-indicator" key={level}>
+                                            <span>{definition.label}</span>
+                                            <code>{level}</code>
+                                            <ValidationIndicator fieldId={`showcase-indicator-${level}`} messages={[{ level, text: definition.description }]} />
+                                            <span>{definition.description}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </ShowcaseExample>
+                            <ShowcaseExample title="焦点与校验状态" code="Focus · error · warning" description="使用 Tab 和 Shift+Tab 遍历示例；鼠标可聚焦字段或展开选择器，错误使用错误色焦点轮廓，警告保留主题色焦点轮廓。">
+                                <div className="showcase-focus-rules" id="focus-demo" aria-label="焦点规则交互示例">
+                                    <p>键盘焦点：所有可操作控件使用统一轮廓；禁用控件不进入 Tab 顺序。</p>
+                                    <div className="showcase-focus-actions">
+                                        <JuButton>焦点示例按钮</JuButton>
+                                        <JuIconButton label="焦点示例图标按钮"><Plus size={16} aria-hidden="true" /></JuIconButton>
+                                        <a href="#focus-demo">焦点示例链接</a>
+                                        <JuButton disabled>禁用示例按钮</JuButton>
+                                    </div>
+                                    <JuInput label="焦点示例普通输入" placeholder="鼠标或键盘聚焦" />
+                                    <JuInput label="焦点示例提示输入" hint="提示不会改变焦点轮廓颜色。" />
+                                    <JuInput label="焦点示例警告输入" warning="警告不会标记为输入错误。" />
+                                    <JuInput label="焦点示例错误输入" error="请修正该字段。" />
+                                    <JuInput label="焦点示例成功输入" success="字段已通过校验。" />
+                                    <JuTextarea label="焦点示例多行输入" placeholder="多行文本焦点示例" />
+                                    <JuSelect label="焦点示例选择器" defaultValue="a" options={[{ value: "a", label: "选项一" }, { value: "b", label: "选项二" }]} />
+                                    <JuSelect label="焦点示例错误选择器" error="请选择有效选项。" options={[{ value: "a", label: "选项一" }]} />
+                                    <JuDatePicker {...demoTimeContext} label="焦点示例日期" />
+                                    <JuDateRangePicker {...demoTimeContext} label="焦点示例日期范围" />
+                                    <JuTimePicker {...demoTimeContext} label="焦点示例时间" value={null} />
+                                    <JuDateTimePicker {...demoTimeContext} label="焦点示例日期时间" value={null} />
+                                    <div className="showcase-focus-actions">
+                                        <JuCheckbox label="焦点示例复选框" />
+                                        <JuSwitch label="焦点示例开关" />
+                                        <DropdownMenu.Root>
+                                            <DropdownMenu.Trigger asChild><JuButton variant="outline">焦点示例菜单</JuButton></DropdownMenu.Trigger>
+                                            <DropdownMenu.Portal>
+                                                <DropdownMenu.Content className="showcase-action-menu" sideOffset={4}>
+                                                    <DropdownMenu.Item className="showcase-action-menu-item">焦点菜单选项</DropdownMenu.Item>
+                                                </DropdownMenu.Content>
+                                            </DropdownMenu.Portal>
+                                        </DropdownMenu.Root>
+                                    </div>
+                                    <JuRadioGroup label="焦点示例单选组" value={focusDemoRadio} onValueChange={setFocusDemoRadio}
+                                        options={[{ value: "first", label: "焦点单选一" }, { value: "second", label: "焦点单选二" }]} />
+                                    <JuTabs label="焦点示例标签页" tabs={[{ id: "first", label: "焦点标签一", content: "使用方向键切换标签。" }, { id: "second", label: "焦点标签二", content: "标签页内容。" }]} />
+                                </div>
+                            </ShowcaseExample>
                             <ShowcaseExample title="选择器" code="JuSelect" description="从预设选项中选择一项。">
                             <JuSelect
                                 label="工具分类"
@@ -701,7 +756,7 @@ function DesignSystemShowcase() {
                             </ShowcaseExample>
                             <ShowcaseExample title="时间选择器" code="JuTimePicker" description="选择无时区的时间，支持范围和步长。">
                             <JuTimePicker {...demoTimeContext} label="计划时间" value={selectedTime} onChange={(next) => setSelectedTime(next ?? "")} />
-                            <JuTimePicker {...demoTimeContext} label="时间范围与步长" value={boundedTime} onChange={setBoundedTime} min="08:00" max="18:00" minuteStep={5} />
+                            <JuTimePicker {...demoTimeContext} label="时间范围与步长" hint="此示例允许选择 08:00 至 18:00（包含边界），分钟步长为 5 分钟。" value={boundedTime} onChange={setBoundedTime} min="08:00" max="18:00" minuteStep={5} />
                             </ShowcaseExample>
                             <ShowcaseExample title="日期时间选择器" code="JuDateTimePicker" description="选择绝对时间，按工作环境的时区展示并校验 DST。">
                             <JuDateTimePicker {...demoTimeContext} label="日期和时间" value={selectedDateTime} onChange={(next) => setSelectedDateTime(next ?? "")} />
@@ -791,8 +846,9 @@ function DesignSystemShowcase() {
                     <section className="showcase-section" id="data">
                         <SectionHeading title="数据组件" description="表格、搜索、分页和空状态。" />
                         <div className="showcase-example-list component-examples">
-                            <ShowcaseExample title="文本溢出与完整内容" code="JuOverflowText" description="单行截断；悬停预览，点击或键盘打开后可选择并复制全文。" wide>
+                            <ShowcaseExample title="文本与完整内容" code="JuText · JuOverflowText" description="普通文本继承上下文样式；超长文本单行截断，可展开查看并复制全文。" wide>
                                 <div className="overflow-demo">
+                                    <div><JuText>普通文本</JuText><div className="overflow-demo-width"><JuText>继承上下文的普通文本</JuText></div></div>
                                     <div><span>未截断</span><div className="overflow-demo-width"><JuOverflowText text="简短内容" /></div></div>
                                     <div><span>固定宽度</span><div className="overflow-demo-width"><JuOverflowText text="这是超出单元格宽度的长文本，可以展开查看和复制完整内容。" /></div></div>
                                     <div><span>长链接</span><div className="overflow-demo-width"><JuOverflowText text="https://example.com/design-system/components/overflow-text?source=workbench" /></div></div>

@@ -1,10 +1,7 @@
 import { useEffect, useState } from "react";
-import { CircleAlert, CircleCheck, Info, TriangleAlert } from "lucide-react";
 import { PopoverContent, PopoverPortal, PopoverRoot, PopoverTrigger } from "../ui/popover";
 import { validationPriority, type ValidationMessage } from "./validation";
-
-const icons = { info: Info, warning: TriangleAlert, error: CircleAlert, success: CircleCheck };
-const labels = { info: "提示", warning: "警告", error: "错误", success: "成功" };
+import { validationIndicatorDefinitions } from "./validation-indicator-definitions";
 
 export function ValidationIndicator({ fieldId, messages, hiddenLabel = false }: {
     fieldId: string;
@@ -21,12 +18,12 @@ export function ValidationIndicator({ fieldId, messages, hiddenLabel = false }: 
         return () => document.removeEventListener("juju:show-validation", handleOpen);
     }, [fieldId]);
     if (!level) return null;
-    const Icon = icons[level];
+    const { icon: Icon, label } = validationIndicatorDefinitions[level];
     return <>
-        <span id={`${fieldId}-validation`} className="sr-only">{messages.map((message) => `${labels[message.level]}：${message.text}`).join("。")}</span>
+        <span id={`${fieldId}-validation`} className="sr-only">{messages.map((message) => `${validationIndicatorDefinitions[message.level].label}：${message.text}`).join("。")}</span>
         <PopoverRoot open={open} onOpenChange={setOpen}>
             <PopoverTrigger asChild>
-                <button type="button" className={`ju-validation-indicator is-${level}${hiddenLabel ? " is-hidden-label" : ""}`} aria-label={`查看${labels[level]}信息`} aria-describedby={`${fieldId}-validation`}>
+                <button type="button" className={`ju-validation-indicator is-${level}${hiddenLabel ? " is-hidden-label" : ""}`} aria-label={`查看${label}信息`} aria-describedby={`${fieldId}-validation`}>
                     <Icon size={15} aria-hidden="true" />
                 </button>
             </PopoverTrigger>

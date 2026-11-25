@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import AirDatepicker from "air-datepicker";
 import { CalendarDays } from "lucide-react";
 import { dateToCarrier, carrierToWallFields, fieldsToValue, normalizeValue, validateTimeContext } from "./temporal-adapter";
@@ -8,6 +9,7 @@ import { createPopupPositionController } from "./popup-animation";
 import type { PickerCommonProps } from "./types";
 import { ValidationIndicator } from "../ju/ValidationIndicator";
 import { validationMessages } from "../ju/validation";
+import { dateRangePresets, matchingDateRangePreset, presetDateRange } from "./date-range-presets";
 
 export interface DateRange { start: string | null; end: string | null }
 export interface DateRangePickerProps extends PickerCommonProps {
@@ -16,6 +18,8 @@ export interface DateRangePickerProps extends PickerCommonProps {
     disabledDates?: string[];
     min?: string;
     max?: string;
+    /** Enables the optional preset sidebar for the preset range picker. */
+    presetPanelLabel?: string;
 }
 
 function validateDateRange(value: DateRange, props: DateRangePickerProps): string | null {
@@ -42,8 +46,15 @@ export function DateRangePicker(props: DateRangePickerProps) {
     const userCommit = useRef(false);
     const [internal, setInternal] = useState<DateRange>({ start: null, end: null });
     const [error, setError] = useState("");
+    const [presetContainer] = useState(() => {
+        const element = document.createElement("div");
+        element.className = "ju-date-range-presets";
+        return element;
+    });
     const id = useId();
     const value = props.value ?? internal;
+    const latestValue = useRef(value);
+    useEffect(() => { latestValue.current = value; }, [value]);
     const formats = resolvePickerFormat({ mode: "date", locale: props.locale, format: props.format });
     const valueError = validateDateRange(value, props);
     const format = formats.dateFormat;
@@ -76,7 +87,12 @@ export function DateRangePicker(props: DateRangePickerProps) {
             minDate: props.min ? dateToCarrier(props.min) : false,
             maxDate: props.max ? dateToCarrier(props.max) : false,
             position: position.position,
-            onRenderCell: ({ date, cellType }) => cellType === "day" && latest.current.disabledDates?.includes(getDate(date)) ? { disabled: true } : undefined,
+            onRenderCell: ({ date, cellType }) => {
+                if (cellType !== "day") return undefined;
+                const day = getDate(date);
+                const today = props.presetPanelLabel && day === fieldsToValue(validateTimeContext(latest.current), "date");
+                return { disabled: !!latest.current.disabledDates?.includes(day), classes: today ? "-juju-business-today-" : "" };
+            },
             onBeforeSelect: ({ date, datepicker }) => {
                 if (datepicker.selectedDates.length !== 1) return true;
                 const dates = [getDate(datepicker.selectedDates[0]), getDate(date)].sort();
@@ -90,8 +106,25 @@ export function DateRangePicker(props: DateRangePickerProps) {
                 const dates = (Array.isArray(date) ? date : date ? [date] : []).map(getDate).sort();
                 commit({ start: dates[0] ?? null, end: dates[1] ?? null });
             },
+            onShow: (complete) => {
+                if (complete || !latest.current.presetPanelLabel) return;
+                picker.$datepicker.appendChild(presetContainer);
+                const current = latestValue.current;
+                picker.clear({ silent: true });
+                picker.setFocusDate(false);
+                picker.$datepicker.classList.remove("-disabled-range-");
+                if (!validateDateRange(current, latest.current)) {
+                    const dates = [current.start, current.end].filter((date): date is string => !!date).map(dateToCarrier);
+                    if (dates.length) void picker.selectDate(dates, { silent: true });
+                }
+                const start = current.start && !validateDateRange(current, latest.current) ? current.start : fieldsToValue(validateTimeContext(latest.current), "date");
+                picker.setViewDate(dateToCarrier(start));
+            },
         });
         pickerRef.current = picker;
+        if (props.presetPanelLabel) {
+            picker.$datepicker.classList.add("-juju-preset-range-");
+        }
         const keepFocus = (event: MouseEvent) => {
             if (event.target instanceof Node && picker.$datepicker.contains(event.target)) {
                 (picker as unknown as { inFocus: boolean }).inFocus = true;
@@ -107,7 +140,7 @@ export function DateRangePicker(props: DateRangePickerProps) {
         };
         // Recreate only when presentation/constraints or externally controlled value changes.
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [id, props.locale, props.timeZone, props.now, props.format, props.min, props.max, props.placement, JSON.stringify(props.disabledDates)]);
+    }, [id, props.locale, props.timeZone, props.now, props.format, props.min, props.max, props.placement, props.presetPanelLabel, JSON.stringify(props.disabledDates)]);
 
     useEffect(() => {
         if (userCommit.current) { userCommit.current = false; return; }
@@ -118,14 +151,18 @@ export function DateRangePicker(props: DateRangePickerProps) {
         if (dates.length) void picker.selectDate(dates, { silent: true });
     }, [value.start, value.end, valueError]);
 
+    let activePreset: string | null = null;
+    try { activePreset = matchingDateRangePreset(value, props.now, props.timeZone); } catch { /* Invalid context is reported by validation. */ }
+
+    const messages = validationMessages({ error: error || valueError || undefined, info: props.hint });
     return <div className="ju-field ju-air-picker-field">
-        {(props.label || error || valueError) && <div className="ju-field-heading">
+        {(props.label || messages.length > 0) && <div className="ju-field-heading">
             {props.label && <label htmlFor={id} className={`ju-field-label${props.labelHidden ? " sr-only" : ""}`}>{props.label}</label>}
-            <ValidationIndicator fieldId={id} messages={validationMessages({ error: error || valueError || undefined })} hiddenLabel={props.labelHidden || !props.label} />
+            <ValidationIndicator fieldId={id} messages={messages} hiddenLabel={props.labelHidden || !props.label} />
         </div>}
         <span className="ju-air-picker-control">
             <input ref={inputRef} id={id} type="text" className="ju-input ju-air-picker-input" aria-label={props.label}
-                aria-invalid={!!(error || valueError)} aria-describedby={error || valueError ? `${id}-validation` : undefined} disabled={props.disabled} readOnly={props.readOnly}
+                aria-invalid={!!(error || valueError)} aria-describedby={messages.length ? `${id}-validation` : undefined} disabled={props.disabled} readOnly={props.readOnly}
                 placeholder={`${format} - ${format}`} autoComplete="off"
                 onFocus={() => { const picker = pickerRef.current; if (picker?.visible && !picker.$datepicker.isConnected) (picker as unknown as { visible: boolean }).visible = false; picker?.show(); picker?.$datepicker.classList.add("-juju-visible-"); }}
                 onKeyDown={(event) => {
@@ -149,5 +186,22 @@ export function DateRangePicker(props: DateRangePickerProps) {
             />
             <span aria-hidden="true" className="ju-air-picker-icon"><CalendarDays size={16} /></span>
         </span>
+        {props.presetPanelLabel && createPortal(<div role="group" aria-label={props.presetPanelLabel}>
+            {dateRangePresets.map((preset) => {
+                let range: DateRange | null = null;
+                try { range = presetDateRange(preset, props.now, props.timeZone); } catch { /* Invalid context disables presets. */ }
+                const disabled = !range || !!validateDateRange(range, props) || props.disabled || props.readOnly;
+                return <button key={preset} type="button" disabled={disabled} aria-pressed={activePreset === preset}
+                    onClick={() => {
+                        const picker = pickerRef.current;
+                        if (!range || !picker || !commit(range)) return;
+                        picker.clear({ silent: true });
+                        picker.setFocusDate(false);
+                        picker.$datepicker.classList.remove("-disabled-range-");
+                        void picker.selectDate([dateToCarrier(range.start!), dateToCarrier(range.end!)], { silent: true });
+                        picker.setViewDate(dateToCarrier(range.start!));
+                    }}>{preset}</button>;
+            })}
+        </div>, presetContainer)}
     </div>;
 }

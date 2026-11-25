@@ -3,7 +3,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { isTauri } from "@tauri-apps/api/core";
 import { CalendarClock, X } from "lucide-react";
 import { Temporal } from "@js-temporal/polyfill";
-import { JuButton, JuDataTable, JuDialog, JuInput, JuSelect, JuPresetDateRangePicker, JuOverflowText } from "../ju";
+import { JuButton, JuDataTable, JuDialog, JuInput, JuSelect, JuPresetDateRangePicker, JuOverflowText, JuText } from "../ju";
 import { presetDateRange } from "../date-time/date-range-presets";
 import type { JuColumn } from "../ju";
 import type { TotoHistoryItem } from "../../services/desktop";
@@ -141,7 +141,14 @@ export function TotoHistoryWindow() {
             <div className="toto-history-filterbar">
                 <JuInput label="搜索事项内容或备注" labelHidden value={searchDraft} placeholder="搜索事项内容或备注" onChange={(event) => setSearchDraft(event.currentTarget.value)} onKeyDown={(event) => { if (event.key === "Enter") runQuery(); }} />
                 <JuSelect ariaLabel="历史事项状态" value={statusDraft} onValueChange={setStatusDraft} options={[{ value: "all", label: "全部状态" }, { value: "已完成", label: "已完成" }, { value: "已取消", label: "已取消" }]} />
-                <JuPresetDateRangePicker label="结束时间范围" labelHidden presetLabel="历史时间范围预设" {...timeContext} value={{ start: from || null, end: to || null }} onChange={(value) => { setFrom(value.start ?? ""); setTo(value.end ?? ""); }} />
+                <JuPresetDateRangePicker
+                    {...timeContext}
+                    label="结束时间范围"
+                    labelHidden
+                    presetLabel="历史时间范围预设"
+                    value={{ start: from || null, end: to || null }}
+                    onChange={(value) => { setFrom(value.start ?? ""); setTo(value.end ?? ""); }}
+                />
                 <JuButton onClick={runQuery}>查询</JuButton>
                 <JuButton variant="outline" onClick={reset}>重置</JuButton>
             </div>
@@ -168,8 +175,8 @@ export function TotoHistoryWindow() {
                     <JuSelect ariaLabel="每页条数" value={String(pageSize)} onValueChange={(value) => { setPageSize(Number(value)); setPage(1); }} options={pageSizes.map((size) => ({ value: String(size), label: String(size) }))} />
                 </div>
             </footer>
-            <JuDialog title={detailItem?.end_status === "已完成" ? "已完成事项详情" : "已取消事项详情"} description="历史事项为只读记录。" open={detailItem !== null} onOpenChange={(open) => { if (!open) setDetailItem(null); }} footer={<JuButton onClick={() => setDetailItem(null)}>关闭</JuButton>}>
-                {detailItem && <dl className="toto-history-detail">{[["事项内容", detailItem.content], ["计划时间", detailItem.planned_at ?? "—"], ["提醒时间", detailItem.reminder_at ?? "—"], ["创建时间", detailItem.created_at], ["结束状态", detailItem.end_status], ["结束时间", detailItem.ended_at], ["备注", detailItem.notes || "—"]].map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>}
+            <JuDialog title="详情" className="toto-item-dialog toto-item-dialog--expanded" open={detailItem !== null} onOpenChange={(open) => { if (!open) setDetailItem(null); }} footer={<JuButton onClick={() => setDetailItem(null)}>关闭</JuButton>}>
+                {detailItem && <dl className="toto-history-detail">{[["事项内容", detailItem.content], ["计划时间", detailItem.planned_at ?? "—"], ["提醒时间", detailItem.reminder_at ?? "—"], ["创建时间", detailItem.created_at], ["结束状态", detailItem.end_status], ["结束时间", detailItem.ended_at], ["备注", detailItem.notes || "—"]].map(([label, value]) => <div key={label}><dt><JuText>{label}</JuText></dt><dd><JuText>{value}</JuText></dd></div>)}</dl>}
             </JuDialog>
         </div>
     );

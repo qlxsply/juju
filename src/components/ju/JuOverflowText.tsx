@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { PopoverContent, PopoverPortal, PopoverRoot, PopoverTrigger } from "../ui/popover";
 import { JuButton } from "./JuButton";
+import { JuText } from "./JuText";
 
 /** Single-line text that exposes its full value only when it is truncated. */
-export function JuOverflowText({ text }: { text: string }) {
+export function JuOverflowText({ text, tabIndex = 0 }: { text: string; tabIndex?: 0 | -1 }) {
     const textRef = useRef<HTMLSpanElement>(null);
     const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
     const pinned = useRef(false);
@@ -42,11 +43,11 @@ export function JuOverflowText({ text }: { text: string }) {
     };
 
     const textElement = (
-        <span
+        <JuText
             className="ju-overflow-text"
             ref={textRef}
             role={overflow ? "button" : undefined}
-            tabIndex={overflow ? 0 : undefined}
+            tabIndex={overflow ? tabIndex : undefined}
             aria-label={overflow ? `查看完整内容：${text}` : undefined}
             onMouseEnter={enter}
             onMouseLeave={closeLater}
@@ -61,14 +62,16 @@ export function JuOverflowText({ text }: { text: string }) {
             onDoubleClick={(event) => { if (overflow) event.stopPropagation(); }}
             onKeyDown={(event) => {
                 if (!overflow) return;
-                event.stopPropagation();
                 if (event.key === "Enter" || event.key === " ") {
+                    event.stopPropagation();
                     event.preventDefault();
                     pinned.current = !pinned.current;
                     setOpen(pinned.current);
+                } else if (tabIndex !== -1) {
+                    event.stopPropagation();
                 }
             }}
-        >{text}</span>
+        >{text}</JuText>
     );
     return (
         <PopoverRoot open={open && overflow} onOpenChange={(next) => {
