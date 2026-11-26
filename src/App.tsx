@@ -270,7 +270,6 @@ function AppContent() {
         if (view === "tool") return;
         let active = true;
         let unlistenNavigate: (() => void) | undefined;
-        let unlistenTotoReminder: (() => void) | undefined;
         let unlistenOpenTotoReminder: (() => void) | undefined;
         let unlistenStorageError: (() => void) | undefined;
         let unlistenOpenTool: (() => void) | undefined;
@@ -284,12 +283,6 @@ function AppContent() {
                 if (event.payload === "launcher") setView("launcher");
             }).then((unlisten) => {
                 if (active) unlistenNavigate = unlisten;
-                else unlisten();
-            });
-            void listen<string>("toto:reminder", (event) => {
-                setNotice(`Toto 提醒：${event.payload}`);
-            }).then((unlisten) => {
-                if (active) unlistenTotoReminder = unlisten;
                 else unlisten();
             });
             void listen<string>("app:storage-error", (event) => {
@@ -347,7 +340,6 @@ function AppContent() {
         return () => {
             active = false;
             unlistenNavigate?.();
-            unlistenTotoReminder?.();
             unlistenOpenTotoReminder?.();
             unlistenStorageError?.();
             unlistenOpenTool?.();

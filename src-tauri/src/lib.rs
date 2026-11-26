@@ -1,4 +1,6 @@
 mod json_documents;
+#[allow(dead_code)]
+mod reminder_queue;
 mod scheduler;
 mod settings;
 mod toto;
@@ -15,7 +17,6 @@ use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent}
 use tauri::{AppHandle, Emitter, LogicalPosition, Manager, Position, State, WindowEvent};
 use tauri_plugin_autostart::ManagerExt as AutostartManagerExt;
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
-use tauri_plugin_notification::NotificationExt;
 use toto::{TotoHistoryItem, TotoHoliday, TotoItem};
 
 struct LauncherShortcutStatus {
@@ -838,15 +839,6 @@ pub fn run() {
                                     .collect::<Vec<_>>()
                                     .join("\n");
                                 let _ = app.emit("toto:reminder", message.clone());
-                                if let Err(error) = app
-                                    .notification()
-                                    .builder()
-                                    .title("Toto 提醒")
-                                    .body(&message)
-                                    .show()
-                                {
-                                    log::warn!("Could not show Toto reminder: {error}");
-                                }
                             }
                             Ok(_) => {}
                             Err(error) => log::warn!("Could not check Toto reminders: {error}"),
@@ -854,21 +846,7 @@ pub fn run() {
                         match toto::check_daily_reviews(app) {
                             Ok(reviews) => {
                                 for review in reviews {
-                                    let title = if review.kind == "work_start" {
-                                        "Toto 开始盘点"
-                                    } else {
-                                        "Toto 结束复盘"
-                                    };
                                     let _ = app.emit("toto:daily-review", review.clone());
-                                    if let Err(error) = app
-                                        .notification()
-                                        .builder()
-                                        .title(title)
-                                        .body(&format!("{} 项待办事项", review.active_items.len()))
-                                        .show()
-                                    {
-                                        log::warn!("Could not show Toto daily review: {error}");
-                                    }
                                 }
                             }
                             Err(error) => log::warn!("Could not check Toto daily review: {error}"),
