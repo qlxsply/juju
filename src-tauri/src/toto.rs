@@ -5,12 +5,21 @@ use serde_json::{Map, Value, json};
 use std::collections::{BTreeMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, MutexGuard};
 use tauri::AppHandle;
 use uuid::Uuid;
 
 const ITEMS_FILE: &str = "toto_ing.csv";
 const HISTORY_FILE: &str = "toto_end.csv";
 const CSV_BOM: &[u8] = b"\xef\xbb\xbf";
+// Serialize all in-process read/modify/write operations on Toto item files.
+static ITEM_WRITE_LOCK: Mutex<()> = Mutex::new(());
+
+fn lock_item_writes() -> Result<MutexGuard<'static, ()>, String> {
+    ITEM_WRITE_LOCK
+        .lock()
+        .map_err(|_| "Toto 事项存储暂不可用。".to_string())
+}
 const DEFAULT_SETTINGS: [(&str, &str); 11] = [
     ("hotkey", "None"),
     ("shortcut_add", "Alt+A"),
@@ -100,8 +109,6 @@ pub fn load_items(app: &AppHandle) -> Result<Vec<TotoItem>, String> {
         save_items_at(&path, &[])?;
     }
     let mut items: Vec<TotoItem> = read_csv(&path)?;
-    let history_ids: HashSet<String> = load_history(app)?.into_iter().map(|item| item.id).collect();
-    items.retain(|item| !history_ids.contains(&item.id));
     items.sort_by(|left, right| match (&left.planned_at, &right.planned_at) {
         (Some(left_time), Some(right_time)) => left_time
             .cmp(right_time)
@@ -111,6 +118,34 @@ pub fn load_items(app: &AppHandle) -> Result<Vec<TotoItem>, String> {
         (None, None) => left.created_order.cmp(&right.created_order),
     });
     Ok(items)
+}
+
+pub fn reconcile_active_history(app: &AppHandle) -> Result<(), String> {
+    let _guard = lock_item_writes()?;
+    let active: HashSet<String> = load_items(app)?.into_iter().map(|item| item.id).collect();
+    if active.is_empty() {
+        return Ok(());
+    }
+    let current = tool_path(app, HISTORY_FILE)?;
+    let directory = current.parent().ok_or("无法定位 Toto 数据目录。")?;
+    for entry in fs::read_dir(directory).map_err(|error| error.to_string())? {
+        let path = entry.map_err(|error| error.to_string())?.path();
+        let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
+            continue;
+        };
+        if name != HISTORY_FILE
+            && !(name.starts_with("toto_end_") && path.extension().is_some_and(|ext| ext == "csv"))
+        {
+            continue;
+        }
+        let mut history = load_history_at(&path)?;
+        let count = history.len();
+        history.retain(|item| !active.contains(&item.id));
+        if history.len() != count {
+            save_history_at(&path, &history)?;
+        }
+    }
+    Ok(())
 }
 
 pub fn load_history(app: &AppHandle) -> Result<Vec<TotoHistoryItem>, String> {
@@ -140,6 +175,7 @@ pub fn load_history(app: &AppHandle) -> Result<Vec<TotoHistoryItem>, String> {
 }
 
 pub fn archive_history(app: &AppHandle) -> Result<(), String> {
+    let _guard = lock_item_writes()?;
     let current_path = tool_path(app, HISTORY_FILE)?;
     let current_month = Local::now().format("%Y%m").to_string();
     let current = load_history_at(&current_path)?;
@@ -389,15 +425,80 @@ fn set_default_remind_minutes(config: &mut Value, minutes: i64) -> Result<(), St
     Ok(())
 }
 
-pub fn mark_due_reminders(app: &AppHandle) -> Result<Vec<TotoItem>, String> {
-    let now = Local::now().naive_local();
-    let now_text = now.format("%Y-%m-%d %H:%M:%S").to_string();
+pub fn mark_due_reminder(
+    app: &AppHandle,
+    id: &str,
+    expected: &str,
+) -> Result<Option<TotoItem>, String> {
+    let _guard = lock_item_writes()?;
+    let now = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
     let mut items = load_items(app)?;
-    let due = mark_due_items(&mut items, &now_text);
-    if !due.is_empty() {
-        save_items_at(&tool_path(app, ITEMS_FILE)?, &items)?;
+    let Some(item) = items.iter_mut().find(|item| item.id == id) else {
+        return Ok(None);
+    };
+    if !mark_item_due(item, expected, &now) {
+        return Ok(None);
     }
-    Ok(due)
+    let due = item.clone();
+    save_items_at(&tool_path(app, ITEMS_FILE)?, &items)?;
+    Ok(Some(due))
+}
+
+fn mark_item_due(item: &mut TotoItem, expected: &str, now: &str) -> bool {
+    if item.reminder_status != "未提醒"
+        || item.reminder_at.as_deref() != Some(expected)
+        || expected > now
+    {
+        return false;
+    }
+    item.reminder_status = "待确认".into();
+    item.reminded_at = Some(now.to_owned());
+    true
+}
+
+fn apply_reminder_action(
+    item: &mut TotoItem,
+    expected: &str,
+    snooze: bool,
+    now: NaiveDateTime,
+    minutes: i64,
+) -> Result<(), String> {
+    if item.reminder_status != "待确认" || item.reminder_at.as_deref() != Some(expected) {
+        return Err("提醒状态已改变，请刷新事项。".into());
+    }
+    if snooze {
+        let deadline = crate::reminder_queue::snooze_deadline(now, minutes)
+            .ok_or_else(|| "稍等时间超出有效范围。".to_string())?;
+        item.reminder_at = Some(deadline.format("%Y-%m-%d %H:%M:%S").to_string());
+        item.reminder_status = "未提醒".into();
+        item.reminded_at = None;
+    } else {
+        item.reminder_status = "已提醒".into();
+    }
+    Ok(())
+}
+
+pub fn resolve_reminder(
+    app: &AppHandle,
+    id: &str,
+    expected: &str,
+    snooze: bool,
+) -> Result<Option<TotoItem>, String> {
+    let _guard = lock_item_writes()?;
+    let mut items = load_items(app)?;
+    let item = items
+        .iter_mut()
+        .find(|item| item.id == id)
+        .ok_or_else(|| "事项已结束或不存在。".to_string())?;
+    let minutes = if snooze {
+        load_default_remind_minutes(app)?
+    } else {
+        0
+    };
+    apply_reminder_action(item, expected, snooze, Local::now().naive_local(), minutes)?;
+    let updated = item.clone();
+    save_items_at(&tool_path(app, ITEMS_FILE)?, &items)?;
+    Ok(Some(updated))
 }
 
 pub fn check_daily_reviews(app: &AppHandle) -> Result<Vec<TotoDailyReview>, String> {
@@ -438,13 +539,16 @@ pub fn check_daily_reviews(app: &AppHandle) -> Result<Vec<TotoDailyReview>, Stri
         ("daily_review_end_time", "work_end"),
     ] {
         let scheduled_time = settings.get(setting_key).map(String::as_str).unwrap_or("");
-        if !scheduled_time.is_empty()
+        let pending = daily_review_pending(date_status.get(kind));
+        if pending {
+            kinds.push(kind.to_string());
+        } else if !scheduled_time.is_empty()
             && now_time.as_str() >= scheduled_time
             && !date_status.contains_key(kind)
         {
             date_status.insert(
                 kind.into(),
-                Value::String(now.format("%Y-%m-%d %H:%M:%S").to_string()),
+                json!({"state": "pending", "at": now.format("%Y-%m-%d %H:%M:%S").to_string()}),
             );
             kinds.push(kind.to_string());
         }
@@ -470,25 +574,56 @@ pub fn check_daily_reviews(app: &AppHandle) -> Result<Vec<TotoDailyReview>, Stri
         .collect())
 }
 
-fn should_skip_daily_review(workdays_only: bool, weekday: Weekday) -> bool {
-    workdays_only && matches!(weekday, Weekday::Sat | Weekday::Sun)
+fn daily_review_pending(value: Option<&Value>) -> bool {
+    value
+        .and_then(Value::as_object)
+        .and_then(|value| value.get("state"))
+        .and_then(Value::as_str)
+        == Some("pending")
 }
 
-fn mark_due_items(items: &mut [TotoItem], now: &str) -> Vec<TotoItem> {
-    let mut due = Vec::new();
-    for item in items {
-        if item.reminder_status == "未提醒"
-            && item
-                .reminder_at
-                .as_deref()
-                .is_some_and(|reminder_at| reminder_at <= now)
-        {
-            item.reminder_status = "已提醒".into();
-            item.reminded_at = Some(now.to_string());
-            due.push(item.clone());
-        }
+pub fn acknowledge_daily_review(app: &AppHandle, date: &str, kind: &str) -> Result<(), String> {
+    if date != Local::now().format("%Y-%m-%d").to_string()
+        || !matches!(kind, "work_start" | "work_end")
+    {
+        return Err("盘点已过期。".into());
     }
-    due
+    let mut config = read_config(app)?;
+    let status = config
+        .get_mut("scheduledPopups")
+        .and_then(|dates| dates.get_mut(date))
+        .and_then(|day| day.get_mut(kind))
+        .ok_or("盘点不存在。")?;
+    if status.get("state").and_then(Value::as_str) == Some("pending") {
+        *status = Value::String(Local::now().format("%Y-%m-%d %H:%M:%S").to_string());
+        write_json_atomic(&tool_path(app, "config.json")?, &config)?;
+    }
+    Ok(())
+}
+
+pub fn daily_review_snapshot(
+    app: &AppHandle,
+    date: &str,
+    kind: &str,
+) -> Result<TotoDailyReview, String> {
+    if date != Local::now().format("%Y-%m-%d").to_string()
+        || !matches!(kind, "work_start" | "work_end")
+    {
+        return Err("盘点已过期。".into());
+    }
+    Ok(TotoDailyReview {
+        kind: kind.to_string(),
+        date: date.to_string(),
+        active_items: load_items(app)?,
+        finished_items: load_history(app)?
+            .into_iter()
+            .filter(|item| item.ended_at.starts_with(date) && item.end_status == "已完成")
+            .collect(),
+    })
+}
+
+fn should_skip_daily_review(workdays_only: bool, weekday: Weekday) -> bool {
+    workdays_only && matches!(weekday, Weekday::Sat | Weekday::Sun)
 }
 
 pub fn add_item(
@@ -549,6 +684,7 @@ fn add_item_with_reminder(
     notes: String,
     reminder_lead_minutes: i64,
 ) -> Result<TotoItem, String> {
+    let _guard = lock_item_writes()?;
     let content = validate_content(content)?;
     let planned_at = normalize_planned_time(planned_at)?;
     let mut items = load_items(app)?;
@@ -864,6 +1000,7 @@ pub fn update_item_full(
     reminder_at: Option<String>,
     notes: String,
 ) -> Result<TotoItem, String> {
+    let _guard = lock_item_writes()?;
     let content = validate_content(content)?;
     let planned_at = normalize_planned_time(planned_at)?;
     let reminder_at = normalize_planned_time(reminder_at)?;
@@ -900,6 +1037,7 @@ pub fn finish_item_with_note(
     completed: bool,
     note: Option<String>,
 ) -> Result<(), String> {
+    let _guard = lock_item_writes()?;
     let mut items = load_items(app)?;
     let index = items
         .iter()
@@ -966,6 +1104,10 @@ fn tool_path(app: &AppHandle, file_name: &str) -> Result<PathBuf, String> {
     let directory = PathBuf::from(settings.data_root).join("tools").join("toto");
     fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
     Ok(directory.join(file_name))
+}
+
+pub fn items_path(app: &AppHandle) -> Result<PathBuf, String> {
+    tool_path(app, ITEMS_FILE)
 }
 
 fn read_config(app: &AppHandle) -> Result<Value, String> {
@@ -1066,11 +1208,72 @@ fn write_csv<T: Serialize>(path: &Path, rows: &[T], headers: &[&str]) -> Result<
 #[cfg(test)]
 mod tests {
     use super::{
-        TotoItem, mark_due_items, normalize_planned_time, parse_quick_text, read_csv,
-        save_items_at, set_default_remind_minutes, shift_time, should_skip_daily_review,
+        TotoItem, normalize_planned_time, parse_quick_text, read_csv, save_items_at,
+        set_default_remind_minutes, shift_time, should_skip_daily_review,
     };
     use chrono::{NaiveDate, Weekday};
     use serde_json::json;
+
+    #[test]
+    fn daily_review_pending_does_not_replay_legacy_delivered_status() {
+        assert!(super::daily_review_pending(Some(
+            &json!({"state":"pending"})
+        )));
+        assert!(!super::daily_review_pending(Some(&json!(
+            "2026-11-21 09:00:00"
+        ))));
+        assert!(!super::daily_review_pending(None));
+    }
+
+    #[test]
+    fn reminder_transitions_reject_stale_operations_and_snooze() {
+        let mut item = TotoItem {
+            id: "item".into(),
+            content: "事项".into(),
+            planned_at: None,
+            reminder_at: Some("2026-11-21 10:00:00".into()),
+            created_at: "2026-11-21 09:00:00".into(),
+            created_order: 1,
+            reminder_status: "未提醒".into(),
+            reminded_at: None,
+            notes: String::new(),
+        };
+        assert!(!super::mark_item_due(
+            &mut item,
+            "2026-11-21 09:59:00",
+            "2026-11-21 10:00:00"
+        ));
+        assert!(!super::mark_item_due(
+            &mut item,
+            "2026-11-21 10:00:00",
+            "2026-11-21 09:59:00"
+        ));
+        assert!(super::mark_item_due(
+            &mut item,
+            "2026-11-21 10:00:00",
+            "2026-11-21 10:00:01"
+        ));
+        let now = NaiveDate::from_ymd_opt(2026, 11, 21)
+            .unwrap()
+            .and_hms_opt(10, 5, 47)
+            .unwrap();
+        assert!(
+            super::apply_reminder_action(&mut item, "2026-11-21 09:59:00", false, now, 5).is_err()
+        );
+        super::apply_reminder_action(&mut item, "2026-11-21 10:00:00", true, now, 5).unwrap();
+        assert_eq!(item.reminder_status, "未提醒");
+        assert_eq!(item.reminder_at.as_deref(), Some("2026-11-21 10:07:00"));
+        assert!(
+            super::apply_reminder_action(&mut item, "2026-11-21 10:00:00", false, now, 5).is_err()
+        );
+        assert!(super::mark_item_due(
+            &mut item,
+            "2026-11-21 10:07:00",
+            "2026-11-21 10:07:00"
+        ));
+        super::apply_reminder_action(&mut item, "2026-11-21 10:07:00", false, now, 5).unwrap();
+        assert_eq!(item.reminder_status, "已提醒");
+    }
 
     #[test]
     fn csv_round_trip_keeps_bom_commas_and_nine_columns() {
@@ -1212,28 +1415,6 @@ mod tests {
             .unwrap();
         assert!(parse_quick_text("事项@H9223372036854775807", now, 5).is_err());
         assert!(shift_time("2026-11-21 09:00:00", i64::MIN).is_err());
-    }
-
-    #[test]
-    fn due_reminder_is_marked_before_it_is_returned_for_notification() {
-        let mut items = vec![TotoItem {
-            id: "due".into(),
-            content: "到期事项".into(),
-            planned_at: Some("2026-11-21 09:00:00".into()),
-            reminder_at: Some("2026-11-21 08:55:00".into()),
-            created_at: "2026-11-20 12:00:00".into(),
-            created_order: 1,
-            reminder_status: "未提醒".into(),
-            reminded_at: None,
-            notes: String::new(),
-        }];
-
-        let due = mark_due_items(&mut items, "2026-11-21 09:00:00");
-
-        assert_eq!(due.len(), 1);
-        assert_eq!(items[0].reminder_status, "已提醒");
-        assert_eq!(items[0].reminded_at.as_deref(), Some("2026-11-21 09:00:00"));
-        assert!(mark_due_items(&mut items, "2026-11-21 09:01:00").is_empty());
     }
 
     #[test]

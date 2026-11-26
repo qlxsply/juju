@@ -69,11 +69,11 @@ import {
     loadAppSettings,
     loadTotoHistory,
     loadTotoItems,
+    loadTotoDailyReview,
     loadTotoDefaultRemindMinutes,
     closeCurrentToolWindow,
     openToolWindow,
     openTotoToolWindow,
-    openTotoReminderWindow,
     saveAppSettings,
     setStartAtLogin,
     addTotoItem,
@@ -159,6 +159,9 @@ function AppContent() {
         if (new URLSearchParams(window.location.search).get("window") === "toto-reminder") {
             return "toto-reminder";
         }
+        if (new URLSearchParams(window.location.search).get("window") === "toto-daily-review") {
+            return "toto-daily-review";
+        }
         if (nativeLabel === "toto-history" || initialTool === "toto-history") {
             return "toto-history";
         }
@@ -178,7 +181,6 @@ function AppContent() {
     });
     const [notice, setNotice] = useState("");
     const [settingsWindowOpen, setSettingsWindowOpen] = useState(false);
-    const [dailyReviews, setDailyReviews] = useState<TotoDailyReview[]>([]);
     const [appSettings, setAppSettings] =
         useState<AppSettings>(defaultAppSettings);
 
@@ -270,12 +272,10 @@ function AppContent() {
         if (view === "tool") return;
         let active = true;
         let unlistenNavigate: (() => void) | undefined;
-        let unlistenOpenTotoReminder: (() => void) | undefined;
         let unlistenStorageError: (() => void) | undefined;
         let unlistenOpenTool: (() => void) | undefined;
         let unlistenOpenSettings: (() => void) | undefined;
         let unlistenSettingsClosed: (() => void) | undefined;
-        let unlistenDailyReview: (() => void) | undefined;
 
         if (isTauri()) {
             void listen<string>("app:navigate", (event) => {
@@ -292,21 +292,6 @@ function AppContent() {
                 else unlisten();
             });
             if (getCurrentWindow().label === "main") {
-                void listen<string>("toto:reminder", (event) => {
-                    void openTotoReminderWindow(event.payload).catch((error: unknown) =>
-                        setNotice(`无法打开 Toto 提醒窗口：${String(error)}`),
-                    );
-                }).then((unlisten) => {
-                    if (active) unlistenOpenTotoReminder = unlisten;
-                    else unlisten();
-                });
-                void listen<TotoDailyReview>("toto:daily-review", (event) => {
-                    setDailyReviews((queue) => [...queue, event.payload]);
-                    void showMainWindow();
-                }).then((unlisten) => {
-                    if (active) unlistenDailyReview = unlisten;
-                    else unlisten();
-                });
                 void listen("app:open-settings", () => {
                     setSettingsWindowOpen(true);
                     window.dispatchEvent(new CustomEvent("juju:suspend-launcher-autohide", { detail: true }));
@@ -340,12 +325,10 @@ function AppContent() {
         return () => {
             active = false;
             unlistenNavigate?.();
-            unlistenOpenTotoReminder?.();
             unlistenStorageError?.();
             unlistenOpenTool?.();
             unlistenOpenSettings?.();
             unlistenSettingsClosed?.();
-            unlistenDailyReview?.();
         };
     }, [launchTool, view]);
 
@@ -353,6 +336,7 @@ function AppContent() {
     if (view === "tool:json") return <Suspense fallback={<div className="tool-loading">正在加载 JSON 编辑器…</div>}><JsonToolWindow settings={appSettings} /></Suspense>;
     if (view === "toto-history") return <TotoHistoryWindow />;
     if (view === "toto-reminder") return <TotoReminderWindow />;
+    if (view === "toto-daily-review") return <TotoDailyReviewWindow />;
     if (view.startsWith("tool:"))
         return <PlaceholderToolWindow toolId={view.slice(5)} />;
     if (view === "toto") return <TotoToolWindow />;
@@ -401,9 +385,20 @@ function AppContent() {
               onSelectTool={launchTool}
               onDismissNotice={() => setNotice("")}
           />
-          <TotoDailyReviewDialog review={dailyReviews[0] ?? null} onClose={() => setDailyReviews((queue) => queue.slice(1))} />
         </>
     );
+}
+
+function TotoDailyReviewWindow() {
+    const [review, setReview] = useState<TotoDailyReview | null>(null);
+    const [error, setError] = useState("");
+    useEffect(() => {
+        const query = new URLSearchParams(window.location.search);
+        void loadTotoDailyReview(query.get("date") ?? "", query.get("kind") ?? "")
+            .then(setReview).catch((reason: unknown) => setError(String(reason)));
+    }, []);
+    if (error) return <div role="alert">{error}</div>;
+    return <TotoDailyReviewDialog review={review} onClose={() => void closeCurrentToolWindow()} />;
 }
 
 function TotoDailyReviewDialog({

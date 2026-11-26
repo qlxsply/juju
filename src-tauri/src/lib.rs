@@ -1,3 +1,4 @@
+mod deadline_scheduler;
 mod json_documents;
 #[allow(dead_code)]
 mod reminder_queue;
@@ -5,13 +6,14 @@ mod scheduler;
 mod settings;
 mod toto;
 
-use chrono::{SecondsFormat, Utc};
+use chrono::{Local, NaiveDateTime, NaiveTime, SecondsFormat, TimeZone, Utc};
+use deadline_scheduler::DeadlineScheduler;
 use scheduler::TaskScheduler;
 use serde::{Deserialize, Serialize};
 use settings::AppSettings;
 use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Emitter, LogicalPosition, Manager, Position, State, WindowEvent};
@@ -31,6 +33,374 @@ struct WindowPosition {
 }
 
 struct WindowPositionStore(Arc<Mutex<HashMap<String, WindowPosition>>>);
+static TOTO_SYNC_LOCK: Mutex<()> = Mutex::new(());
+static DAILY_REVIEW_LOCK: Mutex<()> = Mutex::new(());
+#[derive(Default)]
+struct ReminderWindows(Mutex<HashMap<String, usize>>);
+
+fn next_reminder_slot(slots: &HashMap<String, usize>) -> usize {
+    (0..4)
+        .find(|index| !slots.values().any(|value| value == index))
+        .unwrap_or(3)
+}
+
+fn show_toto_reminder(app: &AppHandle, id: &str) -> Result<(), String> {
+    let id = uuid::Uuid::parse_str(id)
+        .map_err(|error| error.to_string())?
+        .to_string();
+    let label = format!("toto-reminder-{id}");
+    let slots = app.state::<ReminderWindows>();
+    let mut slots = slots.0.lock().map_err(|_| "提醒窗口管理器不可用。")?;
+    if app.get_webview_window(&label).is_some() {
+        return Ok(());
+    }
+    let slot = next_reminder_slot(&slots);
+    let mut builder = tauri::WebviewWindowBuilder::new(
+        app,
+        &label,
+        tauri::WebviewUrl::App(format!("/?window=toto-reminder&id={id}").into()),
+    )
+    .title("Toto 提醒")
+    .inner_size(520.0, 320.0)
+    .decorations(false);
+    if let Some(monitor) = app
+        .get_webview_window("main")
+        .and_then(|window| window.current_monitor().ok().flatten())
+    {
+        let scale = monitor.scale_factor();
+        let area = monitor.work_area();
+        let x = area.position.x as f64 / scale
+            + (area.size.width as f64 / scale - 520.0) / 2.0
+            + slot as f64 * 24.0;
+        let y = area.position.y as f64 / scale
+            + (area.size.height as f64 / scale - 320.0) / 2.0
+            + slot as f64 * 24.0;
+        builder = builder.position(x, y);
+    } else {
+        builder = builder.center();
+    }
+    let window = builder.build().map_err(|error| error.to_string())?;
+    slots.insert(label.clone(), slot);
+    drop(slots);
+    let app = app.clone();
+    window.on_window_event(move |event| {
+        if matches!(event, WindowEvent::Destroyed) {
+            if let Ok(mut slots) = app.state::<ReminderWindows>().0.lock() {
+                slots.remove(&label);
+            }
+        }
+    });
+    Ok(())
+}
+
+fn queue_reminder_delivery(app: &AppHandle, id: &str, delay_seconds: i64) -> Result<(), String> {
+    let scheduler = app.state::<DeadlineScheduler>();
+    let app = app.clone();
+    scheduler.schedule(
+        Utc::now() + chrono::Duration::seconds(delay_seconds),
+        "toto.delivery",
+        id,
+        move |id| {
+            let result = toto::load_items(&app).and_then(|items| {
+                if items
+                    .iter()
+                    .any(|item| item.id == id && item.reminder_status == "待确认")
+                {
+                    show_toto_reminder(&app, &id)?;
+                    let latest = toto::load_items(&app)?;
+                    sync_reminder_window(
+                        &app,
+                        &id,
+                        latest
+                            .iter()
+                            .any(|item| item.id == id && item.reminder_status == "待确认"),
+                    );
+                    Ok(())
+                } else {
+                    Ok(())
+                }
+            });
+            if let Err(error) = result {
+                log::warn!("Could not show Toto reminder {id}: {error}");
+                if let Err(error) = queue_reminder_delivery(&app, &id, 30) {
+                    log::warn!("Could not retry Toto reminder {id}: {error}");
+                }
+            }
+        },
+    )
+}
+
+fn retry_toto_item(app: &AppHandle, id: &str) {
+    let scheduler = app.state::<DeadlineScheduler>();
+    let app = app.clone();
+    if let Err(error) = scheduler.schedule(
+        Utc::now() + chrono::Duration::seconds(30),
+        "toto.retry",
+        id,
+        move |id| {
+            let Ok(_guard) = TOTO_SYNC_LOCK.lock() else {
+                return;
+            };
+            match toto::load_items(&app) {
+                Ok(items) => {
+                    if let Some(item) = items.iter().find(|item| item.id == id) {
+                        if let Err(error) = schedule_toto_item(&app, item) {
+                            log::warn!("Could not retry Toto item {id}: {error}");
+                            retry_toto_item(&app, &id);
+                        }
+                    }
+                }
+                Err(error) => {
+                    log::warn!("Could not reload Toto item {id}: {error}");
+                    retry_toto_item(&app, &id);
+                }
+            }
+        },
+    ) {
+        log::warn!("Could not queue retry for Toto item {id}: {error}");
+    }
+}
+
+fn schedule_toto_item(app: &AppHandle, item: &TotoItem) -> Result<(), String> {
+    let scheduler = app.state::<DeadlineScheduler>();
+    scheduler.cancel("toto.item", &item.id)?;
+    if item.reminder_status != "未提醒" {
+        return Ok(());
+    }
+    let Some(value) = item.reminder_at.as_deref() else {
+        return Ok(());
+    };
+    let local = NaiveDateTime::parse_from_str(value, "%Y-%m-%d %H:%M:%S")
+        .map_err(|error| format!("提醒时间无效：{error}"))?;
+    let at = Local
+        .from_local_datetime(&local)
+        .earliest()
+        .ok_or_else(|| format!("提醒时间不在本地时区有效范围内：{value}"))?
+        .with_timezone(&Utc);
+    let app = app.clone();
+    let expected = value.to_owned();
+    scheduler.schedule(at, "toto.item", &item.id, move |id| {
+        let Ok(_guard) = TOTO_SYNC_LOCK.lock() else {
+            return;
+        };
+        match toto::mark_due_reminder(&app, &id, &expected) {
+            Ok(Some(item)) => {
+                if let Err(error) = queue_reminder_delivery(&app, &item.id, 0) {
+                    log::warn!("Could not queue Toto reminder: {error}");
+                }
+            }
+            Ok(None) => {
+                // A clock change or concurrent edit may have invalidated the deadline.
+                retry_toto_item(&app, &id);
+            }
+            Err(error) => {
+                log::warn!("Could not process Toto reminder: {error}");
+                retry_toto_item(&app, &id);
+            }
+        }
+    })
+}
+
+#[tauri::command]
+fn resolve_toto_reminder(
+    app: AppHandle,
+    id: String,
+    expected: String,
+    snooze: bool,
+) -> Result<(), String> {
+    let _guard = TOTO_SYNC_LOCK.lock().map_err(|_| "Toto 调度暂不可用。")?;
+    if let Some(item) = toto::resolve_reminder(&app, &id, &expected, snooze)? {
+        if let Err(error) = schedule_toto_item(&app, &item) {
+            log::warn!("Could not schedule reminder after confirmation: {error}");
+            retry_toto_item(&app, &id);
+        }
+    }
+    Ok(())
+}
+
+fn sync_reminder_window(app: &AppHandle, id: &str, pending: bool) {
+    let label = format!("toto-reminder-{id}");
+    if let Some(window) = app.get_webview_window(&label) {
+        if pending {
+            let _ = window.emit("toto:reminder-changed", ());
+        } else if let Err(error) = window.destroy() {
+            log::warn!("Could not close obsolete reminder {id}: {error}");
+        }
+    }
+}
+
+fn watch_toto_items(app: &AppHandle) -> Result<(), String> {
+    let path = toto::items_path(app)?;
+    let metadata = std::fs::metadata(&path).map_err(|error| error.to_string())?;
+    let initial = toto::load_items(app)?;
+    let state = Arc::new(Mutex::new((
+        (metadata.modified().ok(), metadata.len()),
+        initial,
+    )));
+    app.state::<TaskScheduler>().schedule_periodic(
+        "toto-file-watch",
+        app.clone(),
+        Duration::from_secs(3),
+        move |app| {
+            let Ok(_guard) = TOTO_SYNC_LOCK.lock() else {
+                return;
+            };
+            let Ok(metadata) = std::fs::metadata(&path) else {
+                return;
+            };
+            let stamp: (Option<SystemTime>, u64) = (metadata.modified().ok(), metadata.len());
+            let Ok(mut previous) = state.lock() else {
+                return;
+            };
+            if previous.0 == stamp {
+                return;
+            }
+            let Ok(items) = toto::load_items(app) else {
+                return;
+            };
+            // Do not accept a snapshot if a writer changed the file during the read.
+            let Ok(after) = std::fs::metadata(&path) else {
+                return;
+            };
+            if (after.modified().ok(), after.len()) != stamp {
+                return;
+            }
+            for old in &previous.1 {
+                if !items.iter().any(|item| item.id == old.id) {
+                    let _ = app
+                        .state::<DeadlineScheduler>()
+                        .cancel("toto.item", &old.id);
+                    sync_reminder_window(app, &old.id, false);
+                }
+            }
+            for item in &items {
+                if previous.1.iter().find(|old| old.id == item.id) != Some(item) {
+                    if let Err(error) = schedule_toto_item(app, item) {
+                        log::warn!("Could not synchronize Toto item {}: {error}", item.id);
+                        retry_toto_item(app, &item.id);
+                    }
+                    sync_reminder_window(app, &item.id, item.reminder_status == "待确认");
+                    if item.reminder_status == "待确认" {
+                        let _ = queue_reminder_delivery(app, &item.id, 0);
+                    }
+                }
+            }
+            *previous = (stamp, items);
+            let _ = app.emit("toto:items-changed", ());
+        },
+    )
+}
+
+fn schedule_daily_reviews(app: &AppHandle) -> Result<(), String> {
+    let settings = toto::load_settings(app)?;
+    let now = Local::now();
+    let scheduler = app.state::<DeadlineScheduler>();
+    for (key, id) in [
+        ("daily_review_start_time", "start"),
+        ("daily_review_end_time", "end"),
+    ] {
+        scheduler.cancel("toto.daily", id)?;
+        let Some(time) = settings.get(key).filter(|time| !time.is_empty()) else {
+            continue;
+        };
+        let time = NaiveTime::parse_from_str(time, "%H:%M").map_err(|error| error.to_string())?;
+        let today = now.date_naive().and_time(time);
+        // At startup the existing daily deduplication check handles today's missed events.
+        let next = if today <= now.naive_local() {
+            now.date_naive()
+                .succ_opt()
+                .ok_or("日期超出范围。")?
+                .and_time(time)
+        } else {
+            today
+        };
+        let at = Local
+            .from_local_datetime(&next)
+            .earliest()
+            .ok_or_else(|| format!("盘点时间无效：{next}"))?
+            .with_timezone(&Utc);
+        let app = app.clone();
+        scheduler.schedule(at, "toto.daily", id, move |_| {
+            dispatch_daily_reviews(&app);
+            if let Err(error) = schedule_daily_reviews(&app) {
+                log::warn!("Could not schedule Toto daily reviews: {error}");
+            }
+        })?;
+    }
+    Ok(())
+}
+
+fn dispatch_daily_reviews(app: &AppHandle) {
+    let Ok(_guard) = DAILY_REVIEW_LOCK.lock() else {
+        return;
+    };
+    let result = toto::check_daily_reviews(app).and_then(|reviews| {
+        for review in &reviews {
+            let label = format!(
+                "toto-daily-{}-{}",
+                review.kind.replace('_', "-"),
+                review.date
+            );
+            if app.get_webview_window(&label).is_none() {
+                tauri::WebviewWindowBuilder::new(
+                    app,
+                    label,
+                    tauri::WebviewUrl::App(
+                        format!(
+                            "/?window=toto-daily-review&kind={}&date={}",
+                            review.kind, review.date
+                        )
+                        .into(),
+                    ),
+                )
+                .title(if review.kind == "work_start" {
+                    "开始盘点"
+                } else {
+                    "结束复盘"
+                })
+                .inner_size(600.0, 480.0)
+                .center()
+                .build()
+                .map_err(|error| error.to_string())?;
+            }
+        }
+        Ok(!reviews.is_empty())
+    });
+    if let Err(error) = &result {
+        log::warn!("Could not deliver Toto daily review: {error}");
+    }
+    if !matches!(result, Ok(false)) {
+        let handle = app.clone();
+        if let Err(error) = app.state::<DeadlineScheduler>().schedule(
+            Utc::now() + chrono::Duration::seconds(30),
+            "toto.daily",
+            "delivery-retry",
+            move |_| dispatch_daily_reviews(&handle),
+        ) {
+            log::warn!("Could not retry Toto daily review: {error}");
+        }
+    }
+}
+
+fn queue_daily_review_check(app: &AppHandle) -> Result<(), String> {
+    let handle = app.clone();
+    app.state::<DeadlineScheduler>()
+        .schedule(Utc::now(), "toto.daily", "check", move |_| {
+            dispatch_daily_reviews(&handle);
+        })
+}
+
+#[tauri::command]
+fn load_toto_daily_review(
+    app: AppHandle,
+    date: String,
+    kind: String,
+) -> Result<toto::TotoDailyReview, String> {
+    let _guard = DAILY_REVIEW_LOCK.lock().map_err(|_| "盘点状态不可用。")?;
+    let review = toto::daily_review_snapshot(&app, &date, &kind)?;
+    toto::acknowledge_daily_review(&app, &date, &kind)?;
+    Ok(review)
+}
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -381,12 +751,18 @@ fn add_toto_item(
     planned_at: Option<String>,
     notes: String,
 ) -> Result<TotoItem, String> {
-    toto::add_item(&app, content, planned_at, notes)
+    let _guard = TOTO_SYNC_LOCK.lock().map_err(|_| "Toto 调度暂不可用。")?;
+    let item = toto::add_item(&app, content, planned_at, notes)?;
+    schedule_toto_item(&app, &item)?;
+    Ok(item)
 }
 
 #[tauri::command]
 fn add_toto_quick_item(app: AppHandle, input: String) -> Result<TotoItem, String> {
-    toto::add_quick_item_command(&app, &input)
+    let _guard = TOTO_SYNC_LOCK.lock().map_err(|_| "Toto 调度暂不可用。")?;
+    let item = toto::add_quick_item_command(&app, &input)?;
+    schedule_toto_item(&app, &item)?;
+    Ok(item)
 }
 
 #[tauri::command]
@@ -405,7 +781,11 @@ fn update_toto_item(
     planned_at: Option<String>,
     notes: String,
 ) -> Result<TotoItem, String> {
-    toto::update_item(&app, &id, content, planned_at, notes)
+    let _guard = TOTO_SYNC_LOCK.lock().map_err(|_| "Toto 调度暂不可用。")?;
+    let item = toto::update_item(&app, &id, content, planned_at, notes)?;
+    schedule_toto_item(&app, &item)?;
+    sync_reminder_window(&app, &id, item.reminder_status == "待确认");
+    Ok(item)
 }
 
 #[tauri::command]
@@ -417,12 +797,20 @@ fn update_toto_item_full(
     reminder_at: Option<String>,
     notes: String,
 ) -> Result<TotoItem, String> {
-    toto::update_item_full(&app, &id, content, planned_at, reminder_at, notes)
+    let _guard = TOTO_SYNC_LOCK.lock().map_err(|_| "Toto 调度暂不可用。")?;
+    let item = toto::update_item_full(&app, &id, content, planned_at, reminder_at, notes)?;
+    schedule_toto_item(&app, &item)?;
+    sync_reminder_window(&app, &id, item.reminder_status == "待确认");
+    Ok(item)
 }
 
 #[tauri::command]
 fn finish_toto_item(app: AppHandle, id: String, completed: bool) -> Result<(), String> {
-    toto::finish_item(&app, &id, completed)
+    let _guard = TOTO_SYNC_LOCK.lock().map_err(|_| "Toto 调度暂不可用。")?;
+    toto::finish_item(&app, &id, completed)?;
+    app.state::<DeadlineScheduler>().cancel("toto.item", &id)?;
+    sync_reminder_window(&app, &id, false);
+    Ok(())
 }
 
 #[tauri::command]
@@ -432,7 +820,11 @@ fn finish_toto_item_with_note(
     completed: bool,
     note: String,
 ) -> Result<(), String> {
-    toto::finish_item_with_note(&app, &id, completed, Some(note))
+    let _guard = TOTO_SYNC_LOCK.lock().map_err(|_| "Toto 调度暂不可用。")?;
+    toto::finish_item_with_note(&app, &id, completed, Some(note))?;
+    app.state::<DeadlineScheduler>().cancel("toto.item", &id)?;
+    sync_reminder_window(&app, &id, false);
+    Ok(())
 }
 
 #[tauri::command]
@@ -442,6 +834,9 @@ fn load_toto_default_remind_minutes(app: AppHandle) -> Result<i64, String> {
 
 #[tauri::command]
 fn save_toto_default_remind_minutes(app: AppHandle, minutes: i64) -> Result<(), String> {
+    let _guard = DAILY_REVIEW_LOCK
+        .lock()
+        .map_err(|_| "Toto 配置暂不可用。")?;
     toto::save_default_remind_minutes(&app, minutes)
 }
 
@@ -452,7 +847,14 @@ fn load_toto_settings(app: AppHandle) -> Result<BTreeMap<String, String>, String
 
 #[tauri::command]
 fn save_toto_settings(app: AppHandle, settings: BTreeMap<String, String>) -> Result<(), String> {
-    toto::save_settings(&app, settings)
+    {
+        let _guard = DAILY_REVIEW_LOCK
+            .lock()
+            .map_err(|_| "Toto 配置暂不可用。")?;
+        toto::save_settings(&app, settings)?;
+    }
+    schedule_daily_reviews(&app)?;
+    queue_daily_review_check(&app)
 }
 
 #[tauri::command]
@@ -612,6 +1014,20 @@ mod shortcut_tests {
     use super::{normalize_shortcut, shortcuts_match, should_return_to_launcher_on_close};
 
     #[test]
+    fn reminder_slots_reuse_gaps_without_releasing_overlapping_windows() {
+        let mut slots = std::collections::HashMap::new();
+        for index in 0..6 {
+            let slot = super::next_reminder_slot(&slots);
+            assert_eq!(slot, index.min(3));
+            slots.insert(index.to_string(), slot);
+        }
+        slots.remove("3");
+        assert_eq!(super::next_reminder_slot(&slots), 3);
+        slots.remove("1");
+        assert_eq!(super::next_reminder_slot(&slots), 1);
+    }
+
+    #[test]
     fn shortcut_matching_ignores_display_spacing_and_case() {
         assert_eq!(normalize_shortcut("Ctrl + Alt + Space"), "Ctrl+Alt+Space");
         assert!(shortcuts_match("Ctrl + Alt + Space", "CTRL+ALT+SPACE"));
@@ -720,6 +1136,8 @@ pub fn run() {
                 .build(),
         )
         .manage(TaskScheduler::default())
+        .manage(DeadlineScheduler::new())
+        .manage(ReminderWindows::default())
         .invoke_handler(tauri::generate_handler![
             get_time_context,
             load_app_settings,
@@ -745,6 +1163,8 @@ pub fn run() {
             update_toto_item_full,
             finish_toto_item,
             finish_toto_item_with_note,
+            resolve_toto_reminder,
+            load_toto_daily_review,
             load_toto_default_remind_minutes,
             save_toto_default_remind_minutes,
             load_toto_settings,
@@ -796,7 +1216,25 @@ pub fn run() {
                 }
             }
             toto::load_items(&app.handle().clone()).map_err(std::io::Error::other)?;
+            toto::reconcile_active_history(app.handle()).map_err(std::io::Error::other)?;
             toto::archive_history(&app.handle().clone()).map_err(std::io::Error::other)?;
+            for item in toto::load_items(app.handle()).map_err(std::io::Error::other)? {
+                if let Err(error) = schedule_toto_item(app.handle(), &item) {
+                    log::warn!("Could not schedule Toto item {}: {error}", item.id);
+                }
+                if item.reminder_status == "待确认" {
+                    if let Err(error) = queue_reminder_delivery(app.handle(), &item.id, 0) {
+                        log::warn!("Could not restore Toto reminder {}: {error}", item.id);
+                    }
+                }
+            }
+            watch_toto_items(app.handle()).map_err(std::io::Error::other)?;
+            if let Err(error) = schedule_daily_reviews(app.handle()) {
+                log::warn!("Could not schedule Toto daily reviews: {error}");
+            }
+            if let Err(error) = queue_daily_review_check(app.handle()) {
+                log::warn!("Could not check missed Toto daily reviews: {error}");
+            }
             let autostart = app.autolaunch();
             let autostart_enabled = autostart.is_enabled().map_err(std::io::Error::other)?;
             if settings.start_at_login && !autostart_enabled {
@@ -825,35 +1263,6 @@ pub fn run() {
                 log::warn!("Could not register one or more tool shortcuts: {error}");
             }
 
-            app.state::<TaskScheduler>()
-                .schedule_periodic(
-                    "toto-reminders",
-                    app.handle().clone(),
-                    Duration::from_secs(15),
-                    |app| {
-                        match toto::mark_due_reminders(app) {
-                            Ok(items) if !items.is_empty() => {
-                                let message = items
-                                    .iter()
-                                    .map(|item| item.content.as_str())
-                                    .collect::<Vec<_>>()
-                                    .join("\n");
-                                let _ = app.emit("toto:reminder", message.clone());
-                            }
-                            Ok(_) => {}
-                            Err(error) => log::warn!("Could not check Toto reminders: {error}"),
-                        }
-                        match toto::check_daily_reviews(app) {
-                            Ok(reviews) => {
-                                for review in reviews {
-                                    let _ = app.emit("toto:daily-review", review.clone());
-                                }
-                            }
-                            Err(error) => log::warn!("Could not check Toto daily review: {error}"),
-                        }
-                    },
-                )
-                .map_err(std::io::Error::other)?;
             if settings.start_minimized {
                 main_window.hide()?;
             }

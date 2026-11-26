@@ -152,6 +152,13 @@ export interface TotoDailyReview {
     finishedItems: TotoHistoryItem[];
 }
 
+export async function loadTotoDailyReview(date: string, kind: string): Promise<TotoDailyReview> {
+    const review = await invoke<{ kind: "work_start" | "work_end"; date: string; activeItems: Record<string, unknown>[]; finishedItems: Record<string, unknown>[] }>(
+        "load_toto_daily_review", { date, kind },
+    );
+    return { ...review, activeItems: review.activeItems.map(mapNativeTotoItem), finishedItems: review.finishedItems.map(mapNativeTotoHistoryItem) };
+}
+
 export interface TotoQuickPreview {
     content: string;
     plannedAt: string | null;

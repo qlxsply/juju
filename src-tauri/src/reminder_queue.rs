@@ -49,16 +49,31 @@ mod tests {
     fn processes_deadlines_in_time_order() {
         let mut queue = ReminderQueue::default();
         for (item_id, time) in [("b", "2026-11-25 10:01:00"), ("a", "2026-11-25 10:00:00")] {
-            queue.push(ReminderDeadline { item_id: item_id.into(), at: at(time) });
+            queue.push(ReminderDeadline {
+                item_id: item_id.into(),
+                at: at(time),
+            });
         }
-        assert_eq!(queue.pop_due(at("2026-11-25 10:00:00")).unwrap().item_id, "a");
+        assert_eq!(
+            queue.pop_due(at("2026-11-25 10:00:00")).unwrap().item_id,
+            "a"
+        );
         assert!(queue.pop_due(at("2026-11-25 10:00:30")).is_none());
-        assert_eq!(queue.pop_due(at("2026-11-25 10:01:00")).unwrap().item_id, "b");
+        assert_eq!(
+            queue.pop_due(at("2026-11-25 10:01:00")).unwrap().item_id,
+            "b"
+        );
     }
 
     #[test]
     fn snooze_rounds_down_and_enforces_two_minute_minimum() {
-        assert_eq!(snooze_deadline(at("2026-11-25 10:05:47"), 3), Some(at("2026-11-25 10:07:00")));
-        assert_eq!(snooze_deadline(at("2026-11-25 10:05:47"), 10), Some(at("2026-11-25 10:10:00")));
+        assert_eq!(
+            snooze_deadline(at("2026-11-25 10:05:47"), 3),
+            Some(at("2026-11-25 10:07:00"))
+        );
+        assert_eq!(
+            snooze_deadline(at("2026-11-25 10:05:47"), 10),
+            Some(at("2026-11-25 10:10:00"))
+        );
     }
 }
