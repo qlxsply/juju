@@ -3735,6 +3735,14 @@ h1 {
     padding: 6px 14px;
 }
 
+html:has(.toto-reminder-window),
+body:has(.toto-reminder-window),
+#root:has(.toto-reminder-window) {
+    min-width: 0;
+    height: 100%;
+    overflow: hidden;
+}
+
 .toto-reminder-window {
     display: flex;
     width: 100%;
@@ -3745,15 +3753,27 @@ h1 {
     background: var(--background);
 }
 
-.toto-reminder-body {
-    min-height: 0;
-    flex: 1;
-    overflow: auto;
-    padding: 0 12px;
+.toto-reminder-heading {
+    display: flex;
+    flex: none;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
 }
 
-.toto-reminder-body .ju-table-container {
-    border: 0;
+.toto-reminder-body {
+    min-width: 0;
+    min-height: 0;
+    flex: 1;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overflow-wrap: anywhere;
+}
+
+.toto-reminder-body .toto-item-detail dd {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    word-break: break-word;
 }
 
 .toto-reminder-actions {
@@ -3761,9 +3781,6 @@ h1 {
     flex: none;
     justify-content: flex-end;
     gap: 8px;
-    padding: 10px 14px;
-    border-top: 1px solid var(--border);
-    background: var(--surface);
 }
 
 .toto-review-content h3 {

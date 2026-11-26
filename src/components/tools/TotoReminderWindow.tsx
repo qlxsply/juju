@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { CalendarClock, X } from "lucide-react";
-import { JuButton, JuIconButton } from "../ju";
+import { X } from "lucide-react";
+import { JuButton, JuIconButton, JuText } from "../ju";
 import { closeCurrentToolWindow, loadTotoItems, type TotoItem } from "../../services/desktop";
 import { useWindowDrag } from "../../hooks/useWindowDrag";
 
@@ -27,6 +27,12 @@ export function TotoReminderWindow() {
 
     useEffect(() => {
         let disposed = false;
+        if (!isTauri()) {
+            void loadTotoItems().then((items) => {
+                if (!disposed) setItem(items.find((entry) => entry.id === id) ?? null);
+            }).catch((reason: unknown) => { if (!disposed) setError(String(reason)); });
+            return () => { disposed = true; };
+        }
         void listen("toto:reminder-changed", () => void refresh()).then((unlisten) => {
             if (disposed) unlisten();
             else {
@@ -36,7 +42,7 @@ export function TotoReminderWindow() {
         });
         let stop: (() => void) | undefined;
         return () => { disposed = true; stop?.(); };
-    }, [refresh]);
+    }, [id, refresh]);
 
     const resolve = useCallback(async (snooze: boolean) => {
         if (busyRef.current || (!resolvedRef.current && !item?.reminder_at)) return;
@@ -56,6 +62,7 @@ export function TotoReminderWindow() {
     }, [id, item]);
 
     useEffect(() => {
+        if (!isTauri()) return;
         let disposed = false;
         let stop: (() => void) | undefined;
         void getCurrentWindow().onCloseRequested((event) => {
@@ -81,17 +88,19 @@ export function TotoReminderWindow() {
 
     return (
         <div className="toto-reminder-window">
-            <header className="toto-tool-header draggable-titlebar" onMouseDown={startWindowDrag}>
-                <div className="toto-tool-brand"><CalendarClock size={18} /><strong>Toto 提醒</strong></div>
-                <div className="toto-tool-actions">
-                    <JuIconButton label="关闭提醒窗口" onMouseDown={(event) => event.stopPropagation()} onClick={() => void resolve(false)}><X size={17} /></JuIconButton>
-                </div>
+            <header className="ju-dialog-heading toto-reminder-heading draggable-titlebar" onMouseDown={startWindowDrag}>
+                <div className="ju-dialog-title">Toto 提醒</div>
+                <JuIconButton label="关闭提醒窗口" onMouseDown={(event) => event.stopPropagation()} onClick={() => void resolve(false)}><X size={17} /></JuIconButton>
             </header>
-            <main className="toto-reminder-body" style={{ overflowY: "auto", whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>
-                {item ? <><p>{item.content}</p><p>计划时间：{item.planned_at ?? "无"}</p><p>备注：{item.notes || "无"}</p></> : <p>{error || "正在加载提醒…"}</p>}
+            <main className="ju-dialog-body toto-reminder-body">
+                {item ? <dl className="toto-item-detail">{[
+                    ["事项内容", item.content],
+                    ["计划时间", item.planned_at ?? "无"],
+                    ["备注", item.notes || "无"],
+                ].map(([label, value]) => <div key={label}><dt><JuText>{label}</JuText></dt><dd><JuText>{value}</JuText></dd></div>)}</dl> : <p>{error || "正在加载提醒…"}</p>}
                 {error && <p role="alert">{error}</p>}
             </main>
-            <footer className="toto-reminder-actions">
+            <footer className="ju-dialog-footer toto-reminder-actions">
                 <JuButton variant="outline" disabled={busy || !item} onClick={() => void resolve(true)}>稍等</JuButton>
                 <JuButton disabled={busy || !item} onClick={() => void resolve(false)}>收到</JuButton>
             </footer>
