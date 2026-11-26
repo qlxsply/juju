@@ -88,10 +88,6 @@ describe("TotoTaskList", () => {
         await user.keyboard("{Escape}");
         await user.click(rows[1]);
         await user.keyboard("{F2}");
-        expect(textButtons[0]).toHaveFocus();
-        await user.keyboard("{ArrowRight}");
-        expect(textButtons[1]).toHaveFocus();
-        await user.keyboard("{Enter}");
-        expect(screen.getByText(items[1].notes, { selector: ".ju-overflow-full-text" })).toBeVisible();
+        expect(rows[1]).toHaveFocus();
     });
 });

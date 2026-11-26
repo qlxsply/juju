@@ -16,11 +16,6 @@ export function TotoTaskList({ items, selectedId, onSelect, onOpen }: {
     const onRowKeyDown = (event: KeyboardEvent<HTMLTableRowElement>, index: number) => {
         if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
         const textControls = Array.from(event.currentTarget.querySelectorAll<HTMLElement>(".ju-overflow-text[role='button']"));
-        if (event.key === "F2" && textControls.length) {
-            event.preventDefault();
-            textControls[0].focus({ preventScroll: true });
-            return;
-        }
         if (event.target instanceof HTMLElement && textControls.includes(event.target)) {
             if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
                 event.preventDefault();
@@ -54,7 +49,7 @@ export function TotoTaskList({ items, selectedId, onSelect, onOpen }: {
     };
 
     return <div ref={containerRef} className="toto-task-list">
-        <JuText id={instructionsId} className="sr-only">使用上下方向键选择事项，回车查看详情；按 F2 进入截断文本，使用左右方向键切换文本，回车查看完整内容。</JuText>
+        <JuText id={instructionsId} className="sr-only">使用上下方向键选择事项，回车查看完整详情。</JuText>
         <table className="ju-table toto-task-table" role="grid" aria-label="Toto 进行中事项" aria-describedby={instructionsId}>
             <thead><tr>{["事项内容", "计划时间", "提醒时间", "提醒状态", "创建时间", "备注"].map((header) => <th key={header} scope="col"><JuText>{header}</JuText></th>)}</tr></thead>
             <tbody>

@@ -91,13 +91,13 @@ export function TotoHistoryWindow() {
     };
 
     const columns: JuColumn<TotoHistoryItem>[] = [
-        { id: "content", header: "事项内容", cell: (item) => <JuOverflowText text={item.content} /> },
+        { id: "content", header: "事项内容", cell: (item) => <JuOverflowText text={item.content} tabIndex={-1} /> },
         { id: "planned", header: "计划时间", cell: (item) => item.planned_at ?? "—" },
         { id: "reminder", header: "提醒时间", cell: (item) => item.reminder_at ?? "—" },
         { id: "ended", header: "结束时间", cell: (item) => item.ended_at },
         { id: "created", header: "创建时间", cell: (item) => item.created_at },
         { id: "status", header: "状态", cell: (item) => item.end_status },
-        { id: "notes", header: "备注", cell: (item) => <JuOverflowText text={item.notes || "—"} /> },
+        { id: "notes", header: "备注", cell: (item) => <JuOverflowText text={item.notes || "—"} tabIndex={-1} /> },
     ];
 
     const runQuery = () => {
@@ -127,15 +127,26 @@ export function TotoHistoryWindow() {
         void refresh();
     };
 
-    const close = async () => {
+    const close = useCallback(async () => {
         if (isTauri() && getCurrentWindow().label === "toto-history") await closeCurrentToolWindow();
         else window.close();
-    };
+    }, []);
+
+    useEffect(() => {
+        const onKeyDown = (event: globalThis.KeyboardEvent) => {
+            if (event.key !== "Escape" || event.defaultPrevented || detailItem) return;
+            if (event.target instanceof Element && event.target.closest('[role="dialog"], [role="listbox"]')) return;
+            if (document.querySelector(".air-datepicker.-active-")) return;
+            void close();
+        };
+        window.addEventListener("keydown", onKeyDown);
+        return () => window.removeEventListener("keydown", onKeyDown);
+    }, [close, detailItem]);
 
     return (
         <div className="toto-history-window">
             <header className="toto-tool-header draggable-titlebar" onMouseDown={startWindowDrag}>
-                <div className="toto-tool-brand"><CalendarClock size={19} /><strong>Toto</strong><span>历史事项</span></div>
+                <div className="toto-tool-brand"><CalendarClock size={19} /><strong>ToTo 历史事项</strong></div>
                 <JuButton size="compact" variant="ghost" onMouseDown={(event) => event.stopPropagation()} onClick={() => void close()}><X size={16} /> 关闭</JuButton>
             </header>
             <div className="toto-history-filterbar">
@@ -153,8 +164,13 @@ export function TotoHistoryWindow() {
                 <JuButton variant="outline" onClick={reset}>重置</JuButton>
             </div>
             {error && <p className="settings-error toto-history-error" role="alert">{error}</p>}
+            <div className="toto-history-table" onClick={(event) => {
+                if (event.target instanceof Element && !event.target.closest(".ju-overflow-text[role='button']")) {
+                    event.currentTarget.querySelector<HTMLElement>(".ju-table-container")?.focus({ preventScroll: true });
+                }
+            }}>
             <JuDataTable
-                caption="Toto 历史事项"
+                caption="ToTo 历史事项"
                 columns={columns}
                 data={rows}
                 getRowId={(item) => item.id}
@@ -163,7 +179,9 @@ export function TotoHistoryWindow() {
                 onRowClick={setSelected}
                 onRowDoubleClick={setDetailItem}
                 onKeyDown={handleHistoryKeys}
+                tabIndex={-1}
             />
+            </div>
             <footer className="toto-history-pagination">
                     <span>共 {filtered.length} 条，第 {currentPage}/{pageCount} 页</span>
                     <div>

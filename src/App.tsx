@@ -6,6 +6,7 @@ import { LogicalSize } from "@tauri-apps/api/dpi";
 import { Temporal } from "@js-temporal/polyfill";
 import {
     ArrowLeftRight,
+    CalendarClock,
     Clock3,
     Database,
     Ellipsis,
@@ -983,9 +984,9 @@ function Launcher({
         },
         {
             id: "toto",
-            title: "Toto 日程提醒",
+            title: "ToTo 日程",
             key: settings.toolKeys.toto ?? "T",
-            icon: <Clock3 size={23} />,
+            icon: <CalendarClock size={23} />,
             iconClass: "tool-toto",
         },
         {

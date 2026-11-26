@@ -312,7 +312,7 @@ export function TotoToolWindow() {
     return (
         <div className="toto-tool-window">
             <header className="toto-tool-header draggable-titlebar" onMouseDown={startWindowDrag}>
-                <div className="toto-tool-brand"><CalendarClock size={19} /><strong>Toto 日程提醒</strong></div>
+                <div className="toto-tool-brand"><CalendarClock size={19} /><strong>ToTo 日程</strong></div>
                 <div className="toto-tool-actions">
                     <JuButton size="compact" onClick={openAdd}><Plus size={15} /> 新增</JuButton>
                     <JuButton size="compact" variant="outline" onClick={() => void openTotoHistoryWindow()}><ClipboardList size={15} /> 历史</JuButton>
@@ -326,7 +326,7 @@ export function TotoToolWindow() {
                 <TotoTaskList items={items} selectedId={selectedId}
                     onSelect={(item) => setSelectedId(item.id)} onOpen={showDetails} />
             </main>
-            <footer className="toto-tool-footer"><JuStatusBar><span role={notice ? "status" : undefined}>{notice || `进行中：${items.length} 项`}</span><span>F2 长文本 · Alt+A 新增 · Alt+Q 历史 · Alt+R 刷新 · Alt+D 详情 · Alt+E 编辑 · Alt+F 完成 · Alt+C 取消</span></JuStatusBar></footer>
+            <footer className="toto-tool-footer"><JuStatusBar><span role={notice ? "status" : undefined}>{notice || `进行中：${items.length} 项`}</span><span>Alt+A 新增 · Alt+Q 历史 · Alt+R 刷新 · Alt+D 详情 · Alt+E 编辑 · Alt+F 完成 · Alt+C 取消</span></JuStatusBar></footer>
             <JuDialog
                 title={dialogTitle}
                 className={`toto-item-dialog${mode === "edit" ? " toto-item-dialog--edit" : mode === "detail" || mode === "complete" || mode === "cancel" ? " toto-item-dialog--expanded" : ""}`}

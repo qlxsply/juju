@@ -3,8 +3,6 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { currentMonitor, getCurrentWindow } from "@tauri-apps/api/window";
-import { LogicalSize } from "@tauri-apps/api/dpi";
-import { restoreState, saveWindowState, StateFlags } from "@tauri-apps/plugin-window-state";
 import { parseTotoQuickEntry } from "./toto-quick-entry";
 
 export interface AppSettings {
@@ -97,6 +95,8 @@ const TOTO_CONFIG_KEY = "juju-toto-config";
 const TOTO_WINDOW_WIDTH = 1200;
 // 1200 / φ ≈ 742: enough room for the date-time popup without excess height.
 const TOTO_WINDOW_HEIGHT = 742;
+const TOTO_HISTORY_WIDTH = 1360;
+const TOTO_HISTORY_HEIGHT = Math.round(TOTO_HISTORY_WIDTH / 1.618_033_988_75);
 
 export async function loadAppSettings(): Promise<AppSettings> {
     if (isTauri()) {
@@ -374,7 +374,7 @@ export async function openDemoToolWindow(): Promise<void> {
 
 export async function openTotoToolWindow(): Promise<void> {
     if (isTauri()) {
-        await openTauriWindow("toto", "/?tool=toto", "Toto 日程提醒");
+        await openTauriWindow("toto", "/?tool=toto", "ToTo 日程");
     } else {
         window.open("/?tool=toto", "juju-toto", `width=${TOTO_WINDOW_WIDTH},height=${TOTO_WINDOW_HEIGHT}`);
     }
@@ -385,10 +385,10 @@ export async function openTotoHistoryWindow(): Promise<void> {
         await openTauriWindow(
             "toto-history",
             "/?tool=toto-history",
-            "Toto 历史事项",
+            "ToTo 历史事项",
         );
     } else {
-        window.open("/?tool=toto-history", "juju-toto-history", "width=1360,height=620");
+        window.open("/?tool=toto-history", "juju-toto-history", `width=${TOTO_HISTORY_WIDTH},height=${TOTO_HISTORY_HEIGHT}`);
     }
 }
 
@@ -433,12 +433,6 @@ export async function closeCurrentToolWindow(): Promise<void> {
         return;
     }
     const current = getCurrentWindow();
-    if (current.label === "tool-json") {
-        const jsonSettings = (await loadAppSettings()).toolSettings.json ?? {};
-        if (jsonSettings.rememberWindowPlacement !== false) {
-            await saveWindowState(StateFlags.POSITION | StateFlags.SIZE | StateFlags.MAXIMIZED).catch(() => undefined);
-        }
-    }
     await invoke("close_window_command", { label: current.label });
 }
 
@@ -446,26 +440,14 @@ async function openTauriWindow(label: string, url: string, title: string) {
     const jsonSettings = label === "tool-json"
         ? (await loadAppSettings()).toolSettings.json ?? {}
         : undefined;
-    const rememberJsonPlacement = jsonSettings?.rememberWindowPlacement !== false;
     const existing = await WebviewWindow.getByLabel(label);
     if (existing) {
-        if (label === "tool-json") {
-            if (jsonSettings?.openMaximized === true) {
-                await existing.maximize();
-            } else if (!rememberJsonPlacement) {
-                await existing.unmaximize();
-                await existing.setSize(new LogicalSize(1200, 760));
-                await existing.center();
-            }
-        }
         await existing.show();
         await existing.unminimize();
         await existing.setFocus();
         return;
     }
-    const rememberedPosition = label === "tool-json" && !rememberJsonPlacement
-        ? null
-        : await invoke<{ x: number; y: number } | null>(
+    const rememberedPosition = await invoke<{ x: number; y: number; width: number | null; height: number | null; maximized: boolean } | null>(
             "get_window_position",
             { label },
         ).catch(() => null);
@@ -477,8 +459,8 @@ async function openTauriWindow(label: string, url: string, title: string) {
     const webviewWindow = new WebviewWindow(label, {
         url,
         title,
-        width: label === "settings" ? 860 : label === "toto-history" ? 1360 : label === "toto" ? TOTO_WINDOW_WIDTH : label === "tool-json" ? 1200 : label === "tool-design-system" ? 1180 : label === "toto-reminder" ? 520 : 640,
-        height: label === "settings" ? 590 : label === "toto-history" ? 620 : label === "toto" ? totoHeight : label === "tool-json" ? 760 : label === "tool-design-system" ? 820 : label === "toto-reminder" ? 320 : 440,
+        width: rememberedPosition?.width ?? (label === "settings" ? 860 : label === "toto-history" ? TOTO_HISTORY_WIDTH : label === "toto" ? TOTO_WINDOW_WIDTH : label === "tool-json" ? 1200 : label === "tool-design-system" ? 1180 : label === "toto-reminder" ? 520 : 640),
+        height: rememberedPosition?.height ?? (label === "settings" ? 590 : label === "toto-history" ? TOTO_HISTORY_HEIGHT : label === "toto" ? totoHeight : label === "tool-json" ? 760 : label === "tool-design-system" ? 820 : label === "toto-reminder" ? 320 : 440),
         minWidth: label === "settings" ? 670 : label === "toto-history" || label === "toto" ? 1200 : label === "tool-json" ? 900 : label === "tool-design-system" ? 960 : label === "toto-reminder" ? 360 : 560,
         minHeight: label === "settings" ? 470 : label === "toto-history" ? 425 : label === "toto" ? 420 : label === "tool-json" ? 600 : label === "tool-design-system" ? 640 : label === "toto-reminder" ? 240 : 360,
         center: !rememberedPosition,
@@ -501,15 +483,12 @@ async function openTauriWindow(label: string, url: string, title: string) {
         });
     }
     if (label === "tool-json" && isTauri()) {
-        if (rememberJsonPlacement) {
-            await restoreState(label, StateFlags.POSITION | StateFlags.SIZE | StateFlags.MAXIMIZED).catch(() => undefined);
-        }
-        if (jsonSettings?.openMaximized === true) await webviewWindow.maximize();
         await webviewWindow.onCloseRequested((event) => {
             event.preventDefault();
             void invoke("close_window_command", { label }).catch((reason: unknown) => console.error(reason));
         });
     }
+    if (rememberedPosition?.maximized || (!rememberedPosition && jsonSettings?.openMaximized === true)) await webviewWindow.maximize();
     await webviewWindow.show();
     await webviewWindow.unminimize();
     await webviewWindow.setFocus();

@@ -3658,13 +3658,18 @@ h1 {
     white-space: nowrap;
 }
 
-.toto-history-window > .ju-table-container {
+.toto-history-table {
     min-height: 0;
     flex: 1;
+}
+.toto-history-table > .ju-table-container {
+    height: 100%;
     overflow: auto;
     border: 0;
     border-radius: 0;
+    outline: none;
 }
+.toto-history-table > .ju-table-container:focus-visible { outline: none; }
 
 .toto-history-window .ju-table {
     width: 100%;

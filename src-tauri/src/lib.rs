@@ -30,6 +30,9 @@ struct LauncherShortcutStatus {
 struct WindowPosition {
     x: f64,
     y: f64,
+    width: Option<f64>,
+    height: Option<f64>,
+    maximized: bool,
 }
 
 struct WindowPositionStore(Arc<Mutex<HashMap<String, WindowPosition>>>);
@@ -55,25 +58,26 @@ fn show_toto_reminder(app: &AppHandle, id: &str) -> Result<(), String> {
         return Ok(());
     }
     let slot = next_reminder_slot(&slots);
+    let main = app.get_webview_window("main");
+    let width: f64 = 600.0;
+    let height = (width / 1.618_033_988_75).round();
     let mut builder = tauri::WebviewWindowBuilder::new(
         app,
         &label,
         tauri::WebviewUrl::App(format!("/?window=toto-reminder&id={id}").into()),
     )
-    .title("Toto 提醒")
-    .inner_size(520.0, 320.0)
+    .title("提醒")
+    .inner_size(width, height)
+    .resizable(false)
     .decorations(false);
-    if let Some(monitor) = app
-        .get_webview_window("main")
-        .and_then(|window| window.current_monitor().ok().flatten())
-    {
+    if let Some(monitor) = main.and_then(|window| window.current_monitor().ok().flatten()) {
         let scale = monitor.scale_factor();
         let area = monitor.work_area();
         let x = area.position.x as f64 / scale
-            + (area.size.width as f64 / scale - 520.0) / 2.0
+            + (area.size.width as f64 / scale - width) / 2.0
             + slot as f64 * 24.0;
         let y = area.position.y as f64 / scale
-            + (area.size.height as f64 / scale - 320.0) / 2.0
+            + (area.size.height as f64 / scale - height) / 2.0
             + slot as f64 * 24.0;
         builder = builder.position(x, y);
     } else {
@@ -567,7 +571,9 @@ fn shortcuts_match(left: &str, right: &str) -> bool {
 }
 
 fn should_return_to_launcher_on_close(label: &str, preference: bool) -> bool {
-    preference && !matches!(label, "settings" | "toto-history" | "toto-reminder")
+    preference
+        && !label.starts_with("toto-reminder-")
+        && !matches!(label, "settings" | "toto-history" | "toto-reminder")
 }
 
 fn sync_tool_shortcuts(
@@ -654,7 +660,15 @@ fn remember_window_position(
         .0
         .lock()
         .map_err(|_| "窗口位置状态不可用。".to_string())?;
-    positions.insert(label, WindowPosition { x, y });
+    let entry = positions.entry(label).or_insert(WindowPosition {
+        x,
+        y,
+        width: None,
+        height: None,
+        maximized: false,
+    });
+    entry.x = x;
+    entry.y = y;
     Ok(())
 }
 
@@ -674,6 +688,30 @@ fn close_window_command(app: AppHandle, label: String) -> Result<(), String> {
     let window = app
         .get_webview_window(&label)
         .ok_or_else(|| format!("窗口不存在：{label}"))?;
+    if let Some(store) = app.try_state::<WindowPositionStore>() {
+        if let (Ok(position), Ok(size), Ok(scale), Ok(maximized), Ok(mut positions)) = (
+            window.outer_position(),
+            window.inner_size(),
+            window.scale_factor(),
+            window.is_maximized(),
+            store.0.lock(),
+        ) {
+            let entry = positions.entry(label.clone()).or_insert(WindowPosition {
+                x: position.x as f64 / scale,
+                y: position.y as f64 / scale,
+                width: None,
+                height: None,
+                maximized: false,
+            });
+            if !maximized {
+                entry.x = position.x as f64 / scale;
+                entry.y = position.y as f64 / scale;
+                entry.width = Some(size.width as f64 / scale);
+                entry.height = Some(size.height as f64 / scale);
+            }
+            entry.maximized = maximized;
+        }
+    }
     let return_to_launcher = if matches!(
         label.as_str(),
         "settings" | "toto-history" | "toto-reminder"
@@ -1039,6 +1077,10 @@ mod shortcut_tests {
         assert!(should_return_to_launcher_on_close("tool-json", true));
         assert!(!should_return_to_launcher_on_close("toto-history", true));
         assert!(!should_return_to_launcher_on_close("toto-reminder", true));
+        assert!(!should_return_to_launcher_on_close(
+            "toto-reminder-123",
+            true
+        ));
         assert!(!should_return_to_launcher_on_close("tool-json", false));
     }
 }
@@ -1059,17 +1101,57 @@ fn exit_app(app: &AppHandle) {
 pub fn run() {
     tauri::Builder::default()
         .on_window_event(|window, event| {
+            if let WindowEvent::CloseRequested { .. } = event {
+                if let Some(store) = window.app_handle().try_state::<WindowPositionStore>() {
+                    if let Ok(mut positions) = store.0.lock() {
+                        if let Some(entry) = positions.get_mut(window.label()) {
+                            entry.maximized = window.is_maximized().unwrap_or(false);
+                        }
+                    }
+                }
+            }
             if let WindowEvent::Moved(position) = event {
                 if let Some(store) = window.app_handle().try_state::<WindowPositionStore>() {
                     if let Ok(mut positions) = store.0.lock() {
                         let scale = window.scale_factor().unwrap_or(1.0);
-                        positions.insert(
-                            window.label().to_string(),
-                            WindowPosition {
-                                x: position.x as f64 / scale,
-                                y: position.y as f64 / scale,
-                            },
-                        );
+                        if !window.is_maximized().unwrap_or(false) {
+                            let entry = positions.entry(window.label().to_string()).or_insert(
+                                WindowPosition {
+                                    x: 0.0,
+                                    y: 0.0,
+                                    width: None,
+                                    height: None,
+                                    maximized: false,
+                                },
+                            );
+                            entry.x = position.x as f64 / scale;
+                            entry.y = position.y as f64 / scale;
+                        }
+                    }
+                }
+            }
+            if let WindowEvent::Resized(size) = event {
+                if !window.is_maximized().unwrap_or(false)
+                    && !window.is_minimized().unwrap_or(false)
+                {
+                    if let (Some(store), Ok(position), Ok(scale)) = (
+                        window.app_handle().try_state::<WindowPositionStore>(),
+                        window.outer_position(),
+                        window.scale_factor(),
+                    ) {
+                        if let Ok(mut positions) = store.0.lock() {
+                            let entry = positions.entry(window.label().to_string()).or_insert(
+                                WindowPosition {
+                                    x: position.x as f64 / scale,
+                                    y: position.y as f64 / scale,
+                                    width: None,
+                                    height: None,
+                                    maximized: false,
+                                },
+                            );
+                            entry.width = Some(size.width as f64 / scale);
+                            entry.height = Some(size.height as f64 / scale);
+                        }
                     }
                 }
             }
@@ -1078,19 +1160,6 @@ pub fn run() {
             show_main(app);
         }))
         .plugin(tauri_plugin_dialog::init())
-        .plugin(
-            tauri_plugin_window_state::Builder::default()
-                .with_denylist(&["main"])
-                .skip_initial_state("settings")
-                .skip_initial_state("toto")
-                .skip_initial_state("toto-history")
-                .skip_initial_state("toto-reminder")
-                .skip_initial_state("tool-json")
-                .skip_initial_state("tool-design-system")
-                .skip_initial_state("tool-echo")
-                .skip_initial_state("tool-kairos")
-                .build(),
-        )
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
@@ -1182,6 +1251,14 @@ pub fn run() {
         ])
         .setup(|app| {
             app.manage(WindowPositionStore::default());
+            if let Ok(directory) = app.path().app_config_dir() {
+                let old_state = directory.join(".window-state.json");
+                if let Err(error) = std::fs::remove_file(old_state) {
+                    if error.kind() != std::io::ErrorKind::NotFound {
+                        log::warn!("Could not remove obsolete window state: {error}");
+                    }
+                }
+            }
             let main_window = app
                 .get_webview_window("main")
                 .expect("main window must be configured");

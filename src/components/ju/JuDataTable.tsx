@@ -17,6 +17,7 @@ interface JuDataTableProps<T> {
     onRowClick?: (row: T) => void;
     onRowDoubleClick?: (row: T) => void;
     onKeyDown?: KeyboardEventHandler<HTMLDivElement>;
+    tabIndex?: 0 | -1;
 }
 
 export function JuDataTable<T>({
@@ -29,13 +30,14 @@ export function JuDataTable<T>({
     onRowClick,
     onRowDoubleClick,
     onKeyDown,
+    tabIndex = 0,
 }: JuDataTableProps<T>) {
     return (
         <div
             className="ju-table-container"
             role="region"
             aria-label={caption ?? "数据表格"}
-            tabIndex={0}
+            tabIndex={tabIndex}
             onKeyDown={onKeyDown}
         >
             <Table className="ju-table">

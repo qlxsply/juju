@@ -4,7 +4,7 @@ import { isTauri } from "@tauri-apps/api/core";
 import {
     BriefcaseBusiness,
     ChevronDown,
-    Clock3,
+    CalendarClock,
     Copy,
     FileJson,
     FileText,
@@ -67,7 +67,7 @@ const appNavigation: { id: PageId; label: string; icon: LucideIcon }[] = [
 
 const toolNavigation: { id: "json" | "toto" | "echo" | "kairos"; label: string; color: string; icon?: LucideIcon }[] = [
     { id: "json" as const, label: "JSON 格式化", color: "var(--tool-json)", icon: FileJson },
-    { id: "toto" as const, label: "Toto 日程提醒", color: "var(--tool-toto)", icon: Clock3 },
+    { id: "toto" as const, label: "ToTo 日程", color: "var(--tool-toto)", icon: CalendarClock },
     { id: "echo" as const, label: "EchoHttp", color: "var(--tool-echo)", icon: Puzzle },
     { id: "kairos" as const, label: "Kairos", color: "var(--tool-kairos)", icon: Puzzle },
 ];
@@ -389,9 +389,6 @@ export function SettingsPage({
                     </SettingRow>
                     <SettingRow kind="toggle" label="默认最大化打开">
                         <ToolSwitch label="默认最大化打开" checked={Boolean(value.openMaximized ?? false)} onChange={(next) => updateJson("openMaximized", next)} />
-                    </SettingRow>
-                    <SettingRow kind="toggle" label="记住窗口大小与位置">
-                        <ToolSwitch label="记住窗口大小与位置" checked={Boolean(value.rememberWindowPlacement ?? true)} onChange={(next) => updateJson("rememberWindowPlacement", next)} />
                     </SettingRow>
                 </SettingsSection>
                 <SettingsSection title="编辑设置">

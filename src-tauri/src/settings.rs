@@ -182,7 +182,6 @@ pub fn default_json_tool_settings() -> serde_json::Value {
         "indentSize": 2,
         "keepWindowOnClose": true,
         "openMaximized": false,
-        "rememberWindowPlacement": true,
         "globalShortcut": "None",
         "shortcuts": {
             "Save": "Alt+S",

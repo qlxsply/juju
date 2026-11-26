@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 test("Toto reminder matches detail layout without horizontal overflow", async ({ page }) => {
-    await page.setViewportSize({ width: 520, height: 320 });
+    await page.setViewportSize({ width: 750, height: 464 });
     await page.addInitScript(() => {
         localStorage.setItem("juju-toto-items", JSON.stringify([{
             id: "reminder-layout-test",
@@ -16,6 +16,8 @@ test("Toto reminder matches detail layout without horizontal overflow", async ({
         }]));
     });
     await page.goto("/?window=toto-reminder&id=reminder-layout-test");
+    await expect(page.locator(".toto-reminder-heading")).toHaveText("提醒");
+    await expect(page.getByRole("button", { name: "关闭提醒窗口" })).toHaveCount(0);
     const detail = page.locator(".toto-reminder-body .toto-item-detail");
     await expect(detail.locator("dt")).toHaveText(["事项内容", "计划时间", "备注"]);
     await expect(detail.locator("dd").nth(1)).toHaveText("2026-11-26 15:47:00");

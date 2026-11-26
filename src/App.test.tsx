@@ -11,7 +11,7 @@ describe("App", () => {
             screen.getByRole("button", { name: /JSON 格式化/ }),
         ).toContainElement(screen.getByText("J", { exact: true }));
         expect(
-            screen.getByRole("button", { name: /Toto 日程提醒/ }),
+            screen.getByRole("button", { name: /ToTo 日程/ }),
         ).toBeEnabled();
         expect(
             screen.getByRole("button", { name: /MySQL Schema/ }),

@@ -28,7 +28,6 @@
     "core:event:allow-listen",
     "core:event:allow-unlisten",
     "core:webview:allow-create-webview-window",
-    "dialog:allow-open",
-    "window-state:default"
+    "dialog:allow-open"
   ]
 }

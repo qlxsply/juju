@@ -1088,10 +1088,11 @@ test("settings use labeled horizontal paths and working JSON window controls", a
 
     await page.getByRole("button", { name: "JSON 格式化" }).click();
     await expect(page.getByRole("heading", { name: "窗口与进程" })).toBeVisible();
-    for (const label of ["关闭窗口后保留会话", "默认最大化打开", "记住窗口大小与位置"]) {
+    for (const label of ["关闭窗口后保留会话", "默认最大化打开"]) {
         await expect(page.getByRole("switch", { name: label })).toBeVisible();
         await expect(page.locator(".settings-content-main .setting-row--toggle").filter({ has: page.getByRole("switch", { name: label }) })).toContainText(label);
     }
+    await expect(page.getByRole("switch", { name: "记住窗口大小与位置" })).toHaveCount(0);
     const jsonStorage = page.locator(".settings-section").filter({ has: page.getByRole("heading", { name: "存储目录" }) });
     await expect(jsonStorage.locator(".path-label svg")).toHaveCount(0);
     await expect(jsonStorage.getByRole("button", { name: "复制路径" })).toBeVisible();
@@ -1099,7 +1100,7 @@ test("settings use labeled horizontal paths and working JSON window controls", a
     await page.getByRole("switch", { name: "默认最大化打开" }).click();
     await expect(page.getByText("已保存", { exact: true })).toHaveCount(0);
 
-    await page.getByRole("button", { name: "Toto 日程提醒" }).click();
+    await page.getByRole("button", { name: "ToTo 日程" }).click();
     await expect(page.getByRole("heading", { name: "节假日" })).toHaveCount(0);
     await expect(page.getByRole("switch", { name: "仅工作日提醒" })).toBeVisible();
     const reviewStart = page.getByRole("textbox", { name: "开始盘点", exact: true });
@@ -1155,7 +1156,7 @@ test("launcher matches the tool-list entries and single-key hints", async ({
         page.getByRole("button", { name: /JSON 格式化/ }),
     ).toContainText("J");
     await expect(
-        page.getByRole("button", { name: /Toto 日程提醒/ }),
+        page.getByRole("button", { name: /ToTo 日程/ }),
     ).toContainText("T");
     await expect(page.getByRole("button", { name: /EchoHttp/ })).toContainText(
         "E",
@@ -1232,7 +1233,7 @@ test("settings controls of the same type share row height and vertical alignment
 test("Toto quick entry explains syntax and handles @ inside bracketed content", async ({ page }) => {
     await page.goto("/");
     await page.evaluate(() => localStorage.setItem("juju-toto-config", JSON.stringify({ defaultRemindMinutes: 30 })));
-    const [toto] = await Promise.all([page.waitForEvent("popup"), page.getByRole("button", { name: /Toto/ }).click()]);
+    const [toto] = await Promise.all([page.waitForEvent("popup"), page.getByRole("button", { name: /ToTo 日程/ }).click()]);
     await toto.getByRole("button", { name: /新增/ }).click();
     const dialog = toto.getByRole("dialog", { name: "新增", exact: true });
     const input = dialog.getByRole("textbox", { name: "事项内容", exact: true });
@@ -1265,7 +1266,7 @@ test("Toto quick entry explains syntax and handles @ inside bracketed content", 
 test("Toto edit synchronizes reminders only from changes to the planned time", async ({ page }) => {
     await page.goto("/");
     await page.evaluate(() => localStorage.setItem("juju-toto-settings", JSON.stringify({ default_remind_minutes: "30" })));
-    const [toto] = await Promise.all([page.waitForEvent("popup"), page.getByRole("button", { name: /Toto/ }).click()]);
+    const [toto] = await Promise.all([page.waitForEvent("popup"), page.getByRole("button", { name: /ToTo 日程/ }).click()]);
     await toto.getByRole("button", { name: /新增/ }).click();
     const add = toto.getByRole("dialog", { name: "新增", exact: true });
     await add.getByRole("textbox", { name: "事项内容", exact: true }).fill("提醒联动测试");
@@ -1375,7 +1376,7 @@ test("Toto edit synchronizes reminders only from changes to the planned time", a
 
 test("Toto edit dialog uses compact headings and usable date-time controls", async ({ page }) => {
     await page.goto("/");
-    const [toto] = await Promise.all([page.waitForEvent("popup"), page.getByRole("button", { name: /Toto/ }).click()]);
+    const [toto] = await Promise.all([page.waitForEvent("popup"), page.getByRole("button", { name: /ToTo 日程/ }).click()]);
     await toto.setViewportSize({ width: 1200, height: 742 });
     await toto.getByRole("button", { name: /新增/ }).click();
     let dialog = toto.getByRole("dialog", { name: "新增", exact: true });
@@ -1458,7 +1459,7 @@ test("Toto edit dialog uses compact headings and usable date-time controls", asy
 test("Toto rows use shared overflow text without extra tab stops", async ({ page, context }) => {
     await context.grantPermissions(["clipboard-read", "clipboard-write"]);
     await page.goto("/");
-    const [toto] = await Promise.all([page.waitForEvent("popup"), page.getByRole("button", { name: /Toto/ }).click()]);
+    const [toto] = await Promise.all([page.waitForEvent("popup"), page.getByRole("button", { name: /ToTo 日程/ }).click()]);
     const text = "很长的事项内容用于验证Toto列表中截断文本能够展开显示并复制完整内容";
     await toto.getByRole("button", { name: /新增/ }).click();
     await toto.getByRole("textbox", { name: "事项内容", exact: true }).fill(text);
@@ -1476,17 +1477,44 @@ test("Toto rows use shared overflow text without extra tab stops", async ({ page
     await toto.keyboard.press("Escape");
     await row.focus();
     await row.press("F2");
-    await expect(trigger).toBeFocused();
-    await trigger.press("Enter");
-    await expect(toto.locator(".ju-overflow-full-text")).toHaveText(text);
-    await toto.keyboard.press("Tab");
-    await expect(toto.getByRole("button", { name: "复制", exact: true })).toBeFocused();
+    await expect(row).toBeFocused();
+    await row.press("Enter");
+    await expect(toto.getByRole("dialog")).toContainText(text);
+    await toto.close();
+});
+
+test("ToTo history skips table tab stop and closes detail before window", async ({ page }) => {
+    await page.goto("/");
+    await page.evaluate(() => {
+        const now = new Date().toISOString().slice(0, 19).replace("T", " ");
+        localStorage.setItem("juju-toto-history", JSON.stringify([{
+            id: "history-escape-test", content: "历史详情测试", planned_at: null,
+            reminder_at: null, created_at: now, created_order: 1,
+            end_status: "已完成", ended_at: now, notes: "",
+        }]));
+    });
+    const [toto] = await Promise.all([page.waitForEvent("popup"), page.getByRole("button", { name: /ToTo 日程/ }).click()]);
+    const [history] = await Promise.all([toto.waitForEvent("popup"), toto.getByRole("button", { name: /历史/ }).click()]);
+    await expect(history.locator(".toto-tool-brand").getByText("ToTo 历史事项", { exact: true })).toBeVisible();
+    const table = history.getByRole("region", { name: "ToTo 历史事项" });
+    await expect(table).toHaveAttribute("tabindex", "-1");
+    await table.focus();
+    await expect(table).toHaveCSS("outline-style", "none");
+    const row = table.getByRole("row", { name: /历史详情测试/ });
+    await row.dblclick();
+    await expect(history.getByRole("dialog")).toBeVisible();
+    await history.keyboard.press("Escape");
+    await expect(history.getByRole("dialog")).toBeHidden();
+    expect(history.isClosed()).toBe(false);
+    await Promise.all([history.waitForEvent("close"), history.keyboard.press("Escape").catch((error: unknown) => {
+        if (!history.isClosed()) throw error;
+    })]);
     await toto.close();
 });
 
 test("Toto table layout and dialog Escape behavior", async ({ page }) => {
     await page.goto("/");
-    const [toto] = await Promise.all([page.waitForEvent("popup"), page.getByRole("button", { name: /Toto/ }).click()]);
+    const [toto] = await Promise.all([page.waitForEvent("popup"), page.getByRole("button", { name: /ToTo 日程/ }).click()]);
     await toto.getByRole("button", { name: /新增/ }).click();
     await expect(toto.getByRole("heading", { name: "新增", exact: true })).toBeVisible();
     await toto.keyboard.press("Escape");
@@ -1523,9 +1551,9 @@ test("Toto follows the quick-add, edit, finish and separate history workflows", 
     await page.goto("/");
     const [toto] = await Promise.all([
         page.waitForEvent("popup"),
-        page.getByRole("button", { name: /Toto/ }).click(),
+        page.getByRole("button", { name: /ToTo 日程/ }).click(),
     ]);
-    await expect(toto.getByText("Toto 日程提醒", { exact: true })).toBeVisible();
+    await expect(toto.getByText("ToTo 日程", { exact: true })).toBeVisible();
     const grid = toto.locator(".toto-main-grid");
     await expect(grid).not.toHaveAttribute("tabindex");
     const tableRegion = toto.getByRole("grid", { name: "Toto 进行中事项" });

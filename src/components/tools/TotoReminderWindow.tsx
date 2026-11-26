@@ -2,8 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { X } from "lucide-react";
-import { JuButton, JuIconButton, JuText } from "../ju";
+import { JuButton, JuText } from "../ju";
 import { closeCurrentToolWindow, loadTotoItems, type TotoItem } from "../../services/desktop";
 import { useWindowDrag } from "../../hooks/useWindowDrag";
 
@@ -89,8 +88,7 @@ export function TotoReminderWindow() {
     return (
         <div className="toto-reminder-window">
             <header className="ju-dialog-heading toto-reminder-heading draggable-titlebar" onMouseDown={startWindowDrag}>
-                <div className="ju-dialog-title">Toto 提醒</div>
-                <JuIconButton label="关闭提醒窗口" onMouseDown={(event) => event.stopPropagation()} onClick={() => void resolve(false)}><X size={17} /></JuIconButton>
+                <div className="ju-dialog-title">提醒</div>
             </header>
             <main className="ju-dialog-body toto-reminder-body">
                 {item ? <dl className="toto-item-detail">{[
