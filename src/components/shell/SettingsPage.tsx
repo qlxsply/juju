@@ -5,6 +5,7 @@ import {
     BriefcaseBusiness,
     ChevronDown,
     CalendarClock,
+    CalendarDays,
     Copy,
     FileJson,
     FileText,
@@ -45,12 +46,14 @@ import {
 } from "../../services/desktop";
 import { useThemeStore } from "../../design-system/theme-store";
 import { useWindowDrag } from "../../hooks/useWindowDrag";
+import { HolidaySettingsPage } from "./HolidaySettingsPage";
 
 type PageId =
     | "general"
     | "shortcuts"
     | "storage"
     | "display"
+    | "holidays"
     | "updates"
     | "json"
     | "toto"
@@ -62,6 +65,7 @@ const appNavigation: { id: PageId; label: string; icon: LucideIcon }[] = [
     { id: "shortcuts", label: "快捷键", icon: Keyboard },
     { id: "storage", label: "存储设置", icon: FileText },
     { id: "display", label: "显示设置", icon: Monitor },
+    { id: "holidays", label: "节假日设置", icon: CalendarDays },
     { id: "updates", label: "更新与版本", icon: RefreshCw },
 ];
 
@@ -102,7 +106,7 @@ export function SettingsPage({
     const timeContext = useTimeContext();
     const [page, setPage] = useState<PageId>(() => {
         const requested = new URLSearchParams(window.location.search).get("section");
-        const valid: PageId[] = ["general", "shortcuts", "storage", "display", "updates", "json", "toto", "echo", "kairos"];
+        const valid: PageId[] = ["general", "shortcuts", "storage", "display", "holidays", "updates", "json", "toto", "echo", "kairos"];
         return valid.includes(requested as PageId) ? requested as PageId : "general";
     });
     const [appGroupOpen, setAppGroupOpen] = useState(true);
@@ -130,7 +134,7 @@ export function SettingsPage({
         let unlisten: (() => void) | undefined;
         let active = true;
         void listen<string>("app:navigate-settings", (event) => {
-            const valid: PageId[] = ["general", "shortcuts", "storage", "display", "updates", "json", "toto", "echo", "kairos"];
+            const valid: PageId[] = ["general", "shortcuts", "storage", "display", "holidays", "updates", "json", "toto", "echo", "kairos"];
             if (valid.includes(event.payload as PageId)) setPage(event.payload as PageId);
         }).then((stopListening) => {
             if (active) unlisten = stopListening;
@@ -609,6 +613,7 @@ export function SettingsPage({
     };
 
     const renderPage = () => {
+        if (page === "holidays") return <HolidaySettingsPage onMessage={onMessage} />;
         if (page === "general") return renderGeneral();
         if (page === "shortcuts") return renderShortcuts();
         if (page === "storage") {

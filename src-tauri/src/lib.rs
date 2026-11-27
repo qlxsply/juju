@@ -1,4 +1,5 @@
 mod deadline_scheduler;
+mod holidays;
 mod json_documents;
 #[allow(dead_code)]
 mod reminder_queue;
@@ -1208,6 +1209,9 @@ pub fn run() {
         .manage(DeadlineScheduler::new())
         .manage(ReminderWindows::default())
         .invoke_handler(tauri::generate_handler![
+            holidays::holiday_snapshot,
+            holidays::holiday_set_overrides,
+            holidays::holiday_fetch,
             get_time_context,
             load_app_settings,
             save_app_settings,
@@ -1250,6 +1254,7 @@ pub fn run() {
             copy_json_document_file
         ])
         .setup(|app| {
+            holidays::start_background(app.handle());
             app.manage(WindowPositionStore::default());
             if let Ok(directory) = app.path().app_config_dir() {
                 let old_state = directory.join(".window-state.json");

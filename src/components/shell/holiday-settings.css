@@ -1,0 +1,29 @@
+.holiday-page { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.holiday-heading, .holiday-toolbar, .holiday-controls, .holiday-actions, .holiday-status, .holiday-edit { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.holiday-heading, .holiday-toolbar { justify-content: space-between; }
+.holiday-heading h2 { margin: 0; font-size: 18px; }
+.holiday-controls .ju-field { width: 110px; }
+.holiday-status { font-size: 12px; }
+.holiday-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 5px; }
+.holiday-weekday { text-align: center; font-size: 12px; opacity: .7; }
+.holiday-day { position: relative; min-width: 0; height: 66px; border: 1px solid transparent; border-radius: 6px; padding: 6px; text-align: left; color: inherit; display: flex; flex-direction: column; justify-content: space-between; cursor: pointer; }
+.holiday-day.work { background: color-mix(in srgb, currentColor 6%, transparent); }
+.holiday-day.off { background: color-mix(in srgb, #4caf72 18%, transparent); }
+.holiday-day.special { background: color-mix(in srgb, #e59a45 23%, transparent); }
+.holiday-day.manual { border: 2px dashed #438ce6; }
+.holiday-day.selected { outline: 2px solid #438ce6; outline-offset: 1px; }
+.holiday-day.today > span:first-child { font-weight: bold; text-decoration: underline; }
+.holiday-day:hover { filter: brightness(.94); }
+.holiday-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; width: 100%; font-size: 12px; }
+.holiday-check { position: absolute; top: 4px; right: 6px; color: #438ce6; }
+.holiday-legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; }
+.holiday-selection { font-size: 13px; }
+.holiday-selection > div:first-child { display: flex; justify-content: space-between; }
+.holiday-selection button, .holiday-records button { color: #438ce6; cursor: pointer; background: transparent; border: 0; }
+.holiday-tags { display: flex; flex-wrap: wrap; gap: 6px; max-height: 100px; overflow: auto; margin-top: 8px; }
+.holiday-tags button { border: 1px solid #438ce6; border-radius: 4px; padding: 3px 6px; }
+.holiday-edit .ju-field { flex: 1 1 140px; }
+.holiday-records { max-height: 55vh; overflow: auto; }
+.holiday-records table { width: 100%; border-collapse: collapse; text-align: left; }
+.holiday-records td, .holiday-records th { padding: 8px; overflow-wrap: anywhere; }
+.holiday-error { color: #d24b4b; }
